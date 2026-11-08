@@ -1,0 +1,103 @@
+{
+  "engine": "Kotlin plugin exporter",
+  "method": "In-process JVM export, after include resolution; three warmups when measuring. Includes asset reads, ZIP serialization and file writes; excludes IDE startup and resolver time.",
+  "java": "21.0.9",
+  "results": [
+    {
+      "case": "book",
+      "epubSha256": "63107012e670c345ec59d46d3e651b54f77f5ccf6d40985f49b570bc1e3557dd",
+      "outputBytes": 1669069,
+      "samplesNanos": [
+        207342667,
+        205102125,
+        202702916,
+        199276166,
+        191907209,
+        189315125,
+        190228042,
+        190873791,
+        206838167
+      ]
+    },
+    {
+      "case": "article",
+      "epubSha256": "a5092727a9c3c56e71dfd3110a25e8bdf34df973b9b39239d781a8296cddff09",
+      "outputBytes": 1664892,
+      "samplesNanos": [
+        106957750,
+        103461334,
+        103124958,
+        103256042,
+        102782375,
+        103964375,
+        103418459,
+        104083292,
+        103938250
+      ]
+    },
+    {
+      "case": "media",
+      "epubSha256": "8b9ed1ef27a2b5300a9652ce2104efe262e7460a8b4de8d34a5a62206d8117a9",
+      "outputBytes": 1665788,
+      "samplesNanos": [
+        105352208,
+        104581917,
+        103790334,
+        104384250,
+        103585042,
+        105001875,
+        104477875,
+        106387417,
+        103114541
+      ]
+    },
+    {
+      "case": "depth",
+      "epubSha256": "65c22c9887305dfdc7028dc257f7a69905f93c63920c4335a465ac530ff1ff47",
+      "outputBytes": 1668628,
+      "samplesNanos": [
+        200303250,
+        189292125,
+        192937625,
+        193057375,
+        187923167,
+        190071750,
+        193755000,
+        207582625,
+        193653375
+      ]
+    },
+    {
+      "case": "custom",
+      "epubSha256": "4c2e2d9c14e16574a85b83e92c8c10897f00bfee58321318cc0a2df8c3f61894",
+      "outputBytes": 1926777,
+      "samplesNanos": [
+        200770708,
+        199248375,
+        198261708,
+        201989583,
+        200404042,
+        199129167,
+        197492500,
+        225108166,
+        200525584
+      ]
+    },
+    {
+      "case": "reader-fonts",
+      "epubSha256": "43ef45feb9db024353e4573ec61d6d4152d7ce64c79387e0722e5cb523dc24dd",
+      "outputBytes": 9576,
+      "samplesNanos": [
+        96208583,
+        86817417,
+        87071459,
+        86969917,
+        92284666,
+        86675541,
+        86114375,
+        86135958,
+        86164916
+      ]
+    }
+  ]
+}

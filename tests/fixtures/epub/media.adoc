@@ -1,0 +1,9 @@
+= Media
+:doctype: book
+:epub-modified: 2026-11-09T00:00:00Z
+
+== Audio and video
+
+audio::sample.mp3[]
+
+video::sample.mp4[]

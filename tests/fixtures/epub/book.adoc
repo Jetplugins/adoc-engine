@@ -1,0 +1,33 @@
+= Native EPUB Handbook
+Jane Writer; John Reader
+:doctype: book
+:lang: en
+:uuid: urn:uuid:0c92a9ce-11ad-40be-890b-b50d69c0f300
+:producer: Example Press
+:publisher: Example Press
+:creator: Example Publishing Tools
+:description: A portable & accessible book.
+:copyright: Copyright 2026 Example Authors
+:rights: Copyright 2026 Example Authors
+:source: https://example.org/books/handbook
+:revdate: 2026-11-09
+:keywords: EPUB, "books, publishing", Rust, Kotlin
+:series-name: Native Publishing
+:series-volume: 3
+:series-id: urn:uuid:a18ccc40-278f-40e8-bf87-9483b936f300
+:imagesdir: images
+:front-cover-image: image:cover.png[Cover,200,300]
+:toc:
+:toclevels: 2
+:outlinelevels: 3
+:toc-title: Book contents
+:source-highlighter: rouge
+:stem: asciimath
+:epub-modified: 2026-11-09T00:00:00Z
+
+This introduction contains *bold*, _emphasis_, `code`, café, Ελληνικά and Кириллица.
+See <<intro>> and <<reference>>. A note footnote:shared[A shared footnote across chapters.].
+
+include::chapters/introduction.adoc[]
+
+include::chapters/reference.adoc[]

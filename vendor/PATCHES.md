@@ -59,3 +59,12 @@ The showcase's `expected.html` is the byte-identical output of pinned Ruby
 Asciidoctor 2.0.26 and Asciidoctor.js 3.0.4. A normal Rust integration test compares
 the complete document against it (allowing only the final newline), so CI checks
 all showcased features without installing reference runtimes.
+
+## EPUB processing defaults
+
+`asciidoc-html5::Options::doctype_default` supplies a book default before API and
+header directives, without changing normal HTML's article default. The EPUB
+backend uses `processing_backend("epub3")` so backend conditionals are evaluated
+for the publication target. Explicit API/header doctype values still win.
+The engine's API attribute adapter now handles Asciidoctor's `@` soft defaults
+and `!` unsets rather than passing their control characters as literal values.

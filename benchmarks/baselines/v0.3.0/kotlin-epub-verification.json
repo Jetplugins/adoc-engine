@@ -1,0 +1,375 @@
+{
+  "article": {
+    "linkErrors": [],
+    "title": [
+      "A Native Article"
+    ],
+    "language": [
+      "en"
+    ],
+    "authors": [
+      "Jane Writer"
+    ],
+    "publisher": [],
+    "rights": [],
+    "description": [],
+    "subjects": [],
+    "date": [],
+    "source": [],
+    "series": [],
+    "spineDocuments": [
+      "toc.xhtml",
+      "content.xhtml"
+    ],
+    "headings": [
+      "Contents",
+      "A Native Article",
+      "First section",
+      "Second section"
+    ],
+    "coverImages": 0,
+    "fonts": 8,
+    "math": 0,
+    "noterefs": 0,
+    "footnotes": 0,
+    "media": 0,
+    "highlighted": false,
+    "checkedItems": 0,
+    "uncheckedItems": 0,
+    "unicodeCallouts": 0,
+    "unresolvedXrefLabels": 0,
+    "unicodePreserved": false,
+    "archiveEntries": 20,
+    "sha256": "a5092727a9c3c56e71dfd3110a25e8bdf34df973b9b39239d781a8296cddff09",
+    "outputBytes": 1664892,
+    "epubcheck": "passed"
+  },
+  "book": {
+    "linkErrors": [],
+    "title": [
+      "Native EPUB Handbook"
+    ],
+    "language": [
+      "en"
+    ],
+    "authors": [
+      "Jane Writer",
+      "John Reader"
+    ],
+    "publisher": [
+      "Example Press"
+    ],
+    "rights": [
+      "Copyright 2026 Example Authors"
+    ],
+    "description": [
+      "A portable & accessible book."
+    ],
+    "subjects": [
+      "EPUB",
+      "books, publishing",
+      "Rust",
+      "Kotlin"
+    ],
+    "date": [
+      "2026-11-09"
+    ],
+    "source": [
+      "https://example.org/books/handbook"
+    ],
+    "series": [
+      "Native Publishing"
+    ],
+    "spineDocuments": [
+      "cover.xhtml",
+      "toc.xhtml",
+      "_preamble.xhtml",
+      "intro.xhtml",
+      "reference.xhtml",
+      "appendix.xhtml"
+    ],
+    "headings": [
+      "Book contents",
+      "Native EPUB Handbook",
+      "Introduction",
+      "Reading modes",
+      "Detailed guidance",
+      "Equations",
+      "Reference",
+      "Appendix"
+    ],
+    "coverImages": 1,
+    "fonts": 8,
+    "math": 3,
+    "noterefs": 2,
+    "footnotes": 1,
+    "media": 0,
+    "highlighted": true,
+    "checkedItems": 1,
+    "uncheckedItems": 1,
+    "unicodeCallouts": 2,
+    "unresolvedXrefLabels": 0,
+    "unicodePreserved": true,
+    "archiveEntries": 25,
+    "sha256": "63107012e670c345ec59d46d3e651b54f77f5ccf6d40985f49b570bc1e3557dd",
+    "outputBytes": 1669069,
+    "epubcheck": "passed"
+  },
+  "custom": {
+    "linkErrors": [],
+    "title": [
+      "Native EPUB Handbook"
+    ],
+    "language": [
+      "en"
+    ],
+    "authors": [
+      "Jane Writer",
+      "John Reader"
+    ],
+    "publisher": [
+      "Example Press"
+    ],
+    "rights": [
+      "Copyright 2026 Example Authors"
+    ],
+    "description": [
+      "A portable & accessible book."
+    ],
+    "subjects": [
+      "EPUB",
+      "books, publishing",
+      "Rust",
+      "Kotlin"
+    ],
+    "date": [
+      "2026-11-09"
+    ],
+    "source": [
+      "https://example.org/books/handbook"
+    ],
+    "series": [
+      "Native Publishing"
+    ],
+    "spineDocuments": [
+      "cover.xhtml",
+      "front-matter-01.xhtml",
+      "front-matter-02.xhtml",
+      "toc.xhtml",
+      "_preamble.xhtml",
+      "intro.xhtml",
+      "reference.xhtml",
+      "appendix.xhtml"
+    ],
+    "headings": [
+      "Dedication",
+      "Credits",
+      "Book contents",
+      "Native EPUB Handbook",
+      "Introduction",
+      "Reading modes",
+      "Detailed guidance",
+      "Equations",
+      "Reference",
+      "Appendix"
+    ],
+    "coverImages": 1,
+    "fonts": 9,
+    "math": 3,
+    "noterefs": 2,
+    "footnotes": 1,
+    "media": 0,
+    "highlighted": true,
+    "checkedItems": 1,
+    "uncheckedItems": 1,
+    "unicodeCallouts": 2,
+    "unresolvedXrefLabels": 0,
+    "unicodePreserved": true,
+    "archiveEntries": 28,
+    "sha256": "4c2e2d9c14e16574a85b83e92c8c10897f00bfee58321318cc0a2df8c3f61894",
+    "outputBytes": 1926777,
+    "epubcheck": "passed"
+  },
+  "depth": {
+    "linkErrors": [],
+    "title": [
+      "Native EPUB Handbook"
+    ],
+    "language": [
+      "en"
+    ],
+    "authors": [
+      "Jane Writer",
+      "John Reader"
+    ],
+    "publisher": [
+      "Example Press"
+    ],
+    "rights": [
+      "Copyright 2026 Example Authors"
+    ],
+    "description": [
+      "A portable & accessible book."
+    ],
+    "subjects": [
+      "EPUB",
+      "books, publishing",
+      "Rust",
+      "Kotlin"
+    ],
+    "date": [
+      "2026-11-09"
+    ],
+    "source": [
+      "https://example.org/books/handbook"
+    ],
+    "series": [
+      "Native Publishing"
+    ],
+    "spineDocuments": [
+      "cover.xhtml",
+      "toc.xhtml",
+      "_preamble.xhtml",
+      "_reading_modes.xhtml",
+      "equations.xhtml"
+    ],
+    "headings": [
+      "Book contents",
+      "Native EPUB Handbook",
+      "Introduction",
+      "Reading modes",
+      "Detailed guidance",
+      "Equations",
+      "Reference",
+      "Appendix"
+    ],
+    "coverImages": 1,
+    "fonts": 8,
+    "math": 3,
+    "noterefs": 2,
+    "footnotes": 1,
+    "media": 0,
+    "highlighted": true,
+    "checkedItems": 1,
+    "uncheckedItems": 1,
+    "unicodeCallouts": 2,
+    "unresolvedXrefLabels": 0,
+    "unicodePreserved": true,
+    "archiveEntries": 24,
+    "sha256": "65c22c9887305dfdc7028dc257f7a69905f93c63920c4335a465ac530ff1ff47",
+    "outputBytes": 1668628,
+    "epubcheck": "passed"
+  },
+  "media": {
+    "linkErrors": [],
+    "title": [
+      "Media"
+    ],
+    "language": [
+      "en"
+    ],
+    "authors": [],
+    "publisher": [],
+    "rights": [],
+    "description": [],
+    "subjects": [],
+    "date": [],
+    "source": [],
+    "series": [],
+    "spineDocuments": [
+      "_preamble.xhtml",
+      "_audio_and_video.xhtml"
+    ],
+    "headings": [
+      "Media",
+      "Audio and video"
+    ],
+    "coverImages": 0,
+    "fonts": 8,
+    "math": 0,
+    "noterefs": 0,
+    "footnotes": 0,
+    "media": 2,
+    "highlighted": false,
+    "checkedItems": 0,
+    "uncheckedItems": 0,
+    "unicodeCallouts": 0,
+    "unresolvedXrefLabels": 0,
+    "unicodePreserved": false,
+    "archiveEntries": 21,
+    "sha256": "8b9ed1ef27a2b5300a9652ce2104efe262e7460a8b4de8d34a5a62206d8117a9",
+    "outputBytes": 1665788,
+    "epubcheck": "passed"
+  },
+  "reader-fonts": {
+    "linkErrors": [],
+    "title": [
+      "Native EPUB Handbook"
+    ],
+    "language": [
+      "en"
+    ],
+    "authors": [
+      "Jane Writer",
+      "John Reader"
+    ],
+    "publisher": [
+      "Example Press"
+    ],
+    "rights": [
+      "Copyright 2026 Example Authors"
+    ],
+    "description": [
+      "A portable & accessible book."
+    ],
+    "subjects": [
+      "EPUB",
+      "books, publishing",
+      "Rust",
+      "Kotlin"
+    ],
+    "date": [
+      "2026-11-09"
+    ],
+    "source": [
+      "https://example.org/books/handbook"
+    ],
+    "series": [
+      "Native Publishing"
+    ],
+    "spineDocuments": [
+      "cover.xhtml",
+      "toc.xhtml",
+      "_preamble.xhtml",
+      "intro.xhtml",
+      "reference.xhtml",
+      "appendix.xhtml"
+    ],
+    "headings": [
+      "Book contents",
+      "Native EPUB Handbook",
+      "Introduction",
+      "Reading modes",
+      "Detailed guidance",
+      "Equations",
+      "Reference",
+      "Appendix"
+    ],
+    "coverImages": 1,
+    "fonts": 0,
+    "math": 3,
+    "noterefs": 2,
+    "footnotes": 1,
+    "media": 0,
+    "highlighted": true,
+    "checkedItems": 1,
+    "uncheckedItems": 1,
+    "unicodeCallouts": 2,
+    "unresolvedXrefLabels": 0,
+    "unicodePreserved": true,
+    "archiveEntries": 16,
+    "sha256": "43ef45feb9db024353e4573ec61d6d4152d7ce64c79387e0722e5cb523dc24dd",
+    "outputBytes": 9576,
+    "epubcheck": "passed"
+  }
+}

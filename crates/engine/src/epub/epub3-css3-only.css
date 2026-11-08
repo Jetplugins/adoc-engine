@@ -1,0 +1,3 @@
+@media (max-width: 480px) { body { margin: 4%; } pre { font-size: .8em; } table { font-size: .9em; } }
+@media (prefers-color-scheme: dark) { img { background: transparent; } }
+@supports (hyphens: auto) { p { hyphens: auto; } pre, code { hyphens: none; } }

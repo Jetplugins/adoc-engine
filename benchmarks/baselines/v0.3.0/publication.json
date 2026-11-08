@@ -1,0 +1,14 @@
+{
+  "html": "generated",
+  "pdf": {
+    "pages": 2,
+    "textChecks": 7,
+    "renderedPages": 2
+  },
+  "epub": "EPUBCheck 5.4.0 passed",
+  "svg": "generated",
+  "svg-merged": "generated",
+  "png": "generated",
+  "json": "generated",
+  "suppliedDiagrams": "EPUBCheck passed; PDF rendered"
+}

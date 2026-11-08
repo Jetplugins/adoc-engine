@@ -60,7 +60,21 @@ impl RenderOptions {
         }
         o = o.include_file_handler(resolver::Resolver::new(self.clone())?);
         for (k, v) in &self.attributes {
-            o = o.attribute(k, v);
+            let soft = v.ends_with('@') || k.ends_with('@');
+            let key = k.trim_end_matches('@');
+            let unset = key.starts_with('!') || key.ends_with('!');
+            let name = key.trim_start_matches('!').trim_end_matches('!');
+            let value = if soft {
+                v.strip_suffix('@').unwrap_or(v)
+            } else {
+                v.as_str()
+            };
+            o = match (unset, soft) {
+                (true, true) => o.unset_default(name),
+                (true, false) => o.unset(name),
+                (false, true) => o.attribute_default(name, value),
+                (false, false) => o.attribute(name, value),
+            };
         }
         Ok(o)
     }
@@ -139,7 +153,13 @@ pub fn export(
     format: &str,
     options: &RenderOptions,
 ) -> Result<Vec<(String, Vec<u8>)>> {
-    let opts = options.parser_options()?;
+    let mut opts = options.parser_options()?;
+    if format == "epub" {
+        opts = opts.doctype_default("book").processing_backend("epub3");
+        if !options.attributes.contains_key("listing-caption") {
+            opts = opts.attribute_default("listing-caption", "Listing");
+        }
+    }
     let doc = asciidoc_html5::load_with(source, &opts);
     match format {
         "html" => Ok(vec![(

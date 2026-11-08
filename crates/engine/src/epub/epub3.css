@@ -1,0 +1,48 @@
+/* Native reflowable book theme. Reader colors and body fonts remain overridable. */
+html { font-size: 100%; }
+body { margin: 5%; line-height: 1.55; widows: 2; orphans: 2; }
+p, li, dd, td { font-family: 'Libertinus Serif', serif; }
+h1, h2, h3, h4, h5, h6 { font-family: sans-serif; line-height: 1.2; margin: 1.5em 0 .7em; page-break-after: avoid; break-after: avoid; }
+h1 { font-size: 2em; } h2 { font-size: 1.6em; } h3 { font-size: 1.3em; } h4 { font-size: 1.15em; }
+p { margin: .65em 0; } a { text-decoration: underline; }
+code, pre, .literal { font-family: 'DejaVu Sans Mono', monospace; font-size: .9em; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: .7em; border: 1px solid currentColor; }
+pre code { font-size: inherit; }
+pre, blockquote, figure, .imageblock, .admonitionblock, .listingblock, .exampleblock, .sidebarblock { page-break-inside: avoid; break-inside: avoid; }
+img, svg { max-width: 100%; height: auto; }
+.cover { text-align: center; margin: 0; } .cover img { max-height: 95vh; }
+.title, figcaption, caption { font-style: italic; font-weight: bold; margin: .6em 0; }
+.imageblock { text-align: center; margin: 1em 0; }
+blockquote, .admonitionblock, .sidebarblock { border-left: .2em solid currentColor; padding: .2em 1em; margin: 1em 0; }
+.admonitionblock > table { border: 0; width: 100%; } .admonitionblock td { border: 0; padding: .4em; vertical-align: top; }
+.admonitionblock td.icon { font-weight: bold; width: 5em; }
+.exampleblock > .content, .sidebarblock > .content { padding: .7em; }
+table { border-collapse: collapse; max-width: 100%; margin: 1em 0; }
+th, td { padding: .4em .55em; vertical-align: top; }
+table.tableblock { border: 1px solid currentColor; }
+table.tableblock th, table.tableblock td { border: 0; }
+table.grid-all th, table.grid-all td { border: 1px solid currentColor; }
+table.grid-rows th, table.grid-rows td { border-top: 1px solid currentColor; border-bottom: 1px solid currentColor; }
+table.grid-cols th, table.grid-cols td { border-left: 1px solid currentColor; border-right: 1px solid currentColor; }
+table.frame-none { border: 0; }
+table.frame-topbot { border-left: 0; border-right: 0; }
+table.frame-sides { border-top: 0; border-bottom: 0; }
+table.frame-none tr > :first-child, table.frame-topbot tr > :first-child { border-left: 0; }
+table.frame-none tr > :last-child, table.frame-topbot tr > :last-child { border-right: 0; }
+table.frame-none > :first-child > tr:first-child > *, table.frame-sides > :first-child > tr:first-child > * { border-top: 0; }
+table.frame-none > :last-child > tr:last-child > *, table.frame-sides > :last-child > tr:last-child > * { border-bottom: 0; }
+.halign-left { text-align: left; } .halign-center { text-align: center; } .halign-right { text-align: right; }
+.valign-top { vertical-align: top; } .valign-middle { vertical-align: middle; } .valign-bottom { vertical-align: bottom; }
+ul, ol { padding-left: 1.7em; } li { margin: .35em 0; } li p { margin: .35em 0; }
+.checklist { list-style: none; } .checklist > li { list-style: disc; } .checklist > li.task-list-item { list-style: none; } dl dt { font-weight: bold; } dd { margin-left: 1.5em; }
+.footnote, #footnotes { font-size: .85em; } #footnotes { margin-top: 2em; border-top: 1px solid currentColor; padding-top: .7em; }
+.page-break { page-break-before: always; break-before: page; border: 0; }
+nav ol { list-style: none; padding-left: 1em; } nav > ol { padding-left: 0; } nav a { text-decoration: none; }
+.byline { font-style: italic; } .avatar { width: 3em; height: 3em; vertical-align: middle; margin-right: .7em; }
+.article-end::after { content: " ∎"; }
+/* Black-and-white token emphasis remains legible in day, sepia and night modes. */
+.keyword, .storage, .token.keyword, .hljs-keyword, .hljs-built_in { font-weight: bold; } .comment, .token.comment, .hljs-comment { font-style: italic; }
+.string, .token.string { font-style: normal; } .constant.numeric, .token.number { font-weight: bold; }
+.conum, .callout { font-family: sans-serif; font-weight: bold; }
+.colist ol { list-style: none; }
+.stemblock { text-align: center; margin: 1em 0; } math { font-size: 1.1em; }

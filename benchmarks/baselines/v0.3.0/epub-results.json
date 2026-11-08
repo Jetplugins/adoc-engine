@@ -1,0 +1,1496 @@
+{
+  "sourceTreeSha256": "689419498137f7468025f1d433e9e48118d3d2e6f4e1fcd811c1179733118751",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "cpu": "arm",
+  "native": "adoc-engine-cli 0.3.0",
+  "reference": "Asciidoctor EPUB3 2.3.0 using Asciidoctor 2.0.26 [https://asciidoctor.org]\nRuntime Environment (ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]) (lc:UTF-8 fs:UTF-8 in:UTF-8 ex:UTF-8)",
+  "method": "Full CLI process per sample; includes startup, parsing/includes, assets, font compression, archive creation and file writes. Two warmups; interleaved engines. EPUBCheck excluded.",
+  "binarySha256": "3c9261c157c3e93f453aa81eee5b2036f59976d3cef7d036c49d93f86bf00797",
+  "fixtureSha256": {
+    "article.adoc": "1dff0c0ffd921461d4ab49449f7d6417e8932978a539a98c3b3eb0fd9163f8c7",
+    "book.adoc": "178b6595e5a3e938e5fb977ac6b256adde0c22e5df1b5e522041dfa2a7b03b7f",
+    "chapters/introduction.adoc": "56bad079a5356122feffdbac5d5d84e7c7f76415786d24c2c511c5921db92197",
+    "chapters/reference.adoc": "92bebd1b0bbdd175dbeef074337adfa074e9eebb1b132d60a342d1a69a5d4af4",
+    "frontmatter/front-matter-01.html": "7b2cf5b9064b77fdfe4831cc427a5aee5115aa020984518ed6124e734f64bdbd",
+    "frontmatter/front-matter-02.html": "d1069802c09de29c761e03fa487296a9fb639a1c8489f2542bf576808a282960",
+    "images/avatars/jane.jpg": "13b994a1865a90cc54bc78c60bfc39d6f052a43da96dbadd0c762fe7e9b7e93d",
+    "images/cover.png": "d80fc9c98d8a629d12e3318ad006b639acaf022b5955d083945111d777376842",
+    "images/diagram.svg": "74a5d60192cc35088e50cf68b4731ee7a829d92f5b2c48e57e9104e5cba85e3d",
+    "large.adoc": "79687b1353dde081113f3b1669009e5956c71bae60508c3bf8440da5e1e86b37",
+    "media.adoc": "e340c71741f695f4f678c3d0cb642045a92986e861e872f14e3a0fe546a828aa",
+    "sample.mp3": "0b91eec268a2203deffc1e8f67bd4faaefcac5c3a6b43e4d95d286b349b5bd2e",
+    "sample.mp4": "905c5c05d847a98f9de1c4096d4d546bfd665aa3dd713691f447147006b3c297",
+    "styles/details.css": "acc95f90cebb62dd562c6f1a993b38ea3da245374326087ce59d7c38be9432c5",
+    "styles/epub3-css3-only.css": "59c11edcb023a89343588730b357ac58f0f319a7a2b5d7afd4309fba97a06e3a",
+    "styles/epub3.css": "e1e85cb1104d2a5f373e867e3ab939d69c76fea49a0474fb0c3f2548df2e9841"
+  },
+  "samples": 9,
+  "results": {
+    "book": {
+      "rust": {
+        "linkErrors": [],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable & accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "books, publishing",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-09"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Native EPUB Handbook",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix A: Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 8,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 1,
+        "uncheckedItems": 1,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 25,
+        "sha256": "286d92694f678f99820f7ec64191ae480161721d507f8d4aab994eb9c96f1c5a",
+        "outputBytes": 1693560,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          74.756125,
+          77.060667,
+          77.0695,
+          75.908375,
+          80.302292,
+          75.844125,
+          74.117875,
+          77.379125,
+          77.08025
+        ],
+        "medianMs": 77.060667
+      },
+      "ruby": {
+        "linkErrors": [
+          "missing anchor '#note-1' from EPUB/intro.xhtml"
+        ],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable &amp; accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "\"books",
+          "publishing\"",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-08T13:00:00Z"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "front-cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix A: Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 13,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 0,
+        "uncheckedItems": 0,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 31,
+        "sha256": "a128a6ae21e5800c58047e23ab79310bfde6c8cdf725e40c29b15e277acccde4",
+        "outputBytes": 459475,
+        "epubcheck": "failed (reference output; see log)",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nERROR(RSC-012): /private/tmp/adoc-epub-verification/inputs/ruby/book.epub/EPUB/intro.xhtml(26,185): Fragment identifier is not defined.\n\nCheck finished with errors\nMessages: 0 fatals / 1 error / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          578.754166,
+          545.692084,
+          544.403167,
+          533.870458,
+          548.622916,
+          544.809083,
+          546.310042,
+          549.916708,
+          539.040208
+        ],
+        "medianMs": 545.692084
+      },
+      "kotlin": {
+        "linkErrors": [],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable & accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "books, publishing",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-09"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Native EPUB Handbook",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 8,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 1,
+        "uncheckedItems": 1,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 25,
+        "sha256": "63107012e670c345ec59d46d3e651b54f77f5ccf6d40985f49b570bc1e3557dd",
+        "outputBytes": 1669069,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n"
+      }
+    },
+    "article": {
+      "rust": {
+        "linkErrors": [],
+        "title": [
+          "A Native Article"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer"
+        ],
+        "publisher": [],
+        "rights": [],
+        "description": [],
+        "subjects": [],
+        "date": [],
+        "source": [],
+        "series": [],
+        "spineDocuments": [
+          "toc.xhtml",
+          "content.xhtml"
+        ],
+        "headings": [
+          "Table of Contents",
+          "A Native Article",
+          "First section",
+          "Second section"
+        ],
+        "coverImages": 0,
+        "fonts": 8,
+        "math": 0,
+        "noterefs": 0,
+        "footnotes": 0,
+        "media": 0,
+        "highlighted": false,
+        "checkedItems": 0,
+        "uncheckedItems": 0,
+        "unicodeCallouts": 0,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": false,
+        "archiveEntries": 20,
+        "sha256": "5e3e2dfde6897eca607474aeb86686b94fc852be1ceb5175737349f2fdde0561",
+        "outputBytes": 1689478,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          55.825042,
+          68.74375,
+          61.752875,
+          58.801708,
+          58.229542,
+          60.748416,
+          60.713916,
+          58.043375,
+          57.362083
+        ],
+        "medianMs": 58.801708
+      },
+      "ruby": {
+        "linkErrors": [],
+        "title": [
+          "A Native Article"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer"
+        ],
+        "publisher": [],
+        "rights": [],
+        "description": [],
+        "subjects": [],
+        "date": [
+          "2026-11-08T13:23:14Z"
+        ],
+        "source": [],
+        "series": [],
+        "spineDocuments": [
+          "toc.xhtml",
+          "_a_native_article.xhtml"
+        ],
+        "headings": [
+          "Table of Contents",
+          "A Native Article",
+          "First section",
+          "Second section"
+        ],
+        "coverImages": 0,
+        "fonts": 13,
+        "math": 0,
+        "noterefs": 0,
+        "footnotes": 0,
+        "media": 0,
+        "highlighted": false,
+        "checkedItems": 0,
+        "uncheckedItems": 0,
+        "unicodeCallouts": 0,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": false,
+        "archiveEntries": 27,
+        "sha256": "ac207d90029f222a84c79f15ee1d39507809151a39643ce8a68571365b4b6098",
+        "outputBytes": 464789,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          429.534917,
+          425.552292,
+          504.16575,
+          420.778792,
+          419.970625,
+          432.722333,
+          429.3695,
+          441.65275,
+          426.794083
+        ],
+        "medianMs": 429.3695
+      },
+      "kotlin": {
+        "linkErrors": [],
+        "title": [
+          "A Native Article"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer"
+        ],
+        "publisher": [],
+        "rights": [],
+        "description": [],
+        "subjects": [],
+        "date": [],
+        "source": [],
+        "series": [],
+        "spineDocuments": [
+          "toc.xhtml",
+          "content.xhtml"
+        ],
+        "headings": [
+          "Contents",
+          "A Native Article",
+          "First section",
+          "Second section"
+        ],
+        "coverImages": 0,
+        "fonts": 8,
+        "math": 0,
+        "noterefs": 0,
+        "footnotes": 0,
+        "media": 0,
+        "highlighted": false,
+        "checkedItems": 0,
+        "uncheckedItems": 0,
+        "unicodeCallouts": 0,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": false,
+        "archiveEntries": 20,
+        "sha256": "a5092727a9c3c56e71dfd3110a25e8bdf34df973b9b39239d781a8296cddff09",
+        "outputBytes": 1664892,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n"
+      }
+    },
+    "media": {
+      "rust": {
+        "linkErrors": [],
+        "title": [
+          "Media"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [],
+        "publisher": [],
+        "rights": [],
+        "description": [],
+        "subjects": [],
+        "date": [],
+        "source": [],
+        "series": [],
+        "spineDocuments": [
+          "_preamble.xhtml",
+          "_audio_and_video.xhtml"
+        ],
+        "headings": [
+          "Media",
+          "Audio and video"
+        ],
+        "coverImages": 0,
+        "fonts": 8,
+        "math": 0,
+        "noterefs": 0,
+        "footnotes": 0,
+        "media": 2,
+        "highlighted": false,
+        "checkedItems": 0,
+        "uncheckedItems": 0,
+        "unicodeCallouts": 0,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": false,
+        "archiveEntries": 21,
+        "sha256": "29250dac3d94ab2f1217127728fe48c9893b53de668de7ce5eb03a7b1b11a359",
+        "outputBytes": 1690414,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          51.960333,
+          53.774125,
+          52.151833,
+          53.112625,
+          53.524083,
+          58.361041,
+          51.716583,
+          51.942333,
+          51.593208
+        ],
+        "medianMs": 52.151833
+      },
+      "ruby": {
+        "linkErrors": [],
+        "title": [
+          "Media"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [],
+        "publisher": [],
+        "rights": [],
+        "description": [],
+        "subjects": [],
+        "date": [
+          "2026-11-08T13:23:15Z"
+        ],
+        "source": [],
+        "series": [],
+        "spineDocuments": [
+          "_audio_and_video.xhtml"
+        ],
+        "headings": [
+          "Audio and video"
+        ],
+        "coverImages": 0,
+        "fonts": 13,
+        "math": 0,
+        "noterefs": 0,
+        "footnotes": 0,
+        "media": 2,
+        "highlighted": false,
+        "checkedItems": 0,
+        "uncheckedItems": 0,
+        "unicodeCallouts": 0,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": false,
+        "archiveEntries": 25,
+        "sha256": "4d09f8d3219e172ddd4c123743d8a455f863503715f2c68a5c0b39058b308dff",
+        "outputBytes": 454265,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          419.613084,
+          417.735333,
+          414.722875,
+          413.683875,
+          420.90225,
+          409.665333,
+          411.524625,
+          409.864792,
+          422.306916
+        ],
+        "medianMs": 414.722875
+      },
+      "kotlin": {
+        "linkErrors": [],
+        "title": [
+          "Media"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [],
+        "publisher": [],
+        "rights": [],
+        "description": [],
+        "subjects": [],
+        "date": [],
+        "source": [],
+        "series": [],
+        "spineDocuments": [
+          "_preamble.xhtml",
+          "_audio_and_video.xhtml"
+        ],
+        "headings": [
+          "Media",
+          "Audio and video"
+        ],
+        "coverImages": 0,
+        "fonts": 8,
+        "math": 0,
+        "noterefs": 0,
+        "footnotes": 0,
+        "media": 2,
+        "highlighted": false,
+        "checkedItems": 0,
+        "uncheckedItems": 0,
+        "unicodeCallouts": 0,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": false,
+        "archiveEntries": 21,
+        "sha256": "8b9ed1ef27a2b5300a9652ce2104efe262e7460a8b4de8d34a5a62206d8117a9",
+        "outputBytes": 1665788,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n"
+      }
+    },
+    "depth": {
+      "rust": {
+        "linkErrors": [],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable & accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "books, publishing",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-09"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "_reading_modes.xhtml",
+          "equations.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Native EPUB Handbook",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix A: Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 8,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 1,
+        "uncheckedItems": 1,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 24,
+        "sha256": "906b8f88fede67650baeeaaf725b50525c4b28bd4b91e610efa45d451e599357",
+        "outputBytes": 1693140,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          75.733458,
+          76.550542,
+          81.54425,
+          77.527167,
+          75.694833,
+          75.878208,
+          77.46175,
+          79.814417,
+          86.275375
+        ],
+        "medianMs": 77.46175
+      },
+      "ruby": {
+        "linkErrors": [
+          "missing anchor '#note-1' from EPUB/intro.xhtml"
+        ],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable &amp; accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "\"books",
+          "publishing\"",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-08T13:00:00Z"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "front-cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "_reading_modes.xhtml",
+          "equations.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix A: Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 13,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 0,
+        "uncheckedItems": 0,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 33,
+        "sha256": "d748818d3040a36c4275841150476d4e16c3f41ab8a8bad5c6b0f36ec8853b6f",
+        "outputBytes": 460951,
+        "epubcheck": "failed (reference output; see log)",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nERROR(RSC-012): /private/tmp/adoc-epub-verification/inputs/ruby/depth.epub/EPUB/intro.xhtml(26,185): Fragment identifier is not defined.\n\nCheck finished with errors\nMessages: 0 fatals / 1 error / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          565.460083,
+          563.413542,
+          561.099709,
+          567.236583,
+          566.494834,
+          550.483125,
+          595.433208,
+          549.848417,
+          553.783959
+        ],
+        "medianMs": 563.413542
+      },
+      "kotlin": {
+        "linkErrors": [],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable & accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "books, publishing",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-09"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "_reading_modes.xhtml",
+          "equations.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Native EPUB Handbook",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 8,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 1,
+        "uncheckedItems": 1,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 24,
+        "sha256": "65c22c9887305dfdc7028dc257f7a69905f93c63920c4335a465ac530ff1ff47",
+        "outputBytes": 1668628,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n"
+      }
+    },
+    "custom": {
+      "ruby": {
+        "conversionError": "['/opt/homebrew/bin/ruby', '/private/tmp/adoc-epub-gems/bin/asciidoctor-epub3', '-S', 'safe', '-B', PosixPath('/private/tmp/adoc-epub-verification/inputs'), '-o', PosixPath('/private/tmp/adoc-epub-verification/inputs/ruby/custom.epub'), '-a', 'epub3-frontmatterdir=frontmatter', '-a', 'epub3-stylesdir=styles', PosixPath('/private/tmp/adoc-epub-verification/inputs/book.adoc')]:\nNo such file or directory @ rb_sysopen - /private/tmp/adoc-epub-verification/inputs/styles/epub3.scss\n  Use --trace to show backtrace\n"
+      },
+      "rust": {
+        "linkErrors": [],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable & accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "books, publishing",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-09"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "cover.xhtml",
+          "front-matter-01.xhtml",
+          "front-matter-02.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml"
+        ],
+        "headings": [
+          "Dedication",
+          "Credits",
+          "Book contents",
+          "Native EPUB Handbook",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix A: Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 9,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 1,
+        "uncheckedItems": 1,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 28,
+        "sha256": "1935bcaf730cc5f40605496bd24c214ec37066bac1160855bb5bb0ed817530d1",
+        "outputBytes": 1954646,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          81.019583,
+          81.075542,
+          80.150292,
+          81.617958,
+          80.786875,
+          82.696667,
+          81.17075,
+          80.860042,
+          81.082833
+        ],
+        "medianMs": 81.075542
+      },
+      "kotlin": {
+        "linkErrors": [],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable & accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "books, publishing",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-09"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "cover.xhtml",
+          "front-matter-01.xhtml",
+          "front-matter-02.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml"
+        ],
+        "headings": [
+          "Dedication",
+          "Credits",
+          "Book contents",
+          "Native EPUB Handbook",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 9,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 1,
+        "uncheckedItems": 1,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 28,
+        "sha256": "4c2e2d9c14e16574a85b83e92c8c10897f00bfee58321318cc0a2df8c3f61894",
+        "outputBytes": 1926777,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n"
+      }
+    },
+    "reader-fonts": {
+      "rust": {
+        "linkErrors": [],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable & accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "books, publishing",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-09"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Native EPUB Handbook",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix A: Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 0,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 1,
+        "uncheckedItems": 1,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 16,
+        "sha256": "2c0f14306a1baa26c89be6112eee70b515ece15b7806300c417bf68d0e87cb70",
+        "outputBytes": 9239,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          42.61825,
+          38.9425,
+          40.733333,
+          40.794208,
+          39.110708,
+          39.787375,
+          43.367084,
+          39.735125,
+          40.907791
+        ],
+        "medianMs": 40.733333
+      },
+      "kotlin": {
+        "linkErrors": [],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable & accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "books, publishing",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-09"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Native EPUB Handbook",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix"
+        ],
+        "coverImages": 1,
+        "fonts": 0,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 1,
+        "uncheckedItems": 1,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 16,
+        "sha256": "43ef45feb9db024353e4573ec61d6d4152d7ce64c79387e0722e5cb523dc24dd",
+        "outputBytes": 9576,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n"
+      }
+    },
+    "large": {
+      "rust": {
+        "linkErrors": [],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable & accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "books, publishing",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-09"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml",
+          "_performance_chapter_1.xhtml",
+          "_performance_chapter_2.xhtml",
+          "_performance_chapter_3.xhtml",
+          "_performance_chapter_4.xhtml",
+          "_performance_chapter_5.xhtml",
+          "_performance_chapter_6.xhtml",
+          "_performance_chapter_7.xhtml",
+          "_performance_chapter_8.xhtml",
+          "_performance_chapter_9.xhtml",
+          "_performance_chapter_10.xhtml",
+          "_performance_chapter_11.xhtml",
+          "_performance_chapter_12.xhtml",
+          "_performance_chapter_13.xhtml",
+          "_performance_chapter_14.xhtml",
+          "_performance_chapter_15.xhtml",
+          "_performance_chapter_16.xhtml",
+          "_performance_chapter_17.xhtml",
+          "_performance_chapter_18.xhtml",
+          "_performance_chapter_19.xhtml",
+          "_performance_chapter_20.xhtml",
+          "_performance_chapter_21.xhtml",
+          "_performance_chapter_22.xhtml",
+          "_performance_chapter_23.xhtml",
+          "_performance_chapter_24.xhtml",
+          "_performance_chapter_25.xhtml",
+          "_performance_chapter_26.xhtml",
+          "_performance_chapter_27.xhtml",
+          "_performance_chapter_28.xhtml",
+          "_performance_chapter_29.xhtml",
+          "_performance_chapter_30.xhtml",
+          "_performance_chapter_31.xhtml",
+          "_performance_chapter_32.xhtml",
+          "_performance_chapter_33.xhtml",
+          "_performance_chapter_34.xhtml",
+          "_performance_chapter_35.xhtml",
+          "_performance_chapter_36.xhtml",
+          "_performance_chapter_37.xhtml",
+          "_performance_chapter_38.xhtml",
+          "_performance_chapter_39.xhtml",
+          "_performance_chapter_40.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Native EPUB Handbook",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix A: Appendix",
+          "Performance chapter 1",
+          "Performance chapter 2",
+          "Performance chapter 3",
+          "Performance chapter 4",
+          "Performance chapter 5",
+          "Performance chapter 6",
+          "Performance chapter 7",
+          "Performance chapter 8",
+          "Performance chapter 9",
+          "Performance chapter 10",
+          "Performance chapter 11",
+          "Performance chapter 12",
+          "Performance chapter 13",
+          "Performance chapter 14",
+          "Performance chapter 15",
+          "Performance chapter 16",
+          "Performance chapter 17",
+          "Performance chapter 18",
+          "Performance chapter 19",
+          "Performance chapter 20",
+          "Performance chapter 21",
+          "Performance chapter 22",
+          "Performance chapter 23",
+          "Performance chapter 24",
+          "Performance chapter 25",
+          "Performance chapter 26",
+          "Performance chapter 27",
+          "Performance chapter 28",
+          "Performance chapter 29",
+          "Performance chapter 30",
+          "Performance chapter 31",
+          "Performance chapter 32",
+          "Performance chapter 33",
+          "Performance chapter 34",
+          "Performance chapter 35",
+          "Performance chapter 36",
+          "Performance chapter 37",
+          "Performance chapter 38",
+          "Performance chapter 39",
+          "Performance chapter 40"
+        ],
+        "coverImages": 1,
+        "fonts": 8,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 1,
+        "uncheckedItems": 1,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 65,
+        "sha256": "2ead17f7c584ba2b5c2fabe62dc73a245e30116ac33290c104aed7b352d58e80",
+        "outputBytes": 1716826,
+        "epubcheck": "passed",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nNo errors or warnings detected.\nMessages: 0 fatals / 0 errors / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          102.183917,
+          107.678791,
+          102.6685,
+          107.06525,
+          104.173667,
+          100.970667,
+          100.156375,
+          100.66475,
+          100.849958
+        ],
+        "medianMs": 102.183917
+      },
+      "ruby": {
+        "linkErrors": [
+          "missing anchor '#note-1' from EPUB/intro.xhtml"
+        ],
+        "title": [
+          "Native EPUB Handbook"
+        ],
+        "language": [
+          "en"
+        ],
+        "authors": [
+          "Jane Writer",
+          "John Reader"
+        ],
+        "publisher": [
+          "Example Press"
+        ],
+        "rights": [
+          "Copyright 2026 Example Authors"
+        ],
+        "description": [
+          "A portable &amp; accessible book."
+        ],
+        "subjects": [
+          "EPUB",
+          "\"books",
+          "publishing\"",
+          "Rust",
+          "Kotlin"
+        ],
+        "date": [
+          "2026-11-08T13:00:00Z"
+        ],
+        "source": [
+          "https://example.org/books/handbook"
+        ],
+        "series": [
+          "Native Publishing"
+        ],
+        "spineDocuments": [
+          "front-cover.xhtml",
+          "toc.xhtml",
+          "_preamble.xhtml",
+          "intro.xhtml",
+          "reference.xhtml",
+          "appendix.xhtml",
+          "_performance_chapter_1.xhtml",
+          "_performance_chapter_2.xhtml",
+          "_performance_chapter_3.xhtml",
+          "_performance_chapter_4.xhtml",
+          "_performance_chapter_5.xhtml",
+          "_performance_chapter_6.xhtml",
+          "_performance_chapter_7.xhtml",
+          "_performance_chapter_8.xhtml",
+          "_performance_chapter_9.xhtml",
+          "_performance_chapter_10.xhtml",
+          "_performance_chapter_11.xhtml",
+          "_performance_chapter_12.xhtml",
+          "_performance_chapter_13.xhtml",
+          "_performance_chapter_14.xhtml",
+          "_performance_chapter_15.xhtml",
+          "_performance_chapter_16.xhtml",
+          "_performance_chapter_17.xhtml",
+          "_performance_chapter_18.xhtml",
+          "_performance_chapter_19.xhtml",
+          "_performance_chapter_20.xhtml",
+          "_performance_chapter_21.xhtml",
+          "_performance_chapter_22.xhtml",
+          "_performance_chapter_23.xhtml",
+          "_performance_chapter_24.xhtml",
+          "_performance_chapter_25.xhtml",
+          "_performance_chapter_26.xhtml",
+          "_performance_chapter_27.xhtml",
+          "_performance_chapter_28.xhtml",
+          "_performance_chapter_29.xhtml",
+          "_performance_chapter_30.xhtml",
+          "_performance_chapter_31.xhtml",
+          "_performance_chapter_32.xhtml",
+          "_performance_chapter_33.xhtml",
+          "_performance_chapter_34.xhtml",
+          "_performance_chapter_35.xhtml",
+          "_performance_chapter_36.xhtml",
+          "_performance_chapter_37.xhtml",
+          "_performance_chapter_38.xhtml",
+          "_performance_chapter_39.xhtml",
+          "_performance_chapter_40.xhtml"
+        ],
+        "headings": [
+          "Book contents",
+          "Introduction",
+          "Reading modes",
+          "Detailed guidance",
+          "Equations",
+          "Reference",
+          "Appendix A: Appendix",
+          "Performance chapter 1",
+          "Performance chapter 2",
+          "Performance chapter 3",
+          "Performance chapter 4",
+          "Performance chapter 5",
+          "Performance chapter 6",
+          "Performance chapter 7",
+          "Performance chapter 8",
+          "Performance chapter 9",
+          "Performance chapter 10",
+          "Performance chapter 11",
+          "Performance chapter 12",
+          "Performance chapter 13",
+          "Performance chapter 14",
+          "Performance chapter 15",
+          "Performance chapter 16",
+          "Performance chapter 17",
+          "Performance chapter 18",
+          "Performance chapter 19",
+          "Performance chapter 20",
+          "Performance chapter 21",
+          "Performance chapter 22",
+          "Performance chapter 23",
+          "Performance chapter 24",
+          "Performance chapter 25",
+          "Performance chapter 26",
+          "Performance chapter 27",
+          "Performance chapter 28",
+          "Performance chapter 29",
+          "Performance chapter 30",
+          "Performance chapter 31",
+          "Performance chapter 32",
+          "Performance chapter 33",
+          "Performance chapter 34",
+          "Performance chapter 35",
+          "Performance chapter 36",
+          "Performance chapter 37",
+          "Performance chapter 38",
+          "Performance chapter 39",
+          "Performance chapter 40"
+        ],
+        "coverImages": 1,
+        "fonts": 13,
+        "math": 3,
+        "noterefs": 2,
+        "footnotes": 1,
+        "media": 0,
+        "highlighted": true,
+        "checkedItems": 0,
+        "uncheckedItems": 0,
+        "unicodeCallouts": 2,
+        "unresolvedXrefLabels": 0,
+        "unicodePreserved": true,
+        "archiveEntries": 71,
+        "sha256": "c262e2526bad55ad44621106234731600e75fc47a0d65758c91cb461c9b419d7",
+        "outputBytes": 495750,
+        "epubcheck": "failed (reference output; see log)",
+        "epubcheckLog": "Validating using EPUB version 3.4 rules.\nERROR(RSC-012): /private/tmp/adoc-epub-verification/inputs/ruby/large.epub/EPUB/intro.xhtml(26,185): Fragment identifier is not defined.\n\nCheck finished with errors\nMessages: 0 fatals / 1 error / 0 warnings / 0 infos\n\nEPUBCheck completed\n",
+        "samplesMs": [
+          630.7075,
+          648.758041,
+          632.690166,
+          683.308625,
+          627.37325,
+          612.861125,
+          617.09225,
+          614.563667,
+          623.63775
+        ],
+        "medianMs": 627.37325
+      }
+    }
+  },
+  "rubyRuntime": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]"
+}

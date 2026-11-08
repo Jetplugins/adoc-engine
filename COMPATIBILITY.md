@@ -34,3 +34,11 @@ PDF preserves semantic passthrough content, not arbitrary browser CSS or JavaScr
 Publication themes and page breaks need not match Asciidoctor PDF's exact layout.
 Language navigation covers the active document and included documents; it does not
 scan unrelated workspace files or implement document rename/refactoring.
+
+## EPUB 0.3.0
+
+The [EPUB guide](docs/epub.md) compares documented Asciidoctor EPUB3 2.3 features
+with the Rust and Kotlin exporters, including explicit differences in font subsets,
+highlighters, static math and extension support. The shared full-book fixtures are
+verified with independent link/asset/metadata checks and EPUBCheck 5.4.0. Ruby
+reference failures are recorded separately; they do not relax native output gates.

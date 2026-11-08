@@ -98,7 +98,7 @@ fn run() -> Result<()> {
             let artifacts = export(&source, &format, &o)?;
             if let Some(path) = output {
                 if artifacts.len() == 1 && !matches!(format.as_str(), "svg" | "png") {
-                    std::fs::write(path, &artifacts[0].1)?;
+                    write_atomically(&path, &artifacts[0].1)?;
                 } else {
                     std::fs::create_dir_all(&path)?;
                     for (name, bytes) in artifacts {
@@ -114,6 +114,51 @@ fn run() -> Result<()> {
         }
     }
 }
+/// Stage a completed single-file export next to its destination before replacement.
+fn write_atomically(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    use std::{
+        fs::OpenOptions,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+    let directory = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let mut pending = None;
+    for _ in 0..16 {
+        let name = format!(
+            ".adoc-export-{}-{}.tmp",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        );
+        let candidate = directory.join(name);
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => {
+                pending = Some((candidate, file));
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let (pending, mut file) =
+        pending.ok_or_else(|| anyhow::anyhow!("could not create a temporary export file"))?;
+    let result = (|| {
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&pending, path)?;
+        Ok(())
+    })();
+    let _ = std::fs::remove_file(pending);
+    result
+}
+
 fn worker() -> Result<()> {
     for line in io::stdin().lock().lines() {
         let response = (|| -> Result<serde_json::Value> {

@@ -1,0 +1,4 @@
+@import "details.css";
+@font-face { font-family: 'Book Face'; src: url('fonts/book.otf'); }
+p { font-family: 'Book Face', serif; line-height: 1.6; }
+img { max-width: 100%; height: auto; }

@@ -49,7 +49,7 @@ fn epub_container() {
     assert_eq!(first.name().unwrap(), "mimetype");
     assert_eq!(first.compression(), zip::CompressionMethod::Stored);
     drop(first);
-    for name in ["EPUB/content.xhtml", "EPUB/package.opf", "EPUB/nav.xhtml"] {
+    for name in ["EPUB/_preamble.xhtml", "EPUB/package.opf", "EPUB/nav.xhtml"] {
         let mut text = String::new();
         std::io::Read::read_to_string(&mut zip.by_name(name).unwrap(), &mut text).unwrap();
         roxmltree::Document::parse(&text).unwrap();
@@ -236,7 +236,7 @@ fn diagram_namespace_is_well_formed() {
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(&artifact[0].1)).unwrap();
     let mut content = String::new();
     std::io::Read::read_to_string(
-        &mut zip.by_name("EPUB/content.xhtml").unwrap(),
+        &mut zip.by_name("EPUB/_preamble.xhtml").unwrap(),
         &mut content,
     )
     .unwrap();

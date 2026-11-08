@@ -1,0 +1,21 @@
+= A Native Article
+Jane Writer
+:doctype: article
+:lang: en
+:username: jane
+:imagesdir: images
+:toc:
+:epub-chapter-level: 2
+:epub-modified: 2026-11-09T00:00:00Z
+
+An article has one content document and a byline.
+
+[#first]
+== First section
+
+See <<second>>.
+
+[#second]
+== Second section
+
+The end of the article.

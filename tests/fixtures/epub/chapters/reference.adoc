@@ -1,0 +1,20 @@
+[#reference]
+== Reference
+
+Return to <<intro>>.
+
+[#data]
+[cols="1,<1,>1",options="header",frame="none",grid="rows"]
+|===
+|Feature |Kotlin |Rust
+|Book chapters |Yes |Yes
+|Unicode |Ελληνικά |Кириллица
+|===
+
+NOTE: Footnote backlinks must return to the correct chapter.
+
+[appendix]
+[#appendix]
+== Appendix
+
+This appendix remains part of the book navigation.

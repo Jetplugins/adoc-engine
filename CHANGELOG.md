@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+- Expand EPUB 3 books: book/article structure, ID-based chapter filenames, configurable
+  split depth, nested reader navigation and NCX, independently controlled visible TOC.
+- Preserve metadata, CSV subjects, series, covers, front matter, local styles/fonts,
+  audio/video and cross-chapter references/footnotes.
+- Add shared reader-friendly typography, licensed fonts with opt-out, static native
+  syntax highlighting, Unicode callouts and AsciiMath MathML.
+- Stage file exports before replacement and validate completed books independently
+  with EPUBCheck and a pinned Asciidoctor EPUB3 reference.
+- Honor API attribute soft defaults and unsets and EPUB backend conditionals.
+
 ## 0.2.0
 
 - Preserve separate titled checklists after nested lists, including the preceding

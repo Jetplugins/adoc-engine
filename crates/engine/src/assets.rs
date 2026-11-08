@@ -21,18 +21,3 @@ pub fn local_path(target: &str, options: &RenderOptions) -> Result<PathBuf> {
     }
     Ok(path)
 }
-pub fn media_type(path: &Path) -> Result<&'static str> {
-    match path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_lowercase()
-        .as_str()
-    {
-        "png" => Ok("image/png"),
-        "jpg" | "jpeg" => Ok("image/jpeg"),
-        "gif" => Ok("image/gif"),
-        "svg" => Ok("image/svg+xml"),
-        _ => bail!("unsupported image type: {}", path.display()),
-    }
-}

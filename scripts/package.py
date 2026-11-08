@@ -17,6 +17,8 @@ with tempfile.TemporaryDirectory()as tmp:
  evidence=root/'benchmarks/baselines/release'
  if not evidence.exists():raise SystemExit('Missing verified release performance evidence')
  shutil.copytree(evidence,stage/'benchmarks/baselines/release')
+ epub_evidence=root/'benchmarks/baselines/v0.3.0'
+ if epub_evidence.exists():shutil.copytree(epub_evidence,stage/'benchmarks/baselines/v0.3.0')
  (stage/'vendor').mkdir();shutil.copy2(root/'vendor/PATCHES.md',stage/'vendor/PATCHES.md')
  metadata={'version':version,'target':a.target,'builtUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'buildPlatform':platform.platform(),'rustc':subprocess.check_output(['rustc','--version'],text=True,encoding='utf-8').strip(),'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True,encoding='utf-8').strip(),'binarySha256':hashlib.sha256(a.binary.read_bytes()).hexdigest()}
  (stage/'BUILD.json').write_text(json.dumps(metadata,indent=2)+'\n')

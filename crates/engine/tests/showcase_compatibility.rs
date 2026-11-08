@@ -92,8 +92,30 @@ fn publication_backends_preserve_checklist_titles_and_caption_numbers() {
     let artifacts = adoc_engine::export(source, "epub", &options).unwrap();
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(&artifacts[0].1)).unwrap();
     let mut xhtml = String::new();
-    std::io::Read::read_to_string(&mut zip.by_name("EPUB/content.xhtml").unwrap(), &mut xhtml)
-        .unwrap();
+    xhtml.push_str(
+        "<root xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\">",
+    );
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).unwrap();
+        let name = entry.name().unwrap().to_string();
+        if !name.ends_with(".xhtml")
+            || matches!(
+                name.as_str(),
+                "EPUB/nav.xhtml" | "EPUB/toc.xhtml" | "EPUB/cover.xhtml"
+            )
+        {
+            continue;
+        }
+        let mut source = String::new();
+        std::io::Read::read_to_string(&mut entry, &mut source).unwrap();
+        let parsed = roxmltree::Document::parse(&source).unwrap();
+        let body = parsed
+            .descendants()
+            .find(|n| n.tag_name().name() == "body")
+            .unwrap();
+        xhtml.push_str(&source[body.range()]);
+    }
+    xhtml.push_str("</root>");
     let document = roxmltree::Document::parse(&xhtml).unwrap();
     let checklist = document
         .descendants()

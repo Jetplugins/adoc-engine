@@ -29,6 +29,13 @@ Safe mode defaults to `secure`, which disables filesystem includes and image emb
 Use `safe` for local assets confined to the document directory; `unsafe` explicitly
 allows access outside it. Network resource fetching is disabled.
 
+## EPUB books in 0.3.0
+
+Book/article structure, rich metadata and covers, nested navigation, cross-chapter
+links and footnotes, front matter, custom CSS/fonts, static AsciiMath and highlighting,
+and local audio/video are supported. Rust and the IntelliJ Kotlin exporter share
+the publication theme and verification fixtures. See the [EPUB guide and comparison](docs/epub.md).
+
 ## Library and structure
 
 `crates/engine` contains the public API, include resolver, shared semantic analysis,
@@ -41,7 +48,7 @@ External Rust projects can use the verified Git release:
 
 ```toml
 [dependencies]
-adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.2.0" }
+adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.3.0" }
 ```
 
 ```rust
@@ -134,6 +141,41 @@ Authored project code is MIT licensed. Dependencies retain their licenses:
 and [inventory](THIRD_PARTY.md).
 
 <!-- PERFORMANCE:START -->
+## EPUB performance: 0.3.0
+
+Measured on macOS ARM64 with nine full-process samples per case, after two warmups.
+Includes startup, parsing/includes, local assets, embedded fonts, ZIP compression and
+file writes. EPUBCheck runs separately. Lower is better.
+
+| Document | Rust CLI, ms | Ruby EPUB3 CLI, ms | Rust speedup |
+| --- | ---: | ---: | ---: |
+| article | 58.80 | 429.37 | 7.30× |
+| book | 77.06 | 545.69 | 7.08× |
+| media | 52.15 | 414.72 | 7.95× |
+| large | 102.18 | 627.37 | 6.14× |
+
+```mermaid
+xychart-beta
+    title "EPUB export: full CLI median (ms)"
+    x-axis [Article, Book, Large-book]
+    y-axis "Milliseconds" 0 --> 700
+    bar [58.80, 77.06, 102.18]
+    line [429.37, 545.69, 627.37]
+```
+
+Bars: Rust 0.3.0 source build. Line: Ruby Asciidoctor EPUB3 2.3.0. All Rust outputs
+pass EPUBCheck 5.4.0. The Ruby book/large outputs have the recorded repeated-footnote
+link defect; their timings describe conversion, not a passing validation result.
+
+Kotlin's six shared fixture books also pass EPUBCheck and the same independent
+checks. Its warmed JVM timings are [reported separately](benchmarks/baselines/v0.3.0)
+because they exclude IDE startup and include resolution. Asciidoctor.js renders
+HTML; the plugin's JavaScript preview selection uses Kotlin for EPUB export.
+[Raw samples, fingerprints and validation logs](benchmarks/baselines/v0.3.0/epub-results.json)
+and the [reproduction guide](docs/epub.md) give the measured scope and reference differences.
+These are local source-build measurements; the older HTML measurements below retain
+their original versions and methods.
+
 ## Verified performance
 
 The published measurements below describe the v0.1.0 release executable.
@@ -316,7 +358,7 @@ Refresh the README charts from the archived verified samples with
 ## Publishing a release
 
 Keep the workspace and CLI dependency versions in sync, commit the version bump,
-and create the matching tag (for example `v0.2.0`). In GitHub Releases, publishing
+and create the matching tag (for example `v0.3.0`). In GitHub Releases, publishing
 that tag starts **Release engine**, which validates the version, tests five native
 platforms, checks reference compatibility and publications, then attaches archives,
 SHA-256 checksums, and `release-manifest.json`. Assets appear after verification.

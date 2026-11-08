@@ -1,0 +1,47 @@
+[#intro]
+== Introduction
+
+A cross-chapter link to <<reference>> and a repeated footnote:shared[].
+
+=== Reading modes
+
+Readers can choose day, night or sepia and adjust text size.
+
+==== Detailed guidance
+
+This heading belongs in the outline, and is excluded from the visible contents.
+
+TIP: The body font can follow reader preferences.
+
+.Release checklist
+* [x] Verify metadata
+* [ ] Publish the book
+
+* Control plane
+** API gateway
+* Workers
+
+.A Rust listing
+[source,rust]
+----
+fn ready() -> bool { true } // <1>
+----
+<1> This is a numbered callout.
+
+.An example
+====
+A compound block with *formatted* text.
+====
+
+.A diagram
+image::diagram.svg[Pipeline]
+
+[#equations]
+=== Equations
+
+Inline stem:[x^2/2] and asciimath:[sqrt(x^2+y^2)].
+
+[asciimath]
+++++
+sum_(i=1)^n i = (n(n+1))/2
+++++

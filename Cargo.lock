@@ -10,19 +10,24 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "adoc-engine"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "adocers-typst",
  "anyhow",
  "asciidoc-html5",
  "asciidoc-parser",
+ "base64 0.22.1",
  "html5ever",
  "markup5ever_rcdom",
+ "mathemascii",
+ "percent-encoding",
  "regex",
  "roxmltree 0.21.2",
  "serde",
  "serde_json",
  "sha2",
+ "syntect",
+ "time",
  "typst",
  "typst-as-lib",
  "typst-layout",
@@ -34,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "adoc-engine-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "adoc-engine",
  "anyhow",
@@ -95,6 +100,12 @@ checksum = "c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "alemat"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd7e2d7078d450141ac25e1db3bb458e8646b68ac9fedc00fbb15a69425d44c5"
 
 [[package]]
 name = "android_system_properties"
@@ -1781,6 +1792,15 @@ dependencies = [
  "markup5ever",
  "tendril",
  "xml5ever",
+]
+
+[[package]]
+name = "mathemascii"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5edd9e0cc9e4404ea4e2b9da76dc78c6193516ac3f9276c7151e7e2e87eae24f"
+dependencies = [
+ "alemat",
 ]
 
 [[package]]

@@ -145,6 +145,12 @@ pub struct Options {
     /// [`doctype`](Self::doctype).
     doctype: Option<String>,
 
+    /// Publication adapters may select a document-overridable doctype default.
+    doctype_default: Option<String>,
+
+    /// Processing backend reported to document attributes (HTML emission is unchanged).
+    processing_backend: Option<String>,
+
     /// A pinned reference time (Asciidoctor's "now") that drives the `local*`
     /// document attributes and, absent an [`input_mtime`](Self::input_mtime),
     /// the `doc*` attributes too. `None` leaves the clock to the parser (the
@@ -402,6 +408,20 @@ impl Options {
     /// ```
     pub fn doctype<S: Into<String>>(mut self, doctype: S) -> Self {
         self.doctype = Some(doctype.into());
+        self
+    }
+
+    /// Select a default doctype without locking out a document's header declaration.
+    /// Publication adapters use this to default to books while preserving articles.
+    pub fn doctype_default<S: Into<String>>(mut self, doctype: S) -> Self {
+        self.doctype_default = Some(doctype.into());
+        self
+    }
+
+    /// Report the publication backend to document attributes and conditionals.
+    /// This does not replace the HTML emitter used to produce publication content.
+    pub fn processing_backend<S: Into<String>>(mut self, backend: S) -> Self {
+        self.processing_backend = Some(backend.into());
         self
     }
 
@@ -781,6 +801,14 @@ impl Options {
         let mode = self.safe_mode.unwrap_or(SafeMode::Secure);
         parser = parser.with_safe_mode(mode);
 
+        if let Some(doctype) = &self.doctype_default {
+            parser = parser.with_intrinsic_attribute_silent(
+                "doctype",
+                doctype,
+                ModificationContext::ApiOrHeader,
+            );
+        }
+
         for directive in &self.attributes {
             let context = directive.precedence.modification_context();
             parser = match &directive.action {
@@ -1019,7 +1047,7 @@ impl Options {
         // is actually rendered.
         parser = parser.with_intrinsic_attribute_silent(
             "backend",
-            "html5",
+            self.processing_backend.as_deref().unwrap_or("html5"),
             ModificationContext::ApiOnly,
         );
 
@@ -1041,12 +1069,14 @@ impl Options {
         // is how the `inline` doctype (a fragment-conversion mode) is selected.
         // A caller-set doctype still overrides and locks out the document, so
         // the intrinsic remains API-controlled either way.
-        let doctype = self.doctype.as_deref().unwrap_or("article");
-        parser = parser.with_intrinsic_attribute_silent(
-            "doctype",
-            doctype,
-            ModificationContext::ApiOnly,
-        );
+        if self.doctype.is_some() || self.doctype_default.is_none() {
+            let doctype = self.doctype.as_deref().unwrap_or("article");
+            parser = parser.with_intrinsic_attribute_silent(
+                "doctype",
+                doctype,
+                ModificationContext::ApiOnly,
+            );
+        }
 
         // Seed the processor-version intrinsics documents use to detect the
         // toolchain converting them. `asciidoctor-version` names the

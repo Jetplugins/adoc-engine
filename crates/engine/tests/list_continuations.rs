@@ -114,7 +114,7 @@ fn epub_preserves_the_separate_list_item() {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&artifacts[0].1)).unwrap();
     let mut xhtml = String::new();
     std::io::Read::read_to_string(
-        &mut archive.by_name("EPUB/content.xhtml").unwrap(),
+        &mut archive.by_name("EPUB/_preamble.xhtml").unwrap(),
         &mut xhtml,
     )
     .unwrap();

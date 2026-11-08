@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag matching the Cargo version (for example v0.2.0)
+        description: Existing tag matching the Cargo version (for example v0.3.0)
         required: true
         type: string
       publish:
@@ -98,12 +98,17 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with: { ruby-version: '4.0' }
       - run: gem install asciidoctor -v 2.0.26 --no-document
+      - run: gem install asciidoctor-epub3 -v 2.3.0 --no-document
+      - run: gem install asciimath -v 2.0.6 --no-document
+      - run: gem install rouge -v 5.1.0 --no-document
       - run: npm ci --ignore-scripts
         working-directory: benchmarks
       - run: python benchmarks/run.py --verify-only --output verification/compatibility
       - run: python tests/showcase_compatibility.py target/release/adoc-engine
       - run: python tests/list_continuations.py target/release/adoc-engine
       - run: python tests/publications.py target/release/adoc-engine --epubcheck /tmp/epubcheck-5.4.0/epubcheck.jar
+      - run: python tests/epub_atomic.py target/release/adoc-engine
+      - run: python tests/epub_features.py target/release/adoc-engine --epubcheck /tmp/epubcheck-5.4.0/epubcheck.jar
       - uses: actions/upload-artifact@v4
         with:
           name: publication-verification
