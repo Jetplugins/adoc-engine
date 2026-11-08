@@ -1,5 +1,22 @@
 # Release verification: 0.3.0
 
+[Version 0.3.0](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.3.0)
+was published on 2026-11-08 UTC from source commit
+`9e7043bfb0af82a47b95cfd68569c67ec5967e42` after the
+[release workflow](https://github.com/Jetplugins/adoc-engine/actions/runs/42489742703)
+passed all five native targets and publication verification.
+
+The published macOS ARM64 archive was independently downloaded, checksum/manifest
+and BUILD.json verified, relocated, and executed in five formats with empty PATH.
+The IntelliJ consumer also downloaded it without authentication through its IDE
+HTTP client, installed it and rendered a document. Its archive SHA-256 is
+`cdca125ccf0c43817a7cb92e42dd1160040d823d760e2db8dfd9ebc67e402b89`.
+The published binary's complete feature book passes EPUBCheck and has the same
+SHA-256 as the locally verified book. The final consumer CI passed 1,369 unit tests,
+export checks, the actual packaged-plugin EPUB smoke test and four IDE verifiers.
+See the [release receipt](benchmarks/baselines/v0.3.0/release-verification.json) and
+[published-book checks](benchmarks/baselines/v0.3.0/published-book.json).
+
 The EPUB release is verified against the pinned Asciidoctor EPUB3 2.3.0 reference,
 Asciidoctor 2.0.26, asciimath 2.0.6 and Rouge 5.1.0. The complete comparison,
 archive fingerprints, raw timings and validator output are in the

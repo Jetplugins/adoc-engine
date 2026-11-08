@@ -31,6 +31,10 @@ allows access outside it. Network resource fetching is disabled.
 
 ## EPUB books in 0.3.0
 
+[Version 0.3.0 is released](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.3.0)
+for all five native targets. [Post-release verification](VERIFICATION.md) checks
+published downloads, the plugin's managed installer and a complete EPUB book.
+
 Book/article structure, rich metadata and covers, nested navigation, cross-chapter
 links and footnotes, front matter, custom CSS/fonts, static AsciiMath and highlighting,
 and local audio/video are supported. Rust and the IntelliJ Kotlin exporter share

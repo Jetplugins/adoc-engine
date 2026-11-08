@@ -1,0 +1,75 @@
+{
+  "linkErrors": [],
+  "title": [
+    "Native EPUB Handbook"
+  ],
+  "language": [
+    "en"
+  ],
+  "authors": [
+    "Jane Writer",
+    "John Reader"
+  ],
+  "publisher": [
+    "Example Press"
+  ],
+  "rights": [
+    "Copyright 2026 Example Authors"
+  ],
+  "description": [
+    "A portable & accessible book."
+  ],
+  "subjects": [
+    "EPUB",
+    "books, publishing",
+    "Rust",
+    "Kotlin"
+  ],
+  "date": [
+    "2026-11-09"
+  ],
+  "source": [
+    "https://example.org/books/handbook"
+  ],
+  "series": [
+    "Native Publishing"
+  ],
+  "spineDocuments": [
+    "cover.xhtml",
+    "toc.xhtml",
+    "_preamble.xhtml",
+    "intro.xhtml",
+    "reference.xhtml",
+    "appendix.xhtml"
+  ],
+  "headings": [
+    "Book contents",
+    "Native EPUB Handbook",
+    "Introduction",
+    "Reading modes",
+    "Detailed guidance",
+    "Equations",
+    "Reference",
+    "Appendix A: Appendix"
+  ],
+  "coverImages": 1,
+  "fonts": 8,
+  "math": 3,
+  "noterefs": 2,
+  "footnotes": 1,
+  "media": 0,
+  "highlighted": true,
+  "checkedItems": 1,
+  "uncheckedItems": 1,
+  "unicodeCallouts": 2,
+  "unresolvedXrefLabels": 0,
+  "unicodePreserved": true,
+  "archiveEntries": 25,
+  "sha256": "286d92694f678f99820f7ec64191ae480161721d507f8d4aab994eb9c96f1c5a",
+  "outputBytes": 1693560,
+  "epubcheck": "passed",
+  "releaseAssetSha256": "cdca125ccf0c43817a7cb92e42dd1160040d823d760e2db8dfd9ebc67e402b89",
+  "sourceCommit": "9e7043bfb0af82a47b95cfd68569c67ec5967e42",
+  "binarySha256": "3947bb8a930da39a952c46694f1e2d323aa29f1076603d5bd701ce75d91f9be2",
+  "matchesLocalBookSha256": true
+}
