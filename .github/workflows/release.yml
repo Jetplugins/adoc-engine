@@ -80,7 +80,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.15' }
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils
-      - run: curl -fL https://github.com/w3c/epubcheck/releases/download/v5.4.0/epubcheck-5.4.0.zip -o /tmp/epubcheck.zip && unzip -q /tmp/epubcheck.zip -d /tmp
+      - run: curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 20 --max-time 180 https://github.com/w3c/epubcheck/releases/download/v5.4.0/epubcheck-5.4.0.zip -o /tmp/epubcheck.zip && unzip -q /tmp/epubcheck.zip -d /tmp
       - run: cargo build --release --locked
       - uses: actions/setup-node@v4
         with: { node-version: '24' }
