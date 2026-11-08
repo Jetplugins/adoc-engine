@@ -1,0 +1,18 @@
+[package]
+name = "adoc-engine-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Fast AsciiDoc CLI and language server"
+repository = "https://github.com/Jetplugins/adoc-engine"
+readme = "../../README.md"
+[[bin]]
+name = "adoc-engine"
+path = "src/main.rs"
+[dependencies]
+adoc-engine = { path = "../engine", version = "0.1.0" }
+anyhow = "1"
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+url = "2"

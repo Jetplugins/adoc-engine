@@ -1,0 +1,19 @@
+= Features
+:toc:
+
+== Overview
+
+NOTE: A warning.
+
+[source,rust]
+----
+fn main() {}
+----
+
+|===
+|Name |Value
+
+|First |42
+|===
+
+Term:: Definition

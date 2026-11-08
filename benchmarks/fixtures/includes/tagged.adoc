@@ -1,0 +1,7 @@
+Ignored.
+// tag::part[]
+== Tagged section
+
+Tagged *content*.
+// end::part[]
+Ignored too.

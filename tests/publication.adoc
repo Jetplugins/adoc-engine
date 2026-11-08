@@ -1,0 +1,51 @@
+= Publication Verification
+:toc:
+:sectnums:
+
+== Typography and references
+
+Readable *bold*, _emphasis_, `code`, café, and Ελληνικά.
+See <<details>> and https://example.org/[an external link].
+A note footnote:[This is the footnote text.]
+
+NOTE: This admonition must remain visible.
+
+[[details]]
+== Lists and code
+
+* First item
+** Nested item
+* Second item
+
+[source,rust]
+----
+fn main() {
+    println!("Hello <world> & friends");
+}
+----
+
+== Structured table
+
+[cols="1,2",options="header"]
+|===
+|Name |Details
+|Ordinary |Formatted *cell*
+|Compound
+a|
+* Nested list one
+* Nested list two
+
+A paragraph in a cell.
+|===
+
+== Passthrough semantics
+
+++++
+<p>HTML <strong>passthrough text</strong> and <a href="https://example.org/">link text</a>.</p>
+++++
+
+<<<
+
+== Last page
+
+This page verifies page breaks and the last page of the document.

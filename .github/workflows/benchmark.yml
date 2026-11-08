@@ -1,0 +1,24 @@
+name: Performance comparison
+on: workflow_dispatch
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+      - run: gem install asciidoctor -v 2.0.26 --no-document
+      - run: npm ci --ignore-scripts
+        working-directory: benchmarks
+      - run: cargo build --release --locked
+      - run: python3 benchmarks/run.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: benchmarks/results

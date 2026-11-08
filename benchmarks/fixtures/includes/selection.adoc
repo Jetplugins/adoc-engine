@@ -1,0 +1,5 @@
+= Selected includes
+
+include::tagged.adoc[tag=part]
+
+include::chapter.adoc[leveloffset=+1]

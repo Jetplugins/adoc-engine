@@ -1,0 +1,1001 @@
+= Admonitions
+
+NOTE: Important text 0.
+
+TIP: Important text 0.
+
+IMPORTANT: Important text 0.
+
+WARNING: Important text 0.
+
+CAUTION: Important text 0.
+
+NOTE: Important text 1.
+
+TIP: Important text 1.
+
+IMPORTANT: Important text 1.
+
+WARNING: Important text 1.
+
+CAUTION: Important text 1.
+
+NOTE: Important text 2.
+
+TIP: Important text 2.
+
+IMPORTANT: Important text 2.
+
+WARNING: Important text 2.
+
+CAUTION: Important text 2.
+
+NOTE: Important text 3.
+
+TIP: Important text 3.
+
+IMPORTANT: Important text 3.
+
+WARNING: Important text 3.
+
+CAUTION: Important text 3.
+
+NOTE: Important text 4.
+
+TIP: Important text 4.
+
+IMPORTANT: Important text 4.
+
+WARNING: Important text 4.
+
+CAUTION: Important text 4.
+
+NOTE: Important text 5.
+
+TIP: Important text 5.
+
+IMPORTANT: Important text 5.
+
+WARNING: Important text 5.
+
+CAUTION: Important text 5.
+
+NOTE: Important text 6.
+
+TIP: Important text 6.
+
+IMPORTANT: Important text 6.
+
+WARNING: Important text 6.
+
+CAUTION: Important text 6.
+
+NOTE: Important text 7.
+
+TIP: Important text 7.
+
+IMPORTANT: Important text 7.
+
+WARNING: Important text 7.
+
+CAUTION: Important text 7.
+
+NOTE: Important text 8.
+
+TIP: Important text 8.
+
+IMPORTANT: Important text 8.
+
+WARNING: Important text 8.
+
+CAUTION: Important text 8.
+
+NOTE: Important text 9.
+
+TIP: Important text 9.
+
+IMPORTANT: Important text 9.
+
+WARNING: Important text 9.
+
+CAUTION: Important text 9.
+
+NOTE: Important text 10.
+
+TIP: Important text 10.
+
+IMPORTANT: Important text 10.
+
+WARNING: Important text 10.
+
+CAUTION: Important text 10.
+
+NOTE: Important text 11.
+
+TIP: Important text 11.
+
+IMPORTANT: Important text 11.
+
+WARNING: Important text 11.
+
+CAUTION: Important text 11.
+
+NOTE: Important text 12.
+
+TIP: Important text 12.
+
+IMPORTANT: Important text 12.
+
+WARNING: Important text 12.
+
+CAUTION: Important text 12.
+
+NOTE: Important text 13.
+
+TIP: Important text 13.
+
+IMPORTANT: Important text 13.
+
+WARNING: Important text 13.
+
+CAUTION: Important text 13.
+
+NOTE: Important text 14.
+
+TIP: Important text 14.
+
+IMPORTANT: Important text 14.
+
+WARNING: Important text 14.
+
+CAUTION: Important text 14.
+
+NOTE: Important text 15.
+
+TIP: Important text 15.
+
+IMPORTANT: Important text 15.
+
+WARNING: Important text 15.
+
+CAUTION: Important text 15.
+
+NOTE: Important text 16.
+
+TIP: Important text 16.
+
+IMPORTANT: Important text 16.
+
+WARNING: Important text 16.
+
+CAUTION: Important text 16.
+
+NOTE: Important text 17.
+
+TIP: Important text 17.
+
+IMPORTANT: Important text 17.
+
+WARNING: Important text 17.
+
+CAUTION: Important text 17.
+
+NOTE: Important text 18.
+
+TIP: Important text 18.
+
+IMPORTANT: Important text 18.
+
+WARNING: Important text 18.
+
+CAUTION: Important text 18.
+
+NOTE: Important text 19.
+
+TIP: Important text 19.
+
+IMPORTANT: Important text 19.
+
+WARNING: Important text 19.
+
+CAUTION: Important text 19.
+
+NOTE: Important text 20.
+
+TIP: Important text 20.
+
+IMPORTANT: Important text 20.
+
+WARNING: Important text 20.
+
+CAUTION: Important text 20.
+
+NOTE: Important text 21.
+
+TIP: Important text 21.
+
+IMPORTANT: Important text 21.
+
+WARNING: Important text 21.
+
+CAUTION: Important text 21.
+
+NOTE: Important text 22.
+
+TIP: Important text 22.
+
+IMPORTANT: Important text 22.
+
+WARNING: Important text 22.
+
+CAUTION: Important text 22.
+
+NOTE: Important text 23.
+
+TIP: Important text 23.
+
+IMPORTANT: Important text 23.
+
+WARNING: Important text 23.
+
+CAUTION: Important text 23.
+
+NOTE: Important text 24.
+
+TIP: Important text 24.
+
+IMPORTANT: Important text 24.
+
+WARNING: Important text 24.
+
+CAUTION: Important text 24.
+
+NOTE: Important text 25.
+
+TIP: Important text 25.
+
+IMPORTANT: Important text 25.
+
+WARNING: Important text 25.
+
+CAUTION: Important text 25.
+
+NOTE: Important text 26.
+
+TIP: Important text 26.
+
+IMPORTANT: Important text 26.
+
+WARNING: Important text 26.
+
+CAUTION: Important text 26.
+
+NOTE: Important text 27.
+
+TIP: Important text 27.
+
+IMPORTANT: Important text 27.
+
+WARNING: Important text 27.
+
+CAUTION: Important text 27.
+
+NOTE: Important text 28.
+
+TIP: Important text 28.
+
+IMPORTANT: Important text 28.
+
+WARNING: Important text 28.
+
+CAUTION: Important text 28.
+
+NOTE: Important text 29.
+
+TIP: Important text 29.
+
+IMPORTANT: Important text 29.
+
+WARNING: Important text 29.
+
+CAUTION: Important text 29.
+
+NOTE: Important text 30.
+
+TIP: Important text 30.
+
+IMPORTANT: Important text 30.
+
+WARNING: Important text 30.
+
+CAUTION: Important text 30.
+
+NOTE: Important text 31.
+
+TIP: Important text 31.
+
+IMPORTANT: Important text 31.
+
+WARNING: Important text 31.
+
+CAUTION: Important text 31.
+
+NOTE: Important text 32.
+
+TIP: Important text 32.
+
+IMPORTANT: Important text 32.
+
+WARNING: Important text 32.
+
+CAUTION: Important text 32.
+
+NOTE: Important text 33.
+
+TIP: Important text 33.
+
+IMPORTANT: Important text 33.
+
+WARNING: Important text 33.
+
+CAUTION: Important text 33.
+
+NOTE: Important text 34.
+
+TIP: Important text 34.
+
+IMPORTANT: Important text 34.
+
+WARNING: Important text 34.
+
+CAUTION: Important text 34.
+
+NOTE: Important text 35.
+
+TIP: Important text 35.
+
+IMPORTANT: Important text 35.
+
+WARNING: Important text 35.
+
+CAUTION: Important text 35.
+
+NOTE: Important text 36.
+
+TIP: Important text 36.
+
+IMPORTANT: Important text 36.
+
+WARNING: Important text 36.
+
+CAUTION: Important text 36.
+
+NOTE: Important text 37.
+
+TIP: Important text 37.
+
+IMPORTANT: Important text 37.
+
+WARNING: Important text 37.
+
+CAUTION: Important text 37.
+
+NOTE: Important text 38.
+
+TIP: Important text 38.
+
+IMPORTANT: Important text 38.
+
+WARNING: Important text 38.
+
+CAUTION: Important text 38.
+
+NOTE: Important text 39.
+
+TIP: Important text 39.
+
+IMPORTANT: Important text 39.
+
+WARNING: Important text 39.
+
+CAUTION: Important text 39.
+
+NOTE: Important text 40.
+
+TIP: Important text 40.
+
+IMPORTANT: Important text 40.
+
+WARNING: Important text 40.
+
+CAUTION: Important text 40.
+
+NOTE: Important text 41.
+
+TIP: Important text 41.
+
+IMPORTANT: Important text 41.
+
+WARNING: Important text 41.
+
+CAUTION: Important text 41.
+
+NOTE: Important text 42.
+
+TIP: Important text 42.
+
+IMPORTANT: Important text 42.
+
+WARNING: Important text 42.
+
+CAUTION: Important text 42.
+
+NOTE: Important text 43.
+
+TIP: Important text 43.
+
+IMPORTANT: Important text 43.
+
+WARNING: Important text 43.
+
+CAUTION: Important text 43.
+
+NOTE: Important text 44.
+
+TIP: Important text 44.
+
+IMPORTANT: Important text 44.
+
+WARNING: Important text 44.
+
+CAUTION: Important text 44.
+
+NOTE: Important text 45.
+
+TIP: Important text 45.
+
+IMPORTANT: Important text 45.
+
+WARNING: Important text 45.
+
+CAUTION: Important text 45.
+
+NOTE: Important text 46.
+
+TIP: Important text 46.
+
+IMPORTANT: Important text 46.
+
+WARNING: Important text 46.
+
+CAUTION: Important text 46.
+
+NOTE: Important text 47.
+
+TIP: Important text 47.
+
+IMPORTANT: Important text 47.
+
+WARNING: Important text 47.
+
+CAUTION: Important text 47.
+
+NOTE: Important text 48.
+
+TIP: Important text 48.
+
+IMPORTANT: Important text 48.
+
+WARNING: Important text 48.
+
+CAUTION: Important text 48.
+
+NOTE: Important text 49.
+
+TIP: Important text 49.
+
+IMPORTANT: Important text 49.
+
+WARNING: Important text 49.
+
+CAUTION: Important text 49.
+
+NOTE: Important text 50.
+
+TIP: Important text 50.
+
+IMPORTANT: Important text 50.
+
+WARNING: Important text 50.
+
+CAUTION: Important text 50.
+
+NOTE: Important text 51.
+
+TIP: Important text 51.
+
+IMPORTANT: Important text 51.
+
+WARNING: Important text 51.
+
+CAUTION: Important text 51.
+
+NOTE: Important text 52.
+
+TIP: Important text 52.
+
+IMPORTANT: Important text 52.
+
+WARNING: Important text 52.
+
+CAUTION: Important text 52.
+
+NOTE: Important text 53.
+
+TIP: Important text 53.
+
+IMPORTANT: Important text 53.
+
+WARNING: Important text 53.
+
+CAUTION: Important text 53.
+
+NOTE: Important text 54.
+
+TIP: Important text 54.
+
+IMPORTANT: Important text 54.
+
+WARNING: Important text 54.
+
+CAUTION: Important text 54.
+
+NOTE: Important text 55.
+
+TIP: Important text 55.
+
+IMPORTANT: Important text 55.
+
+WARNING: Important text 55.
+
+CAUTION: Important text 55.
+
+NOTE: Important text 56.
+
+TIP: Important text 56.
+
+IMPORTANT: Important text 56.
+
+WARNING: Important text 56.
+
+CAUTION: Important text 56.
+
+NOTE: Important text 57.
+
+TIP: Important text 57.
+
+IMPORTANT: Important text 57.
+
+WARNING: Important text 57.
+
+CAUTION: Important text 57.
+
+NOTE: Important text 58.
+
+TIP: Important text 58.
+
+IMPORTANT: Important text 58.
+
+WARNING: Important text 58.
+
+CAUTION: Important text 58.
+
+NOTE: Important text 59.
+
+TIP: Important text 59.
+
+IMPORTANT: Important text 59.
+
+WARNING: Important text 59.
+
+CAUTION: Important text 59.
+
+NOTE: Important text 60.
+
+TIP: Important text 60.
+
+IMPORTANT: Important text 60.
+
+WARNING: Important text 60.
+
+CAUTION: Important text 60.
+
+NOTE: Important text 61.
+
+TIP: Important text 61.
+
+IMPORTANT: Important text 61.
+
+WARNING: Important text 61.
+
+CAUTION: Important text 61.
+
+NOTE: Important text 62.
+
+TIP: Important text 62.
+
+IMPORTANT: Important text 62.
+
+WARNING: Important text 62.
+
+CAUTION: Important text 62.
+
+NOTE: Important text 63.
+
+TIP: Important text 63.
+
+IMPORTANT: Important text 63.
+
+WARNING: Important text 63.
+
+CAUTION: Important text 63.
+
+NOTE: Important text 64.
+
+TIP: Important text 64.
+
+IMPORTANT: Important text 64.
+
+WARNING: Important text 64.
+
+CAUTION: Important text 64.
+
+NOTE: Important text 65.
+
+TIP: Important text 65.
+
+IMPORTANT: Important text 65.
+
+WARNING: Important text 65.
+
+CAUTION: Important text 65.
+
+NOTE: Important text 66.
+
+TIP: Important text 66.
+
+IMPORTANT: Important text 66.
+
+WARNING: Important text 66.
+
+CAUTION: Important text 66.
+
+NOTE: Important text 67.
+
+TIP: Important text 67.
+
+IMPORTANT: Important text 67.
+
+WARNING: Important text 67.
+
+CAUTION: Important text 67.
+
+NOTE: Important text 68.
+
+TIP: Important text 68.
+
+IMPORTANT: Important text 68.
+
+WARNING: Important text 68.
+
+CAUTION: Important text 68.
+
+NOTE: Important text 69.
+
+TIP: Important text 69.
+
+IMPORTANT: Important text 69.
+
+WARNING: Important text 69.
+
+CAUTION: Important text 69.
+
+NOTE: Important text 70.
+
+TIP: Important text 70.
+
+IMPORTANT: Important text 70.
+
+WARNING: Important text 70.
+
+CAUTION: Important text 70.
+
+NOTE: Important text 71.
+
+TIP: Important text 71.
+
+IMPORTANT: Important text 71.
+
+WARNING: Important text 71.
+
+CAUTION: Important text 71.
+
+NOTE: Important text 72.
+
+TIP: Important text 72.
+
+IMPORTANT: Important text 72.
+
+WARNING: Important text 72.
+
+CAUTION: Important text 72.
+
+NOTE: Important text 73.
+
+TIP: Important text 73.
+
+IMPORTANT: Important text 73.
+
+WARNING: Important text 73.
+
+CAUTION: Important text 73.
+
+NOTE: Important text 74.
+
+TIP: Important text 74.
+
+IMPORTANT: Important text 74.
+
+WARNING: Important text 74.
+
+CAUTION: Important text 74.
+
+NOTE: Important text 75.
+
+TIP: Important text 75.
+
+IMPORTANT: Important text 75.
+
+WARNING: Important text 75.
+
+CAUTION: Important text 75.
+
+NOTE: Important text 76.
+
+TIP: Important text 76.
+
+IMPORTANT: Important text 76.
+
+WARNING: Important text 76.
+
+CAUTION: Important text 76.
+
+NOTE: Important text 77.
+
+TIP: Important text 77.
+
+IMPORTANT: Important text 77.
+
+WARNING: Important text 77.
+
+CAUTION: Important text 77.
+
+NOTE: Important text 78.
+
+TIP: Important text 78.
+
+IMPORTANT: Important text 78.
+
+WARNING: Important text 78.
+
+CAUTION: Important text 78.
+
+NOTE: Important text 79.
+
+TIP: Important text 79.
+
+IMPORTANT: Important text 79.
+
+WARNING: Important text 79.
+
+CAUTION: Important text 79.
+
+NOTE: Important text 80.
+
+TIP: Important text 80.
+
+IMPORTANT: Important text 80.
+
+WARNING: Important text 80.
+
+CAUTION: Important text 80.
+
+NOTE: Important text 81.
+
+TIP: Important text 81.
+
+IMPORTANT: Important text 81.
+
+WARNING: Important text 81.
+
+CAUTION: Important text 81.
+
+NOTE: Important text 82.
+
+TIP: Important text 82.
+
+IMPORTANT: Important text 82.
+
+WARNING: Important text 82.
+
+CAUTION: Important text 82.
+
+NOTE: Important text 83.
+
+TIP: Important text 83.
+
+IMPORTANT: Important text 83.
+
+WARNING: Important text 83.
+
+CAUTION: Important text 83.
+
+NOTE: Important text 84.
+
+TIP: Important text 84.
+
+IMPORTANT: Important text 84.
+
+WARNING: Important text 84.
+
+CAUTION: Important text 84.
+
+NOTE: Important text 85.
+
+TIP: Important text 85.
+
+IMPORTANT: Important text 85.
+
+WARNING: Important text 85.
+
+CAUTION: Important text 85.
+
+NOTE: Important text 86.
+
+TIP: Important text 86.
+
+IMPORTANT: Important text 86.
+
+WARNING: Important text 86.
+
+CAUTION: Important text 86.
+
+NOTE: Important text 87.
+
+TIP: Important text 87.
+
+IMPORTANT: Important text 87.
+
+WARNING: Important text 87.
+
+CAUTION: Important text 87.
+
+NOTE: Important text 88.
+
+TIP: Important text 88.
+
+IMPORTANT: Important text 88.
+
+WARNING: Important text 88.
+
+CAUTION: Important text 88.
+
+NOTE: Important text 89.
+
+TIP: Important text 89.
+
+IMPORTANT: Important text 89.
+
+WARNING: Important text 89.
+
+CAUTION: Important text 89.
+
+NOTE: Important text 90.
+
+TIP: Important text 90.
+
+IMPORTANT: Important text 90.
+
+WARNING: Important text 90.
+
+CAUTION: Important text 90.
+
+NOTE: Important text 91.
+
+TIP: Important text 91.
+
+IMPORTANT: Important text 91.
+
+WARNING: Important text 91.
+
+CAUTION: Important text 91.
+
+NOTE: Important text 92.
+
+TIP: Important text 92.
+
+IMPORTANT: Important text 92.
+
+WARNING: Important text 92.
+
+CAUTION: Important text 92.
+
+NOTE: Important text 93.
+
+TIP: Important text 93.
+
+IMPORTANT: Important text 93.
+
+WARNING: Important text 93.
+
+CAUTION: Important text 93.
+
+NOTE: Important text 94.
+
+TIP: Important text 94.
+
+IMPORTANT: Important text 94.
+
+WARNING: Important text 94.
+
+CAUTION: Important text 94.
+
+NOTE: Important text 95.
+
+TIP: Important text 95.
+
+IMPORTANT: Important text 95.
+
+WARNING: Important text 95.
+
+CAUTION: Important text 95.
+
+NOTE: Important text 96.
+
+TIP: Important text 96.
+
+IMPORTANT: Important text 96.
+
+WARNING: Important text 96.
+
+CAUTION: Important text 96.
+
+NOTE: Important text 97.
+
+TIP: Important text 97.
+
+IMPORTANT: Important text 97.
+
+WARNING: Important text 97.
+
+CAUTION: Important text 97.
+
+NOTE: Important text 98.
+
+TIP: Important text 98.
+
+IMPORTANT: Important text 98.
+
+WARNING: Important text 98.
+
+CAUTION: Important text 98.
+
+NOTE: Important text 99.
+
+TIP: Important text 99.
+
+IMPORTANT: Important text 99.
+
+WARNING: Important text 99.
+
+CAUTION: Important text 99.
