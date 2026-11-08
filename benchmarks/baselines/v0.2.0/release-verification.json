@@ -1,0 +1,76 @@
+{
+  "version": "0.2.0",
+  "tag": "v0.2.0",
+  "commit": "9bdb9b9565ee382b2d92fcc3d02340fdcf39c2b7",
+  "publishedAt": "2026-11-08T09:48:18Z",
+  "releaseUrl": "https://github.com/Jetplugins/adoc-engine/releases/tag/v0.2.0",
+  "workflowUrl": "https://github.com/Jetplugins/adoc-engine/actions/runs/42467800008",
+  "workflowConclusion": "success",
+  "platforms": [
+    {
+      "target": "aarch64-apple-darwin",
+      "archiveSha256": "9654b2b9dabeb3f541d0a711531a41870c10b4c220fd5bf22f358f20e5230d37",
+      "rustTests": 29,
+      "protocolTests": 6,
+      "relocatedArchiveExecution": "passed"
+    },
+    {
+      "target": "aarch64-unknown-linux-gnu",
+      "archiveSha256": "44b7d04027c3c55bb94bdbef55b05908e9ab80b323ba7d94d3b92df52fa4485e",
+      "rustTests": 29,
+      "protocolTests": 6,
+      "relocatedArchiveExecution": "passed"
+    },
+    {
+      "target": "x86_64-apple-darwin",
+      "archiveSha256": "a647533ce468e8860265c708490ad3400f5d10ce6183a6192fa249c16e35e340",
+      "rustTests": 29,
+      "protocolTests": 6,
+      "relocatedArchiveExecution": "passed"
+    },
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "archiveSha256": "95330f679301326d887dd29a97f692a50c0e83a8d2e2d2684aafcfc05c0919ba",
+      "rustTests": 29,
+      "protocolTests": 6,
+      "relocatedArchiveExecution": "passed"
+    },
+    {
+      "target": "x86_64-unknown-linux-gnu",
+      "archiveSha256": "3f30d54e04291d8bfe5e3726eb859a98615cb53809e35dd94707dcea0c401d8b",
+      "rustTests": 29,
+      "protocolTests": 6,
+      "relocatedArchiveExecution": "passed"
+    }
+  ],
+  "compatibility": {
+    "focusedReferenceCases": 270,
+    "corpora": 23,
+    "editingVariants": 20
+  },
+  "publications": {
+    "epubcheck": "5.4.0 passed",
+    "pdf": "Poppler text, page and rendered-page checks passed",
+    "svg": "passed",
+    "svgMerged": "passed",
+    "png": "passed",
+    "json": "passed"
+  },
+  "intellijConsumer": {
+    "sourceCommit": "7055e81",
+    "freshCompilation": true,
+    "tests": 1339,
+    "failures": 0,
+    "errors": 0,
+    "livePublicDownload": {
+      "target": "aarch64-apple-darwin",
+      "authenticationRequired": false,
+      "archiveSha256": "9654b2b9dabeb3f541d0a711531a41870c10b4c220fd5bf22f358f20e5230d37",
+      "versionProbe": "passed",
+      "checksumVerification": "passed",
+      "installationReceipt": "passed",
+      "htmlRender": "passed"
+    }
+  },
+  "recordedAt": "2026-11-08T09:56:43.058510+00:00"
+}

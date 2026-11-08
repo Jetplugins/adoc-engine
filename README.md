@@ -230,6 +230,10 @@ Two initial differences above 10% did not reproduce in isolated confirmations wi
 
 ### Version 0.2.0 compatibility verification
 
+[Version 0.2.0 is released](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.2.0)
+for five native targets. See the [release verification record](VERIFICATION.md)
+for platform checks, publication validation and the live IntelliJ download test.
+
 The current fixes pass 270 focused Ruby/JavaScript/Rust comparisons, all 23
 compatibility corpora (including the unchanged complete showcase and its tagged
 include), and 20 edit variants. All 29 Rust tests, six protocol tests, formatting,
