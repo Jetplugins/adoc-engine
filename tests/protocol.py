@@ -73,6 +73,11 @@ class ProtocolTests(unittest.TestCase):
   self.c.send('textDocument/didChange',{'textDocument':{'uri':uri,'version':2},'contentChanges':[{'text':'= Changed\n\nNew'}]})
   self.assertEqual(self.c.receive(101)['error']['code'],-32801)
   self.assertIn('New',self.c.request('asciidoc/render',{'textDocument':{'uri':uri}})['result']['html'])
+ def test_included_diagnostics_use_child_uri(self):
+  self.c.initialize();child=self.root/'child.adoc';child.write_text('include::absent.adoc[]');root=(self.root/'main.adoc').as_uri()
+  self.c.send('textDocument/didOpen',{'textDocument':{'uri':root,'version':1,'text':'= Main\n\ninclude::child.adoc[]'},'options':{'safeMode':'safe'}})
+  notifications=[self.c.receive(),self.c.receive()]
+  self.assertTrue(any(n.get('params',{}).get('uri')==child.as_uri()and n['params']['diagnostics']for n in notifications),notifications)
  def test_outline_excludes_listing_and_attributes(self):
   self.c.initialize();uri=(self.root/'main.adoc').as_uri();self.c.open(uri,'= Main\n\n----\n== Fake\n:hidden: no\n----\n\n== Real\n\n:visible: yes')
   params={'textDocument':{'uri':uri}}

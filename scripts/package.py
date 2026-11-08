@@ -13,7 +13,12 @@ with tempfile.TemporaryDirectory()as tmp:
  fonts=root/'FONT_LICENSES'
  if not fonts.exists():raise SystemExit('Missing embedded font notices')
  shutil.copytree(fonts,stage/'FONT_LICENSES')
- metadata={'version':version,'target':a.target,'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'binarySha256':hashlib.sha256(a.binary.read_bytes()).hexdigest()}
+ shutil.copytree(root/'docs',stage/'docs')
+ evidence=root/'benchmarks/baselines/release'
+ if not evidence.exists():raise SystemExit('Missing verified release performance evidence')
+ shutil.copytree(evidence,stage/'benchmarks/baselines/release')
+ (stage/'vendor').mkdir();shutil.copy2(root/'vendor/PATCHES.md',stage/'vendor/PATCHES.md')
+ metadata={'version':version,'target':a.target,'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True,encoding='utf-8').strip(),'binarySha256':hashlib.sha256(a.binary.read_bytes()).hexdigest()}
  (stage/'BUILD.json').write_text(json.dumps(metadata,indent=2)+'\n')
  if a.target.endswith('windows-msvc'):
   archive=a.output/f'{name}.zip'

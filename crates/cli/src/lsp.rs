@@ -117,9 +117,16 @@ fn path(uri: &str) -> Result<std::path::PathBuf> {
         .map_err(|_| anyhow!("expected file URI"))
 }
 fn uri_for(file: Option<&str>, options: &RenderOptions, root: &str) -> String {
-    file.and_then(|f| Url::from_file_path(options.base_dir.join(f)).ok())
-        .map(|u| u.to_string())
-        .unwrap_or_else(|| root.to_string())
+    file.and_then(|f| {
+        let path = options
+            .include_aliases
+            .get(f)
+            .cloned()
+            .unwrap_or_else(|| options.base_dir.join(f));
+        Url::from_file_path(path).ok()
+    })
+    .map(|u| u.to_string())
+    .unwrap_or_else(|| root.to_string())
 }
 fn required<'a>(v: &'a Value, key: &str) -> Result<&'a str> {
     v[key].as_str().ok_or_else(|| anyhow!("{key} required"))
@@ -284,11 +291,24 @@ pub fn run() -> Result<()> {
                         }
                         Ok(value) => {
                             if p.method == "diagnostics" {
-                                let diagnostics=value["diagnostics"].as_array().into_iter().flatten().map(|d|{let n=d["line"].as_u64().unwrap_or(1).saturating_sub(1);json!({"range":{"start":{"line":n,"character":0},"end":{"line":n,"character":0}},"severity":2,"source":"adoc-engine","message":d["message"]})}).collect::<Vec<_>>();
-                                send(
-                                    &mut out,
-                                    json!({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":p.uri,"version":p.version,"diagnostics":diagnostics}}),
-                                )?;
+                                let mut groups: std::collections::BTreeMap<String, Vec<Value>> =
+                                    std::collections::BTreeMap::new();
+                                groups.entry(p.uri.clone()).or_default();
+                                for d in value["diagnostics"].as_array().into_iter().flatten() {
+                                    let target = uri_for(d["file"].as_str(), &p.options, &p.uri);
+                                    let n = d["line"].as_u64().unwrap_or(1).saturating_sub(1);
+                                    groups.entry(target).or_default().push(json!({"range":{"start":{"line":n,"character":0},"end":{"line":n,"character":0}},"severity":2,"source":"adoc-engine","message":d["message"]}));
+                                }
+                                for (uri, diagnostics) in groups {
+                                    let mut params = json!({"uri":uri,"diagnostics":diagnostics});
+                                    if let Some(doc) = docs.get(&uri) {
+                                        params["version"] = json!(doc.version);
+                                    }
+                                    send(
+                                        &mut out,
+                                        json!({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":params}),
+                                    )?;
+                                }
                             } else {
                                 match finish(&p, value) {
                                     Ok(result) => send(

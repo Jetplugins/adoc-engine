@@ -242,3 +242,45 @@ fn diagram_namespace_is_well_formed() {
     .unwrap();
     assert!(!content.contains(":xmlns="), "{content}");
 }
+
+#[test]
+fn publication_links_to_nonsection_blocks() {
+    let source = "= References\n\nSee <<table-anchor,the table>> and <<paragraph-anchor,the paragraph>>.\n\n[[paragraph-anchor]]\nA destination.\n\n[[table-anchor]]\n|===\n|Cell\n|===";
+    let options = RenderOptions::default();
+    let doc = asciidoc_html5::load_with(source, &options.parser_options().unwrap());
+    let (markup, _) = adocers_typst::markup(&doc, std::path::Path::new("."), &Default::default());
+    assert!(
+        markup.contains("#link(label(\"table-anchor\"))"),
+        "{markup}"
+    );
+    assert!(
+        markup.contains("#link(label(\"paragraph-anchor\"))"),
+        "{markup}"
+    );
+    assert!(
+        export(source, "pdf", &options).unwrap()[0]
+            .1
+            .starts_with(b"%PDF")
+    );
+}
+#[test]
+fn included_diagnostics_keep_their_file() {
+    let dir = std::env::temp_dir();
+    let options = RenderOptions {
+        base_dir: dir.clone(),
+        safe_mode: "safe".into(),
+        overlays: std::collections::BTreeMap::from([(
+            dir.join("diagnostic-child.adoc"),
+            "include::absent-child-file.adoc[]".into(),
+        )]),
+        ..Default::default()
+    };
+    let result = render("include::diagnostic-child.adoc[]", &options).unwrap();
+    assert!(
+        result.diagnostics.iter().any(|d| d
+            .file
+            .as_ref()
+            .is_some_and(|s| s.ends_with("diagnostic-child.adoc"))),
+        "{result:?}"
+    );
+}

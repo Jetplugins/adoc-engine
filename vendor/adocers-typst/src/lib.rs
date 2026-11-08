@@ -40,26 +40,14 @@ mod math;
 
 use std::{
     fmt::Write as _,
-    path::{
-        Path,
-        PathBuf,
-    },
+    path::{Path, PathBuf},
 };
 
-use anyhow::{
-    Context as _,
-    Result,
-};
+use anyhow::{Context as _, Result};
 use asciidoc_parser::{
     Document,
     blocks::{
-        Block,
-        BreakType,
-        CompoundDelimitedContext,
-        FindBlocks,
-        IsBlock,
-        ListType,
-        QuoteType,
+        Block, BreakType, CompoundDelimitedContext, FindBlocks, IsBlock, ListType, QuoteType,
         SectionType,
     },
     document::TocMode,
@@ -67,10 +55,7 @@ use asciidoc_parser::{
 
 use adocers_render_core::numbering::Numbering;
 
-use crate::inline::{
-    string,
-    typst as inline_markup,
-};
+use crate::inline::{string, typst as inline_markup};
 
 /// What a PDF shows beyond the document's own content.
 ///
@@ -171,21 +156,30 @@ pub fn markup(
     base: &Path,
     options: &Options,
 ) -> (String, Vec<(String, Vec<u8>)>) {
-    markup_with_resources(document,base,options,None,std::collections::BTreeMap::new())
+    markup_with_resources(
+        document,
+        base,
+        options,
+        None,
+        std::collections::BTreeMap::new(),
+    )
 }
 
 /// Render using caller-controlled assets and pre-rendered diagrams. A supplied resource
 /// map disables every filesystem read in the emitter.
 pub fn markup_with_resources(
- document:&Document<'_>,base:&Path,options:&Options,
- resources:Option<std::collections::BTreeMap<String,Vec<u8>>>,
- diagrams:std::collections::BTreeMap<String,String>,
-)->(String,Vec<(String,Vec<u8>)>){
+    document: &Document<'_>,
+    base: &Path,
+    options: &Options,
+    resources: Option<std::collections::BTreeMap<String, Vec<u8>>>,
+    diagrams: std::collections::BTreeMap<String, String>,
+) -> (String, Vec<(String, Vec<u8>)>) {
     let mut out = Preamble::new(document, *options).to_string();
 
     let mut emitter = Emitter {
         out: String::new(),
-        resources, diagrams,
+        resources,
+        diagrams,
         base: base.to_path_buf(),
         images_dir: attribute(document, "imagesdir"),
         images: Vec::new(),
@@ -216,10 +210,7 @@ pub fn markup_with_resources(
 
 /// Compile Typst markup to a PDF.
 fn compile(source: &str, images: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
-    use typst_as_lib::{
-        TypstEngine,
-        typst_kit_options::TypstKitFontOptions,
-    };
+    use typst_as_lib::{TypstEngine, typst_kit_options::TypstKitFontOptions};
 
     let engine = TypstEngine::builder()
         .main_file(source.to_string())
@@ -665,8 +656,8 @@ impl std::fmt::Display for Preamble {
 
 /// Walks the block tree, appending Typst markup as it goes.
 struct Emitter {
-    resources:Option<std::collections::BTreeMap<String,Vec<u8>>>,
-    diagrams:std::collections::BTreeMap<String,String>,
+    resources: Option<std::collections::BTreeMap<String, Vec<u8>>>,
+    diagrams: std::collections::BTreeMap<String, String>,
     /// Markup accumulated so far.
     out: String,
 
@@ -796,8 +787,11 @@ impl Emitter {
         out
     }
 
-    fn resource(&self,target:&str)->Option<Vec<u8>>{
-        match &self.resources{Some(assets)=>assets.get(target).cloned(),None=>std::fs::read(self.base.join(target)).ok()}
+    fn resource(&self, target: &str) -> Option<Vec<u8>> {
+        match &self.resources {
+            Some(assets) => assets.get(target).cloned(),
+            None => std::fs::read(self.base.join(target)).ok(),
+        }
     }
     /// One picture in a line of text, if it can be read from disk.
     fn picture(&mut self, target: &str, height: &str) -> Option<String> {
@@ -852,6 +846,11 @@ impl Emitter {
 
     /// Render one block and everything beneath it.
     fn block(&mut self, block: &Block<'_>) {
+        if !matches!(block, Block::Section(_))
+            && let Some(id) = block.id()
+        {
+            let _ = writeln!(self.out, "#box[]#label({})", string(id));
+        }
         // A section's title is its heading, and a picture's is its caption and
         // is set beneath it; every other kind carries its own above it.
         if !matches!(block, Block::Section(_) | Block::Media(_)) && !is_diagram(block) {
@@ -996,9 +995,11 @@ impl Emitter {
         // reach here as `<b class="conum">` and would otherwise be shown.
         let content = inline::text(&self.marks(raw.content().rendered_html()));
 
-        if let Some(svg)=self.diagrams.get(content.trim()).cloned(){
-            let name=format!("/supplied-diagram-{}.svg",self.images.len());
-            self.images.push((name.clone(),svg.into_bytes()));self.figure(&name,raw,"");return;
+        if let Some(svg) = self.diagrams.get(content.trim()).cloned() {
+            let name = format!("/supplied-diagram-{}.svg", self.images.len());
+            self.images.push((name.clone(), svg.into_bytes()));
+            self.figure(&name, raw, "");
+            return;
         }
         if self.diagram(raw, &content) {
             return;
@@ -1008,7 +1009,10 @@ impl Emitter {
             // A comment reaches the page as nothing at all, and so does a
             // passthrough, which is HTML and has no meaning here.
             "comment" => {}
-            "pass" => { let markup=self.prose(raw.content().rendered_html()); let _=writeln!(self.out,"{markup}\n"); }
+            "pass" => {
+                let markup = self.prose(raw.content().rendered_html());
+                let _ = writeln!(self.out, "{markup}\n");
+            }
 
             "stem" => self.equation(raw, content.trim()),
 
@@ -1541,10 +1545,10 @@ impl Emitter {
                 // A cell holding whole blocks is reduced to its text: a table
                 // within a table is more structure than a page wants.
                 asciidoc_parser::blocks::TableCellContent::AsciiDoc(document) => {
-                    let outer=std::mem::take(&mut self.out);
+                    let outer = std::mem::take(&mut self.out);
                     self.blocks(document.blocks().iter());
-                    std::mem::replace(&mut self.out,outer)
-                },
+                    std::mem::replace(&mut self.out, outer)
+                }
             };
 
             let body = if heading {

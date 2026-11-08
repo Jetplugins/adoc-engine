@@ -3,7 +3,8 @@
 import argparse,json,statistics
 p=argparse.ArgumentParser();p.add_argument('baseline');p.add_argument('candidate');p.add_argument('--threshold',type=float,default=.10);a=p.parse_args()
 b=json.load(open(a.baseline));c=json.load(open(a.candidate))
-if b['metadata']['machine']!=c['metadata']['machine']:raise SystemExit('Incomparable machine architectures')
+for key in ('machine','platform','cpu'):
+ if b['metadata'][key]!=c['metadata'][key]:raise SystemExit(f'Incomparable host metadata: {key}')
 failed=[]
 for case in b['metadata']['cases']:
  name=case['case'];other=next((x for x in c['metadata']['cases']if x['case']==name),None)

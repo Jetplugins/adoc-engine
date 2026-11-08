@@ -17,8 +17,13 @@ jobs:
         working-directory: benchmarks
       - run: cargo build --release --locked
       - run: python3 benchmarks/run.py
+      - run: python3 benchmarks/exports.py
+      - run: python3 benchmarks/lsp.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: benchmark-results
-          path: benchmarks/results
+          path: |
+            benchmarks/results
+            benchmarks/baselines/release/exports.json
+            benchmarks/baselines/release/lsp.json

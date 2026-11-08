@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with: { cache-on-failure: true }
       - uses: actions/setup-python@v5
         with: { python-version: '3.14' }
       - run: cargo test --workspace --locked
@@ -38,6 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with: { cache-on-failure: true }
       - uses: actions/setup-python@v5
         with: { python-version: '3.14' }
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils

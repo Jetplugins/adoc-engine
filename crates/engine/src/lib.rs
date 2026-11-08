@@ -68,6 +68,7 @@ impl RenderOptions {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
+    pub file: Option<String>,
     pub line: usize,
     pub message: String,
 }
@@ -91,6 +92,7 @@ pub fn render(source: &str, options: &RenderOptions) -> Result<RenderResult> {
     let diagnostics = doc
         .warnings()
         .map(|w| Diagnostic {
+            file: doc.origin_of(w.source).file.map(str::to_owned),
             line: doc.origin_of(w.source).line,
             message: w.warning.to_string(),
         })

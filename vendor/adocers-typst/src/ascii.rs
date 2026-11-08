@@ -18,22 +18,9 @@ use asciimath_rs::{
         accent::ExpressionAccent,
         group::Group,
         literal::Literal,
-        special::{
-            Expression,
-            Special,
-        },
+        special::{Expression, Special},
     },
-    tokens::{
-        Accent,
-        Arrow,
-        FontCommand,
-        Function,
-        Greek,
-        Logical,
-        Misc,
-        Operation,
-        Relation,
-    },
+    tokens::{Accent, Arrow, FontCommand, Function, Greek, Logical, Misc, Operation, Relation},
 };
 
 /// Translate one `AsciiMath` equation to Typst mathematics.

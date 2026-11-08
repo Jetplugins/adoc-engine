@@ -3,7 +3,7 @@
 import json,subprocess,shutil
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
-metadata=json.loads(subprocess.check_output(['cargo','metadata','--locked','--format-version','1'],cwd=root,text=True))
+metadata=json.loads(subprocess.check_output(['cargo','metadata','--locked','--format-version','1'],cwd=root,text=True,encoding='utf-8'))
 package=next(p for p in metadata['packages']if p['name']=='typst-assets')
 package_root=Path(package['manifest_path']).parent;source=package_root/'files/fonts';destination=root/'FONT_LICENSES';destination.mkdir(exist_ok=True)
 found=[]

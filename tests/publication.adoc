@@ -26,6 +26,9 @@ fn main() {
 
 == Structured table
 
+See <<table-destination,the data table>>.
+
+[[table-destination]]
 [cols="1,2",options="header"]
 |===
 |Name |Details
