@@ -25,7 +25,7 @@ roxmltree = "0.21"
 html5ever = "0.40"
 markup5ever_rcdom = "0.40"
 sha2 = "0.10"
-base64 = "0.22"
+base64 = "0.23"
 percent-encoding = "2"
 time = { version = "0.3", features = ["formatting", "parsing"] }
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
