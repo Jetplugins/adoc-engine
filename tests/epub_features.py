@@ -39,7 +39,10 @@ def main():
     p.add_argument('--epubcheck', type=Path, required=True)
     p.add_argument('--kotlin', type=Path); p.add_argument('--samples', type=int, default=0)
     p.add_argument('--output', type=Path, default=ROOT / 'verification/epub')
-    args = p.parse_args(); output = args.output.resolve(); output.mkdir(parents=True, exist_ok=True)
+    args = p.parse_args()
+    # Ruby does not search PATH for its script argument (unlike the shell).
+    args.reference = shutil.which(args.reference) or str(Path(args.reference).resolve())
+    output = args.output.resolve(); output.mkdir(parents=True, exist_ok=True)
     inputs = output / 'inputs'; shutil.copytree(ROOT / 'tests/fixtures/epub', inputs, dirs_exist_ok=True)
     font = inputs / 'styles/fonts/book.otf'; font.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / 'crates/engine/src/epub/fonts/LibertinusSerif-Regular.otf', font)
