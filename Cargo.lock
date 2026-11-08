@@ -24,7 +24,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "typst",
- "typst-as-lib",
+ "typst-as-lib 0.17.0",
  "typst-layout",
  "typst-pdf",
  "typst-render",
@@ -59,7 +59,7 @@ dependencies = [
  "asciidoc-parser",
  "mitex",
  "typst",
- "typst-as-lib",
+ "typst-as-lib 0.16.0",
  "typst-pdf",
 ]
 
@@ -3237,6 +3237,21 @@ name = "typst-as-lib"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7e4f56c8ff5c20714366765069d33e2e9f3786cd51c5e38d3c5675b280b16f2"
+dependencies = [
+ "chrono",
+ "comemo",
+ "dirs",
+ "ecow",
+ "thiserror",
+ "typst",
+ "typst-kit",
+]
+
+[[package]]
+name = "typst-as-lib"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83771d795ff59eb1f198153120beb55cd0acf6200077b31c6aad928e954b5c53"
 dependencies = [
  "chrono",
  "comemo",
