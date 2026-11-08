@@ -23,7 +23,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with: { cache-on-failure: true }
       - uses: actions/setup-python@v5
-        with: { python-version: '3.14' }
+        with: { python-version: '3.15' }
       - run: cargo test --workspace --locked
       - run: cargo build --release --locked
       - run: python tests/protocol.py target/release/${{ matrix.binary }}
@@ -42,7 +42,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with: { cache-on-failure: true }
       - uses: actions/setup-python@v5
-        with: { python-version: '3.14' }
+        with: { python-version: '3.15' }
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: curl -fL https://github.com/w3c/epubcheck/releases/download/v5.4.0/epubcheck-5.4.0.zip -o /tmp/epubcheck.zip && unzip -q /tmp/epubcheck.zip -d /tmp
       - run: cargo build --release --locked
