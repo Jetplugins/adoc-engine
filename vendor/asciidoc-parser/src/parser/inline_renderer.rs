@@ -1,0 +1,2077 @@
+use std::{fmt::Debug, sync::LazyLock};
+
+use regex::Regex;
+
+use crate::{
+    attributes::Attrlist,
+    inlines::{Callout, CalloutGuard, Footnote, Image, IndexTerm, Ref},
+    parser::{
+        DerivedReference, RenderContext, ResolvedReference, SafeMode, XrefSignifier, XrefStyle,
+    },
+    strings::CowStr,
+};
+
+/// An implementation of `InlineRenderer` converts the inline content of a
+/// block into the format which will ultimately be presented in the final
+/// converted output.
+///
+/// An implementation is provided for HTML output ([`HtmlInlineRenderer`]);
+/// alternative implementations (not provided in this crate) could support
+/// other output formats.
+///
+/// The trait is the crate's **inline** seam and nothing more: every method
+/// renders (or resolves a URI for) one inline construct. Assembling those
+/// renderings into blocks and into a document is the caller's job — see
+/// [`Content::render_with`](crate::content::Content::render_with), which folds
+/// one content's inline tree through an implementation of this trait.
+///
+/// ## Overriding only what differs
+///
+/// Every method has a default body, so an implementation only needs to override
+/// the substitutions whose output it wants to change and inherits the built-in
+/// HTML output for the rest. In particular, [`image_uri`](Self::image_uri) and
+/// [`render_image`](Self::render_image) inherit the crate's `data-uri`
+/// embedding and `opts=inline` SVG handling — which read bytes through the
+/// [`ImageFileHandler`](crate::parser::ImageFileHandler) and
+/// [`SvgFileHandler`](crate::parser::SvgFileHandler) the parse was configured
+/// with — so a downstream renderer gets that behavior without needing to
+/// reproduce it.
+///
+/// Note that these defaults delegate to the HTML renderer's *own* methods
+/// rather than routing back through `self`: an override of one method does not
+/// change what a still-defaulted sibling emits. For example, overriding
+/// [`image_uri`](Self::image_uri) alone does not change the URI that the
+/// inherited [`render_image`](Self::render_image) or
+/// [`render_icon`](Self::render_icon) produces — override that method too
+/// (calling `self.image_uri(…)`) if the two must agree. The sole exception is
+/// [`icon_uri`](Self::icon_uri): its default derives an icon path and then
+/// calls `self.image_uri(…)`, so it alone *does* reflect an `image_uri`
+/// override. A renderer that resolves asset URIs itself can reach the same
+/// handlers — and the same [`PathResolver`](crate::parser::PathResolver) — off
+/// the [`RenderContext`] it is handed, through
+/// [`image_file_handler`](RenderContext::image_file_handler),
+/// [`svg_file_handler`](RenderContext::svg_file_handler), and
+/// [`path_resolver`](RenderContext::path_resolver). The identically-named
+/// [`Parser`](crate::Parser) accessors answer the same question for a caller
+/// that holds the parser, which a renderer does not.
+pub trait InlineRenderer: Debug {
+    /// Renders the substitution for a special character.
+    ///
+    /// The renderer should write the appropriate rendering to `dest`.
+    fn render_special_character(&self, type_: SpecialCharacter, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_special_character(type_, dest);
+    }
+
+    /// Renders a formatted span — a [`Styled`] node, which is what the
+    /// [quotes substitution] recognizes.
+    ///
+    /// The renderer should write the appropriate rendering to `dest`.
+    ///
+    /// [`Styled`]: crate::inlines::Styled
+    /// [quotes substitution]: https://docs.asciidoctor.org/asciidoc/latest/subs/quotes/
+    fn render_styled(
+        &self,
+        type_: QuoteType,
+        scope: QuoteScope,
+        attrlist: &Attrlist<'_>,
+        id: Option<String>,
+        body: &str,
+        dest: &mut String,
+    ) {
+        DEFAULT_HTML_RENDERER.render_styled(type_, scope, attrlist, id, body, dest);
+    }
+
+    /// Renders the content of a [character replacement].
+    ///
+    /// The renderer should write the appropriate rendering to `dest`.
+    ///
+    /// [character replacement]: https://docs.asciidoctor.org/asciidoc/latest/subs/replacements/
+    fn render_character_replacement(&self, type_: CharacterReplacementType, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_character_replacement(type_, dest);
+    }
+
+    /// Renders a line break.
+    ///
+    /// The renderer should write an appropriate rendering of line break to
+    /// `dest`.
+    ///
+    /// This is used in the implementation of [post-replacement substitutions].
+    ///
+    /// [post-replacement substitutions]: https://docs.asciidoctor.org/asciidoc/latest/subs/post-replacements/
+    fn render_line_break(&self, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_line_break(dest);
+    }
+
+    /// Renders an image.
+    ///
+    /// The renderer should write an appropriate rendering of the specified
+    /// image to `dest`.
+    fn render_image(&self, image: &Image<'_>, context: &RenderContext, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_image(image, context, dest);
+    }
+
+    /// Construct a URI reference or data URI to the target image.
+    ///
+    /// If the `target_image_path` is a URI reference, then leave it untouched.
+    ///
+    /// The `target_image_path` is resolved relative to the directory retrieved
+    /// from the specified document-scoped attribute key, if provided.
+    ///
+    /// If the `data-uri` attribute is set on the document and the safe mode is
+    /// below `SafeMode::Secure`, the image is embedded as a
+    /// `data:<mime>;base64,…` URI by reading its bytes through the
+    /// [`ImageFileHandler`](crate::parser::ImageFileHandler); otherwise (or
+    /// when no handler is registered) a normalized relative path (i.e.,
+    /// URL) is returned. A target that is itself a URI is never embedded.
+    ///
+    /// ## Parameters
+    ///
+    /// * `target_image_path`: path to the target image
+    /// * `context`: The document state as of the point in the document this
+    ///   image came from — see [`RenderContext`]
+    /// * `asset_dir_key`: If provided, the attribute key used to look up the
+    ///   directory where the image is located. If not provided, `imagesdir` is
+    ///   used.
+    ///
+    /// ## Return
+    ///
+    /// Returns a string reference or data URI for the target image that can be
+    /// safely used in an image tag.
+    fn image_uri(
+        &self,
+        target_image_path: &str,
+        context: &RenderContext,
+        asset_dir_key: Option<&str>,
+    ) -> String {
+        DEFAULT_HTML_RENDERER.image_uri(target_image_path, context, asset_dir_key)
+    }
+
+    /// Renders an icon.
+    ///
+    /// The renderer should write an appropriate rendering of the specified
+    /// icon to `dest`.
+    fn render_icon(&self, icon: &Image<'_>, context: &RenderContext, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_icon(icon, context, dest);
+    }
+
+    /// Construct a reference or data URI to an icon image for the specified
+    /// icon name.
+    ///
+    /// The target image path is derived from the icon name. If the name already
+    /// carries a file extension, it is used verbatim; otherwise the value of
+    /// the `icontype` attribute (defaulting to `png`) is appended. In both
+    /// cases the path is resolved relative to the `iconsdir` attribute.
+    /// This mirrors the icon macro's image mode, where `icontype` is only
+    /// consulted when the icon type must be inferred (i.e. the target has
+    /// no file extension).
+    ///
+    /// The target image path is then passed through the `image_uri()` method.
+    /// If the `data-uri` attribute is set on the document, the image will be
+    /// safely converted to a data URI.
+    ///
+    /// The return value of this method can be safely used in an image tag.
+    fn icon_uri(&self, name: &str, _attrlist: &Attrlist, context: &RenderContext) -> String {
+        let icon = if has_extname(name) {
+            name.to_owned()
+        } else {
+            let icontype = context
+                .attribute_value("icontype")
+                .as_maybe_str()
+                .unwrap_or("png")
+                .to_owned();
+
+            format!("{name}.{icontype}")
+        };
+
+        self.image_uri(&icon, context, Some("iconsdir"))
+    }
+
+    /// Renders a link.
+    ///
+    /// The renderer should write an appropriate rendering of the specified
+    /// link, to `dest`.
+    fn render_link(&self, link: &Ref<'_>, link_text: &str, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_link(link, link_text, dest);
+    }
+
+    /// Renders an anchor.
+    ///
+    /// The rendered should write an appropriate rendering of the specified
+    /// anchor with ID and possible ref text (only used by some renderers).
+    fn render_anchor(&self, id: &str, reftext: Option<String>, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_anchor(id, reftext, dest);
+    }
+
+    /// Renders a cross-reference.
+    ///
+    /// When [`XrefRenderParams::resolved`] is `Some`, the reference resolved to
+    /// a destination; the renderer should link to it. When it is `None`, the
+    /// reference could not be resolved and the renderer should emit a sensible
+    /// fallback (e.g. a link to the raw target with bracketed text).
+    fn render_xref(&self, params: &XrefRenderParams, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_xref(params, dest);
+    }
+
+    /// Renders a [callout] number that annotates a line in a verbatim block.
+    ///
+    /// The renderer should write an appropriate rendering of the callout's
+    /// [`number`](crate::inlines::Callout::number) to `dest`. The rendering
+    /// typically depends on whether font-based or image-based icons are
+    /// enabled (via the `icons` document attribute, read off `context`); when
+    /// they are not, the node's [`guard`](crate::inlines::Callout::guard) says
+    /// which comment characters hid the callout in the raw source and should
+    /// be preserved around it.
+    ///
+    /// [callout]: https://docs.asciidoctor.org/asciidoc/latest/verbatim/callouts/
+    fn render_callout(&self, callout: &Callout<'_>, context: &RenderContext, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_callout(callout, context, dest);
+    }
+
+    /// Renders an [index term].
+    ///
+    /// A *flow* (visible) index term (`visible_term` is `Some`) appears in the
+    /// flow of text, so the renderer should write that text to `dest`. A
+    /// *concealed* index term (`visible_term` is `None`) does not appear in
+    /// the rendered text, so the renderer should typically write nothing.
+    ///
+    /// `visible_term` is the term's shown text *rendered* — the fold of
+    /// [`IndexTerm::children`](crate::inlines::IndexTerm), which is why it
+    /// arrives alongside the node rather than on it.
+    ///
+    /// Note that the built-in HTML5 converter never builds an index catalog;
+    /// index terms only contribute markup in output formats (such as DocBook or
+    /// PDF) that generate an index.
+    ///
+    /// # What the node can and cannot tell you yet
+    ///
+    /// The node is passed so that a backend which *does* build an index has
+    /// somewhere to read the term from. Be aware of what it currently holds:
+    /// for a **flow** term, [`terms`](crate::inlines::IndexTerm) is the shown
+    /// term as a single already-substituted string (empty when the shown text
+    /// contains markup only the fold can produce, such as `((*tiger*))`); for
+    /// a **concealed** term it is **empty**, along with `children` — the
+    /// builder does not reconstruct a concealed term's argument, because
+    /// nothing in it reaches the flow.
+    ///
+    /// So an index-building backend cannot yet get the authored
+    /// primary/secondary/tertiary levels out of a concealed
+    /// `indexterm:[p, s, t]` or `(((p, s, t)))`, which are exactly the terms
+    /// that exist only to build an index. Populating them is a change to what
+    /// the builder records, not to this seam, and the field is marked
+    /// provisional for that reason (see
+    /// [`IndexTerm`]'s own Phase-0 note).
+    ///
+    /// [index term]: https://docs.asciidoctor.org/asciidoc/latest/sections/user-index/
+    fn render_index_term(
+        &self,
+        index_term: &IndexTerm<'_>,
+        visible_term: Option<&str>,
+        dest: &mut String,
+    ) {
+        DEFAULT_HTML_RENDERER.render_index_term(index_term, visible_term, dest);
+    }
+
+    /// Renders a [button] UI macro (`btn:[label]`).
+    ///
+    /// `text` is the already-normalized button label. The renderer should write
+    /// an appropriate rendering (e.g. `<b class="button">label</b>`) to `dest`.
+    ///
+    /// [button]: https://docs.asciidoctor.org/asciidoc/latest/macros/ui-macros/
+    fn render_button(&self, text: &str, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_button(text, dest);
+    }
+
+    /// Renders a [keyboard] UI macro (`kbd:[keys]`).
+    ///
+    /// `keys` holds one entry per key in the shortcut, exactly as
+    /// [`UiKind::Keyboard`](crate::inlines::UiKind) carries them. A
+    /// single-element slice is a lone key; multiple entries form a key
+    /// sequence. The renderer should write an appropriate rendering (e.g. a
+    /// lone `<kbd>` element, or a `<span class="keyseq">` wrapping several
+    /// `<kbd>` elements) to `dest`.
+    ///
+    /// [keyboard]: https://docs.asciidoctor.org/asciidoc/latest/macros/keyboard-macro/
+    fn render_keyboard(&self, keys: &[CowStr<'_>], dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_keyboard(keys, dest);
+    }
+
+    /// Renders a [menu] UI macro (`menu:menu[submenu > … > item]`).
+    ///
+    /// The arguments are [`UiKind::Menu`](crate::inlines::UiKind)'s own
+    /// fields: `menu` is the top-level name, `submenus` holds zero or more
+    /// intermediate names outermost-first, and `menuitem` is the final item
+    /// (`None` renders a bare menu reference such as `menu:File[]`).
+    /// `context` is where the renderer reads the `icons` document attribute
+    /// to choose the caret between menu levels.
+    ///
+    /// The renderer should write an appropriate rendering to `dest`.
+    ///
+    /// [menu]: https://docs.asciidoctor.org/asciidoc/latest/macros/ui-macros/
+    fn render_menu(
+        &self,
+        menu: &str,
+        submenus: &[CowStr<'_>],
+        menuitem: Option<&str>,
+        context: &RenderContext,
+        dest: &mut String,
+    ) {
+        DEFAULT_HTML_RENDERER.render_menu(menu, submenus, menuitem, context, dest);
+    }
+
+    /// Renders the inline reference produced by a [`footnote`] macro.
+    ///
+    /// The footnote's *text* is not rendered here (it is extracted to the
+    /// document's footnote list); this method renders only the superscript
+    /// marker that appears in the flow of text and links to the footnote.
+    ///
+    /// There are three cases the renderer must distinguish, all readable off
+    /// the node:
+    ///
+    /// * A *defining* occurrence ([`is_reference`] is `false`): the footnote
+    ///   introduces new text. It always carries its
+    ///   [`number`](crate::inlines::Footnote::number), and when it was given an
+    ///   [`id`](crate::inlines::Footnote::id) the marker takes an anchor of its
+    ///   own.
+    /// * A *reference* to an earlier footnote ([`is_reference`] is `true`,
+    ///   `number` is `Some`): a later occurrence (`footnote:id[]`) reusing an
+    ///   existing footnote's number, with no anchor of its own.
+    /// * An *unresolved* reference ([`is_reference`] is `true`, `number` is
+    ///   `None`): the ID was never defined, and the renderer should emit a
+    ///   visible error marker built from the node's own `id`.
+    ///
+    /// [`is_reference`]: crate::inlines::Footnote::is_reference
+    ///
+    /// [`footnote`]: https://docs.asciidoctor.org/asciidoc/latest/macros/footnote/
+    fn render_footnote(&self, footnote: &Footnote<'_>, dest: &mut String) {
+        DEFAULT_HTML_RENDERER.render_footnote(footnote, dest);
+    }
+}
+
+/// Specifies which special character is being replaced in a call to
+/// [`InlineRenderer::render_special_character`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpecialCharacter {
+    /// Replace `<` character.
+    Lt,
+
+    /// Replace `>` character.
+    Gt,
+
+    /// Replace `&` character.
+    Ampersand,
+}
+
+/// Specifies which [quote type] is being rendered.
+///
+/// [quote type]: https://docs.asciidoctor.org/asciidoc/latest/subs/quotes/
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum QuoteType {
+    /// Strong (often bold) formatting.
+    Strong,
+
+    /// Word(s) surrounded by smart double quotes.
+    DoubleQuote,
+
+    /// Word(s) surrounded by smart single quotes.
+    SingleQuote,
+
+    /// Monospace (code) formatting.
+    Monospaced,
+
+    /// Emphasis (often italic) formatting.
+    Emphasis,
+
+    /// Text range (span) formatted with zero or more styles.
+    Mark,
+
+    /// Superscript formatting.
+    Superscript,
+
+    /// Subscript formatting.
+    Subscript,
+
+    /// Surrounds a block of text that may need a `<span>` or similar tag.
+    Unquoted,
+
+    /// Inline AsciiMath expression, surrounded by AsciiMath math delimiters.
+    AsciiMath,
+
+    /// Inline LaTeX math expression, surrounded by LaTeX inline math
+    /// delimiters.
+    LatexMath,
+}
+
+/// Specifies whether the block is aligned to word boundaries or not.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QuoteScope {
+    /// The quoted section was aligned to word boundaries.
+    Constrained,
+
+    /// The quoted section may not have been aligned to word boundaries.
+    Unconstrained,
+}
+
+/// Specifies which [character replacement] is being rendered.
+///
+/// [character replacement]: https://docs.asciidoctor.org/asciidoc/latest/subs/replacements/
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CharacterReplacementType {
+    /// Copyright `(C)`.
+    Copyright,
+
+    /// Registered `(R)`.
+    Registered,
+
+    /// Trademark `(TM)`.
+    Trademark,
+
+    /// Em-dash surrounded by spaces ` -- `.
+    EmDashSurroundedBySpaces,
+
+    /// Em-dash without space `--`.
+    EmDashWithoutSpace,
+
+    /// Ellipsis `...`.
+    Ellipsis,
+
+    /// Single right arrow `->`.
+    SingleRightArrow,
+
+    /// Double right arrow `=>`.
+    DoubleRightArrow,
+
+    /// Single left arrow `<-`.
+    SingleLeftArrow,
+
+    /// Double left arrow `<=`.
+    DoubleLeftArrow,
+
+    /// Typographic apostrophe `'` within a word.
+    TypographicApostrophe,
+
+    /// Character reference `&___;`.
+    CharacterReference(String),
+}
+
+/// Provides parameters for rendering a cross-reference.
+#[derive(Clone, Debug)]
+pub struct XrefRenderParams<'a> {
+    /// The raw, uninterpreted cross-reference target as written in the source.
+    pub target: &'a str,
+
+    /// Explicit link text supplied in the cross-reference, if any.
+    pub provided_text: Option<&'a str>,
+
+    /// Target window selection from a `window` attribute on the `xref:` macro
+    /// (e.g. `_blank`), or `None`. When `_blank`, the renderer also emits
+    /// `rel="noopener"`, mirroring the link macro.
+    pub window: Option<&'a str>,
+
+    /// Roles supplied via a `role` attribute on the `xref:` macro. Empty when
+    /// none were given.
+    pub roles: &'a [String],
+
+    /// The cross-reference text style in effect for this reference (from the
+    /// `xrefstyle=` macro attribute or the document-wide `xrefstyle`). `None`
+    /// when `xrefstyle` is unset, in which case the target's reference text is
+    /// used verbatim.
+    pub xrefstyle: Option<XrefStyle>,
+
+    /// The destination the parser derived from the target itself, for a
+    /// target that names a document; `None` for a reference to an element
+    /// within the current document.
+    ///
+    /// This is what the reference renders as when
+    /// [`resolved`](Self::resolved) is `None`: such a target is not
+    /// unresolved, it simply resolves without the catalog's help.
+    pub derived: Option<&'a DerivedReference>,
+
+    /// The resolved destination, or `None` if the reference is unresolved.
+    pub resolved: Option<&'a ResolvedReference>,
+}
+
+/// Joins a slice of [`CowStr`]s with `sep`.
+///
+/// The node fields this renderer receives (a keyboard macro's keys, a menu's
+/// submenu path) are `CowStr` slices rather than `String` ones, so that the
+/// fold hands them over exactly as the node holds them instead of
+/// materializing a `Vec<String>` for every such node. `[T]::join` needs
+/// `Borrow<str>`, which `CowStr` does not implement, so the borrow is taken
+/// explicitly here.
+fn join_cow_strs(parts: &[CowStr<'_>], sep: &str) -> String {
+    parts
+        .iter()
+        .map(CowStr::as_ref)
+        .collect::<Vec<&str>>()
+        .join(sep)
+}
+
+/// Implementation of [`InlineRenderer`] that renders substitutions
+/// for common HTML-based applications.
+#[derive(Debug)]
+pub struct HtmlInlineRenderer {}
+
+/// The shared HTML renderer to which [`InlineRenderer`]'s default
+/// method bodies delegate. It is stateless, so a single `const` instance serves
+/// every delegation.
+const DEFAULT_HTML_RENDERER: HtmlInlineRenderer = HtmlInlineRenderer {};
+
+impl HtmlInlineRenderer {
+    /// Resolve an image target to a `src`/`data` reference, honoring a
+    /// macro-level `imagesdir` attribute.
+    ///
+    /// A named `imagesdir` attribute _on the image macro itself_ overrides the
+    /// document `imagesdir` for this one image (Asciidoctor 2.1+). When it is
+    /// absent, resolution falls back to [`image_uri`], which uses the document
+    /// `imagesdir`. As with the document attribute, an absolute-URL target
+    /// ignores the base entirely.
+    ///
+    /// `restored_target_ranges` names the byte ranges of `target` restored
+    /// from a masked passthrough or STEM expression (see
+    /// [`Image::restored_target_ranges`](crate::inlines::Image)). Resolution
+    /// runs with
+    /// each of them — and each restored range of the macro-level `imagesdir`
+    /// value — replaced by an index-keyed `\u{96}`*n*`\u{97}` token, the
+    /// bodies spliced back into the resolved path afterwards. The sentinel is
+    /// chosen so `web_path` only ever sees an opaque token (no space to
+    /// percent-encode, no backslash to posixify, no `/` or `.` for the
+    /// segment arithmetic to read), and `Passthroughs::restore_to`
+    /// splices the body into the finished `src` — so a fold over restored
+    /// values reproduces the same bytes, identically on every platform.
+    ///
+    /// [`image_uri`]: InlineRenderer::image_uri
+    fn image_src(
+        &self,
+        target: &str,
+        restored_target_ranges: &[std::ops::Range<usize>],
+        attrlist: &Attrlist,
+        context: &RenderContext,
+    ) -> String {
+        match attrlist.named_attribute("imagesdir") {
+            Some(imagesdir) => {
+                let dir_ranges = imagesdir.restored_value_ranges();
+
+                if restored_target_ranges.is_empty() && dir_ranges.is_empty() {
+                    return normalize_web_path(target, context, Some(imagesdir.value()), true);
+                }
+
+                // The two masked values flow into one joined path, so their
+                // tokens share one numbering — the directory's first, since
+                // `web_path` prepends the start path and the splice is one
+                // left-to-right pass.
+                let (masked_dir, mut bodies) =
+                    mask_restored_ranges(imagesdir.value(), dir_ranges, 0);
+
+                let (masked_target, target_bodies) =
+                    mask_restored_ranges(target, restored_target_ranges, bodies.len());
+
+                bodies.extend(target_bodies);
+
+                splice_restored_bodies(
+                    &normalize_web_path(&masked_target, context, Some(&masked_dir), true),
+                    &bodies,
+                )
+            }
+
+            None => {
+                if restored_target_ranges.is_empty() {
+                    return self.image_uri(target, context, None);
+                }
+
+                let (masked_target, bodies) =
+                    mask_restored_ranges(target, restored_target_ranges, 0);
+
+                splice_restored_bodies(&self.image_uri(&masked_target, context, None), &bodies)
+            }
+        }
+    }
+}
+
+/// Replaces each of `ranges` — ascending, non-overlapping byte ranges of
+/// `value` — with an index-keyed `\u{96}`*n*`\u{97}` token, numbered from
+/// `first_index`, returning the masked text alongside the bodies the tokens
+/// stand for.
+///
+/// The token is an opaque run carrying no space, separator, or dot — the
+/// shape `web_path` resolves cleanly — so [`splice_restored_bodies`] then
+/// restores each body exactly where `Passthroughs::restore_to` splices its
+/// own. A range that does not fall on
+/// `value`'s character boundaries (no caller produces one) is skipped rather
+/// than split.
+fn mask_restored_ranges<'v>(
+    value: &'v str,
+    ranges: &[std::ops::Range<usize>],
+    first_index: usize,
+) -> (String, Vec<&'v str>) {
+    let mut masked = String::with_capacity(value.len());
+    let mut bodies: Vec<&'v str> = Vec::with_capacity(ranges.len());
+    let mut cursor = 0usize;
+
+    for range in ranges {
+        let Some(body) = value.get(range.start..range.end) else {
+            continue;
+        };
+
+        masked.push_str(value.get(cursor..range.start).unwrap_or_default());
+        masked.push_str(&format!("\u{96}{n}\u{97}", n = first_index + bodies.len()));
+        bodies.push(body);
+        cursor = range.end;
+    }
+
+    masked.push_str(value.get(cursor..).unwrap_or_default());
+
+    (masked, bodies)
+}
+
+/// Splices each of `bodies` over its own index-keyed `\u{96}`*n*`\u{97}`
+/// token in `resolved`, one left-to-right pass, and returns the result.
+///
+/// Index-keyed exactly as
+/// `Passthroughs::restore_to` is:
+/// each token is sought only in the bytes after the previous splice, so a body
+/// that itself carries sentinel-shaped bytes is never re-matched as a later
+/// token, and a token the resolution dropped (a segment its `..` arithmetic
+/// consumed) is simply not found — the ones after it still restore, keyed by
+/// their own index.
+fn splice_restored_bodies(resolved: &str, bodies: &[&str]) -> String {
+    let mut out = String::with_capacity(resolved.len());
+    let mut rest = resolved;
+
+    for (n, body) in bodies.iter().enumerate() {
+        let token = format!("\u{96}{n}\u{97}");
+
+        if let Some(pos) = rest.find(&token) {
+            out.push_str(rest.get(..pos).unwrap_or_default());
+            out.push_str(body);
+            rest = rest.get(pos + token.len()..).unwrap_or_default();
+        }
+    }
+
+    out.push_str(rest);
+    out
+}
+
+impl InlineRenderer for HtmlInlineRenderer {
+    fn render_special_character(&self, type_: SpecialCharacter, dest: &mut String) {
+        match type_ {
+            SpecialCharacter::Lt => {
+                dest.push_str("&lt;");
+            }
+            SpecialCharacter::Gt => {
+                dest.push_str("&gt;");
+            }
+            SpecialCharacter::Ampersand => {
+                dest.push_str("&amp;");
+            }
+        }
+    }
+
+    fn render_styled(
+        &self,
+        type_: QuoteType,
+        _scope: QuoteScope,
+        attrlist: &Attrlist<'_>,
+        mut id: Option<String>,
+        body: &str,
+        dest: &mut String,
+    ) {
+        let mut roles: Vec<&str> = attrlist.roles();
+
+        if let Some(block_style) = attrlist
+            .nth_attribute(1)
+            .and_then(|attr1| attr1.block_style())
+        {
+            roles.insert(0, block_style);
+        }
+
+        if id.is_none() {
+            id = attrlist
+                .nth_attribute(1)
+                .and_then(|attr1| attr1.id())
+                .map(|id| id.to_owned())
+        }
+
+        // A quote-delimited first positional attribute (e.g. `['role']`)
+        // carries no shorthand role or block style, so the derivation
+        // above leaves it out. Asciidoctor treats such a value as a
+        // verbatim role — quotes included — so recover it here rather
+        // than dropping the role.
+        if roles.is_empty()
+            && id.is_none()
+            && let Some(role) = attrlist.quoted_text_fallback_role()
+        {
+            roles.push(role);
+        }
+
+        match type_ {
+            QuoteType::Strong => {
+                wrap_body_in_html_tag("strong", id, roles, body, dest);
+            }
+
+            QuoteType::DoubleQuote => {
+                dest.push_str("&#8220;");
+                dest.push_str(body);
+                dest.push_str("&#8221;");
+            }
+
+            QuoteType::SingleQuote => {
+                dest.push_str("&#8216;");
+                dest.push_str(body);
+                dest.push_str("&#8217;");
+            }
+
+            QuoteType::Monospaced => {
+                wrap_body_in_html_tag("code", id, roles, body, dest);
+            }
+
+            QuoteType::Emphasis => {
+                wrap_body_in_html_tag("em", id, roles, body, dest);
+            }
+
+            QuoteType::Mark => {
+                if roles.is_empty() && id.is_none() {
+                    wrap_body_in_html_tag("mark", id, roles, body, dest);
+                } else {
+                    wrap_body_in_html_tag("span", id, roles, body, dest);
+                }
+            }
+
+            QuoteType::Superscript => {
+                wrap_body_in_html_tag("sup", id, roles, body, dest);
+            }
+
+            QuoteType::Subscript => {
+                wrap_body_in_html_tag("sub", id, roles, body, dest);
+            }
+
+            QuoteType::Unquoted => {
+                if roles.is_empty() && id.is_none() {
+                    dest.push_str(body);
+                } else {
+                    wrap_body_in_html_tag("span", id, roles, body, dest);
+                }
+            }
+
+            QuoteType::AsciiMath => {
+                dest.push_str(r"\$");
+                dest.push_str(body);
+                dest.push_str(r"\$");
+            }
+
+            QuoteType::LatexMath => {
+                dest.push_str(r"\(");
+                dest.push_str(body);
+                dest.push_str(r"\)");
+            }
+        }
+    }
+
+    fn render_character_replacement(&self, type_: CharacterReplacementType, dest: &mut String) {
+        match type_ {
+            CharacterReplacementType::Copyright => {
+                dest.push_str("&#169;");
+            }
+
+            CharacterReplacementType::Registered => {
+                dest.push_str("&#174;");
+            }
+
+            CharacterReplacementType::Trademark => {
+                dest.push_str("&#8482;");
+            }
+
+            CharacterReplacementType::EmDashSurroundedBySpaces => {
+                dest.push_str("&#8201;&#8212;&#8201;");
+            }
+
+            CharacterReplacementType::EmDashWithoutSpace => {
+                dest.push_str("&#8212;&#8203;");
+            }
+
+            CharacterReplacementType::Ellipsis => {
+                dest.push_str("&#8230;&#8203;");
+            }
+
+            CharacterReplacementType::SingleLeftArrow => {
+                dest.push_str("&#8592;");
+            }
+
+            CharacterReplacementType::DoubleLeftArrow => {
+                dest.push_str("&#8656;");
+            }
+
+            CharacterReplacementType::SingleRightArrow => {
+                dest.push_str("&#8594;");
+            }
+
+            CharacterReplacementType::DoubleRightArrow => {
+                dest.push_str("&#8658;");
+            }
+
+            CharacterReplacementType::TypographicApostrophe => {
+                dest.push_str("&#8217;");
+            }
+
+            CharacterReplacementType::CharacterReference(name) => {
+                dest.push('&');
+                dest.push_str(&name);
+                dest.push(';');
+            }
+        }
+    }
+
+    fn render_line_break(&self, dest: &mut String) {
+        dest.push_str("<br>");
+    }
+
+    fn render_image(&self, image: &Image<'_>, context: &RenderContext, dest: &mut String) {
+        let attrlist = &image.attrs;
+        let target = image.target.as_ref();
+        let alt = image.alt.as_deref().unwrap_or_default();
+
+        let src = self.image_src(target, &image.restored_target_ranges, attrlist, context);
+        let alt_encoded = encode_attribute_value(alt.to_owned());
+
+        // The dimension attributes (width, height, and title) are shared by the
+        // plain `<img>`, the interactive `<object>`, and the `<object>`'s image
+        // fallback. Each fragment carries its own leading space so the pieces
+        // concatenate cleanly after `src`/`alt` (or the `data` attribute).
+        let mut dimension_attrs = String::new();
+
+        if let Some(width) = image.width.as_deref() {
+            dimension_attrs.push_str(&format!(
+                r#" width="{width}""#,
+                width = encode_attribute_value(width.to_owned())
+            ));
+        }
+
+        if let Some(height) = image.height.as_deref() {
+            dimension_attrs.push_str(&format!(
+                r#" height="{height}""#,
+                height = encode_attribute_value(height.to_owned())
+            ));
+        }
+
+        if let Some(title) = attrlist.named_attribute("title") {
+            dimension_attrs.push_str(&format!(
+                r#" title="{title}""#,
+                title = encode_attribute_value(title.value().to_owned())
+            ));
+        }
+
+        let format = attrlist
+            .named_attribute("format")
+            .map(|format| format.value());
+
+        // The `inline` and `interactive` SVG options are security-sensitive
+        // (they embed file contents or a live `<object>`), so they only take
+        // effect below the `Secure` safe mode. In `Secure` mode an SVG image
+        // renders as an ordinary `<img>`, matching Ruby Asciidoctor.
+        let svg_active = (format == Some("svg") || target.contains(".svg"))
+            && context.safe_mode() < SafeMode::Secure;
+
+        // An inline SVG is embedded verbatim and has no meaningful `src`, so a
+        // `link=self` on it is left as the literal `self` rather than resolved
+        // to a URI (see `render_icon_or_image`). Every other image form does
+        // have a `src` (a data URI or web path) that `link=self` resolves to.
+        let inline_svg = svg_active && attrlist.has_option("inline");
+
+        let img = if inline_svg {
+            // Embed the SVG contents directly. When the contents cannot be read
+            // (no handler is registered, or it cannot find the file), fall back
+            // to the alt text, mirroring Ruby Asciidoctor.
+            read_svg_contents(
+                &src,
+                image.width.as_deref(),
+                image.height.as_deref(),
+                context,
+            )
+            .unwrap_or_else(|| format!(r#"<span class="alt">{alt}</span>"#, alt = alt))
+        } else if svg_active && attrlist.has_option("interactive") {
+            // Render an interactive SVG as an `<object>` element so its
+            // embedded scripting and links remain live. A
+            // `fallback` image (or, failing that, the alt text) is
+            // nested inside for user agents that can't display the
+            // object.
+            let fallback = if let Some(fallback) = attrlist.named_attribute("fallback") {
+                // A `fallback=` value restored from a masked construct
+                // resolves over its restored ranges masked, exactly as the
+                // target does — the one other value this renderer runs
+                // through `web_path`.
+                let fallback_src = self.image_src(
+                    fallback.value(),
+                    fallback.restored_value_ranges(),
+                    attrlist,
+                    context,
+                );
+                format!(
+                    r#"<img src="{fallback_src}" alt="{alt_encoded}"{dimension_attrs}>"#,
+                    fallback_src = encode_attribute_value(fallback_src)
+                )
+            } else {
+                format!(r#"<span class="alt">{alt}</span>"#, alt = alt)
+            };
+
+            format!(
+                r#"<object type="image/svg+xml" data="{src}"{dimension_attrs}>{fallback}</object>"#,
+                src = encode_attribute_value(src.clone())
+            )
+        } else {
+            format!(
+                r#"<img src="{src}" alt="{alt_encoded}"{dimension_attrs}>"#,
+                src = encode_attribute_value(src.clone())
+            )
+        };
+
+        let link_self_href = if inline_svg { None } else { Some(src.as_str()) };
+
+        // A URI-ish target passes through to `src` verbatim (it is never
+        // embedded), so a `link=self` resolving to it is author-supplied and
+        // subject to the stricter SVG-data-URI check; a plain path target is
+        // resolved to a web path or a trusted embedded `data-uri`.
+        let self_href_from_uri_target = is_uri_ish(target);
+
+        render_icon_or_image(
+            attrlist,
+            &img,
+            "image",
+            link_self_href,
+            self_href_from_uri_target,
+            dest,
+        );
+    }
+
+    fn image_uri(
+        &self,
+        target_image_path: &str,
+        context: &RenderContext,
+        asset_dir_key: Option<&str>,
+    ) -> String {
+        let asset_dir_key = asset_dir_key.unwrap_or("imagesdir");
+
+        let asset_dir = context
+            .attribute_value(asset_dir_key)
+            .as_maybe_str()
+            .map(|s| s.to_string());
+
+        let normalized = normalize_web_path(target_image_path, context, asset_dir.as_deref(), true);
+
+        // Asciidoctor embeds the image as a data URI when the `data-uri`
+        // attribute is set and the safe mode is below `SafeMode::Secure`. A
+        // target that is itself a URI is never embedded — there is no local
+        // file to read — so it passes through as an ordinary web path
+        // (Asciidoctor only fetches a remote target under `allow-uri-read`,
+        // which this crate does not implement). Otherwise the image's bytes are
+        // read through the `ImageFileHandler` and base64-encoded into a
+        // `data:<mime>;base64,…` URI.
+        //
+        // This crate never performs file I/O itself, so an absent handler (or
+        // one that cannot find the file) degrades silently to the web path,
+        // mirroring how a missing `SvgFileHandler` degrades an inline SVG.
+        if context.safe_mode() < SafeMode::Secure
+            && context.is_attribute_set("data-uri")
+            && !is_uri_ish(target_image_path)
+            && let Some(handler) = context.image_file_handler.as_ref()
+            && let Some(bytes) = handler.resolve_image(&normalized, context)
+        {
+            let mimetype = data_uri_mimetype(target_image_path);
+            let encoded = crate::internal::base64::strict_encode(&bytes);
+
+            return format!("data:{mimetype};base64,{encoded}");
+        }
+
+        normalized
+    }
+
+    fn render_icon(&self, icon: &Image<'_>, context: &RenderContext, dest: &mut String) {
+        let attrlist = &icon.attrs;
+        let target = icon.target.as_ref();
+        let alt = icon.alt.as_deref().unwrap_or_default();
+
+        // As in `render_image`, a target restored from a masked construct
+        // resolves with its restored ranges masked — the whole `icon_uri`
+        // computation included, since its extension probe (`has_extname`)
+        // must read the same opaque, dot-free sentinel bytes `web_path`'s own
+        // probe does — and the bodies splice back in afterwards.
+        let src = if icon.restored_target_ranges.is_empty() {
+            self.icon_uri(target, attrlist, context)
+        } else {
+            let (masked_target, bodies) =
+                mask_restored_ranges(target, &icon.restored_target_ranges, 0);
+
+            splice_restored_bodies(&self.icon_uri(&masked_target, attrlist, context), &bodies)
+        };
+
+        let img = if context.is_attribute_set("icons") {
+            let icons = context.attribute_value("icons");
+            if let Some(icons) = icons.as_maybe_str()
+                && icons == "font"
+            {
+                // Every fragment interpolated into the `class`/`title`
+                // attributes below is escaped for the `"` delimiter, mirroring
+                // the `alt` handling in the image branch. These values are
+                // already special-character-escaped (`< > &`) upstream, but a
+                // stray `"` in an author-supplied `target`, `size`, `flip`,
+                // `rotate`, or `title` would otherwise break out of its
+                // attribute.
+                let mut i_class_attrs: Vec<String> = vec![
+                    "fa".to_owned(),
+                    format!(
+                        "fa-{target}",
+                        target = encode_attribute_value(target.to_owned())
+                    ),
+                ];
+
+                if let Some(size) = attrlist.named_or_positional_attribute("size", 1) {
+                    i_class_attrs.push(format!(
+                        "fa-{size}",
+                        size = encode_attribute_value(size.value().to_owned())
+                    ));
+                }
+
+                if let Some(flip) = attrlist.named_attribute("flip") {
+                    i_class_attrs.push(format!(
+                        "fa-flip-{flip}",
+                        flip = encode_attribute_value(flip.value().to_owned())
+                    ));
+                } else if let Some(rotate) = attrlist.named_attribute("rotate") {
+                    i_class_attrs.push(format!(
+                        "fa-rotate-{rotate}",
+                        rotate = encode_attribute_value(rotate.value().to_owned())
+                    ));
+                }
+
+                format!(
+                    r##"<i class="{i_class_attr_val}"{title_attr}></i>"##,
+                    i_class_attr_val = i_class_attrs.join(" "),
+                    title_attr = if let Some(title) = attrlist.named_attribute("title") {
+                        format!(
+                            r#" title="{title}""#,
+                            title = encode_attribute_value(title.value().to_owned())
+                        )
+                    } else {
+                        "".to_owned()
+                    }
+                )
+            } else {
+                let mut attrs: Vec<String> = vec![
+                    format!(r#"src="{src}""#, src = encode_attribute_value(src.clone())),
+                    format!(
+                        r#"alt="{alt}""#,
+                        alt = encode_attribute_value(alt.to_string())
+                    ),
+                ];
+
+                if let Some(width) = attrlist.named_attribute("width") {
+                    attrs.push(format!(
+                        r#"width="{width}""#,
+                        width = encode_attribute_value(width.value().to_owned())
+                    ));
+                }
+
+                if let Some(height) = attrlist.named_attribute("height") {
+                    attrs.push(format!(
+                        r#"height="{height}""#,
+                        height = encode_attribute_value(height.value().to_owned())
+                    ));
+                }
+
+                if let Some(title) = attrlist.named_attribute("title") {
+                    attrs.push(format!(
+                        r#"title="{title}""#,
+                        title = encode_attribute_value(title.value().to_owned())
+                    ));
+                }
+
+                format!(
+                    "<img {attrs}{void_element_slash}>",
+                    attrs = attrs.join(" "),
+                    void_element_slash = "",
+                )
+            }
+        } else {
+            format!("[{alt}&#93;", alt = alt)
+        };
+
+        // `src` is only a real image URI in the image-icon branch (icons
+        // enabled and not font-based); the font (`<i>`) and text
+        // (`[alt]`) branches have no `src`, so a `link=self` on them
+        // stays literal (see `render_icon_or_image`).
+        let link_self_href = if context.is_attribute_set("icons")
+            && context.attribute_value("icons").as_maybe_str() != Some("font")
+        {
+            Some(src.as_str())
+        } else {
+            None
+        };
+
+        // As in `render_image`: a URI-ish target passes through to the icon
+        // `src` verbatim, so a `link=self` resolving to it is author-supplied
+        // and gets the stricter SVG-data-URI check.
+        let self_href_from_uri_target = is_uri_ish(target);
+
+        render_icon_or_image(
+            attrlist,
+            &img,
+            "icon",
+            link_self_href,
+            self_href_from_uri_target,
+            dest,
+        );
+    }
+
+    fn render_link(&self, link: &Ref<'_>, link_text: &str, dest: &mut String) {
+        let attrlist = &link.attrs;
+        let id = attrlist.id();
+
+        // The node's own roles (the `bare` class an auto-recognized URL picks
+        // up) come first, then whatever the display text's attribute list
+        // spelled out.
+        let mut roles: Vec<&str> = link.roles.iter().map(CowStr::as_ref).collect();
+        let mut attrlist_roles = attrlist.roles().clone();
+        roles.append(&mut attrlist_roles);
+
+        let link = format!(
+            r##"<a href="{target}"{id}{class}{title}{link_constraint_attrs}>{link_text}</a>"##,
+            // The target arrives here already special-character-escaped (`< > &`)
+            // by the substitution pipeline, but that step leaves `"` intact. A
+            // stray `"` in the target would otherwise close the `href` attribute
+            // and let an author inject further attributes (e.g. an event
+            // handler), so escape the quote delimiter here — mirroring the
+            // image `alt`/`title` handling.
+            target = encode_attribute_value(link.target.to_string()),
+            // The `id` and each role are author-supplied for the same reason
+            // the `target` is, and reach this attribute by the same route, so
+            // they take the same escape — as `render_xref`'s own roles and the
+            // icon branch's `class` fragments already do.
+            id = if let Some(id) = id {
+                format!(r#" id="{id}""#, id = encode_attribute_value(id.to_owned()))
+            } else {
+                "".to_owned()
+            },
+            class = if roles.is_empty() {
+                "".to_owned()
+            } else {
+                format!(
+                    r#" class="{roles}""#,
+                    roles = roles
+                        .iter()
+                        .map(|role| encode_attribute_value((*role).to_owned()))
+                        .collect::<Vec<String>>()
+                        .join(" ")
+                )
+            },
+            // Mirrors Asciidoctor's HTML5 converter: `title="#{node.attr 'title'}"`
+            // is emitted (after the class) when the link carries a `title`
+            // attribute.
+            title = if let Some(title) = attrlist.named_attribute("title") {
+                format!(
+                    r#" title="{title}""#,
+                    title = encode_attribute_value(title.value().to_owned())
+                )
+            } else {
+                "".to_owned()
+            },
+            link_constraint_attrs = link_constraint_attrs(attrlist, link.window.as_deref()),
+            link_text = link_text,
+        );
+
+        dest.push_str(&link);
+    }
+
+    fn render_anchor(&self, id: &str, _reftext: Option<String>, dest: &mut String) {
+        dest.push_str(&format!("<a id=\"{id}\"></a>"));
+    }
+
+    fn render_xref(&self, params: &XrefRenderParams, dest: &mut String) {
+        let class = if params.roles.is_empty() {
+            String::new()
+        } else {
+            // Roles are author-supplied, so each is escaped before it is joined
+            // into the `class` attribute (a stray `"` would otherwise break out
+            // of the attribute).
+            let roles = params
+                .roles
+                .iter()
+                .map(|role| encode_html_attribute(role))
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!(r#" class="{roles}""#)
+        };
+
+        let constraint_attrs = xref_constraint_attrs(params.window);
+
+        // Each `href` below is escaped for the `"` delimiter before it is
+        // interpolated into the attribute. The destinations are already
+        // special-character-escaped (`< > &`) upstream, but a stray `"` in a
+        // crafted or unresolved target would otherwise break out of the `href`
+        // attribute (see the `class`/roles escaping above).
+        match (params.resolved, params.derived) {
+            (Some(resolved), _) => {
+                // Explicit link text always wins; otherwise use the target's
+                // reference text, optionally reformatted by the `xrefstyle`.
+                // Empty explicit text (`<<id,>>`) is treated as absent,
+                // matching Asciidoctor's fallback to the
+                // target's reference text.
+                let text = match params.provided_text {
+                    Some(provided) if !provided.is_empty() => provided.to_string(),
+                    _ => {
+                        // The target's reference text becomes this reference's
+                        // link text. When that reftext is itself a title
+                        // containing a cross-reference (or an inline link), it
+                        // carries a nested `<a>…</a>`; an anchor cannot legally
+                        // nest inside another, so the inner anchor tags are
+                        // dropped (keeping their text), mirroring Asciidoctor's
+                        // `DropAnchorRx`. The bracketed fallback (`[id]`) has
+                        // no anchors, so stripping only
+                        // applies to a resolved
+                        // reftext.
+                        let base = resolved
+                            .text
+                            .as_deref()
+                            .map(drop_anchor_tags)
+                            .unwrap_or_else(|| format!("[{target}]", target = params.target));
+                        apply_xrefstyle(params.xrefstyle, resolved.signifier.as_ref(), base)
+                    }
+                };
+
+                dest.push_str(&format!(
+                    r#"<a href="{href}"{class}{constraint_attrs}>{text}</a>"#,
+                    href = encode_attribute_value(resolved.href.clone())
+                ));
+            }
+
+            // A target that named a document, which no resolver claimed: use
+            // the destination derived from the target itself.
+            (None, Some(derived)) => {
+                let text = params
+                    .provided_text
+                    .map(str::to_string)
+                    .unwrap_or_else(|| derived.text.clone());
+
+                dest.push_str(&format!(
+                    r#"<a href="{href}"{class}{constraint_attrs}>{text}</a>"#,
+                    href = encode_attribute_value(derived.href.clone())
+                ));
+            }
+
+            (None, None) => {
+                // Unresolved: link to the raw target and show bracketed text,
+                // mirroring Asciidoctor's behavior for a missing reference.
+                let text = params
+                    .provided_text
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("[{target}]", target = params.target));
+
+                dest.push_str(&format!(
+                    r##"<a href="#{target}"{class}{constraint_attrs}>{text}</a>"##,
+                    target = encode_attribute_value(params.target.to_owned())
+                ));
+            }
+        }
+    }
+
+    fn render_callout(&self, callout: &Callout<'_>, context: &RenderContext, dest: &mut String) {
+        let n = callout.number.as_ref();
+
+        if context.attribute_value("icons").as_maybe_str() == Some("font") {
+            dest.push_str(&format!(
+                r#"<i class="conum" data-value="{n}"></i><b>({n})</b>"#
+            ));
+        } else if context.is_attribute_set("icons") {
+            let icontype = context
+                .attribute_value("icontype")
+                .as_maybe_str()
+                .unwrap_or("png")
+                .to_owned();
+
+            let icon = format!("callouts/{n}.{icontype}");
+            let src = self.image_uri(&icon, context, Some("iconsdir"));
+
+            dest.push_str(&format!(r#"<img src="{src}" alt="{n}">"#));
+        } else {
+            match &callout.guard {
+                CalloutGuard::Xml => {
+                    dest.push_str(&format!(r#"&lt;!--<b class="conum">({n})</b>--&gt;"#));
+                }
+
+                CalloutGuard::LineComment(prefix) => {
+                    dest.push_str(prefix.as_ref());
+                    dest.push_str(&format!(r#"<b class="conum">({n})</b>"#));
+                }
+            }
+        }
+    }
+
+    fn render_index_term(
+        &self,
+        _index_term: &IndexTerm<'_>,
+        visible_term: Option<&str>,
+        dest: &mut String,
+    ) {
+        // The HTML5 converter does not generate an index, so a concealed index
+        // term produces no output and a flow index term renders only its
+        // visible term text. The node itself is unused *here* — it is passed
+        // so that a backend which does build an index has somewhere to read
+        // the term from; see the trait method's own docs for what that node
+        // does and does not carry today.
+        if let Some(term) = visible_term {
+            dest.push_str(term);
+        }
+    }
+
+    fn render_button(&self, text: &str, dest: &mut String) {
+        dest.push_str(&format!(r#"<b class="button">{text}</b>"#));
+    }
+
+    fn render_keyboard(&self, keys: &[CowStr<'_>], dest: &mut String) {
+        if let [key] = keys {
+            dest.push_str(&format!("<kbd>{key}</kbd>"));
+        } else {
+            // The visual separator is always `+`, even when the source used a
+            // comma delimiter (e.g. `kbd:[Ctrl,T]`). This matches Asciidoctor's
+            // HTML5 output, where the delimiter only selects how keys are
+            // split, not how the sequence is displayed.
+            dest.push_str(&format!(
+                r#"<span class="keyseq"><kbd>{keys}</kbd></span>"#,
+                keys = join_cow_strs(keys, "</kbd>+<kbd>")
+            ));
+        }
+    }
+
+    fn render_menu(
+        &self,
+        menu: &str,
+        submenus: &[CowStr<'_>],
+        menuitem: Option<&str>,
+        context: &RenderContext,
+        dest: &mut String,
+    ) {
+        let caret = if context.attribute_value("icons").as_maybe_str() == Some("font") {
+            r#"&#160;<i class="fa fa-angle-right caret"></i> "#
+        } else {
+            r#"&#160;<b class="caret">&#8250;</b> "#
+        };
+
+        if submenus.is_empty() {
+            if let Some(menuitem) = menuitem {
+                dest.push_str(&format!(
+                    r#"<span class="menuseq"><b class="menu">{menu}</b>{caret}<b class="menuitem">{menuitem}</b></span>"#
+                ));
+            } else {
+                dest.push_str(&format!(r#"<b class="menuref">{menu}</b>"#));
+            }
+        } else {
+            let submenu_joiner = format!(r#"</b>{caret}<b class="submenu">"#);
+            dest.push_str(&format!(
+                r#"<span class="menuseq"><b class="menu">{menu}</b>{caret}<b class="submenu">{submenus}</b>{caret}<b class="menuitem">{menuitem}</b></span>"#,
+                submenus = join_cow_strs(submenus, &submenu_joiner),
+                menuitem = menuitem.unwrap_or_default(),
+            ));
+        }
+    }
+
+    fn render_footnote(&self, footnote: &Footnote<'_>, dest: &mut String) {
+        // The three cases `render_footnote`'s own documentation names, read
+        // off the node. A defining occurrence always carries its number (see
+        // `build_footnote_node`) and folds its own id into the marker's
+        // anchor; a reference either reuses an existing footnote's number —
+        // never folding an id, matching the string replacer, which rendered a
+        // reference's id attribute only for the *defining* occurrence — or,
+        // unresolved, displays its own id in an error marker.
+        let (index, id, text): (Option<&str>, Option<&str>, &str) = if footnote.is_reference {
+            match footnote.number.as_deref() {
+                Some(number) => (Some(number), None, ""),
+                None => (None, None, footnote.id.as_deref().unwrap_or("")),
+            }
+        } else {
+            (footnote.number.as_deref(), footnote.id.as_deref(), "")
+        };
+
+        match index {
+            Some(index) if footnote.is_reference => {
+                // A reference to an already-defined footnote reuses its number
+                // but gets no anchor of its own.
+                dest.push_str(&format!(
+                    r##"<sup class="footnoteref">[<a class="footnote" href="#_footnotedef_{index}" title="View footnote.">{index}</a>]</sup>"##
+                ));
+            }
+
+            Some(index) => {
+                // A defining occurrence. When the footnote carries an ID, the
+                // marker is given a matching anchor so it can be linked to.
+                let id_attr = id
+                    .map(|id| format!(r#" id="_footnote_{id}""#))
+                    .unwrap_or_default();
+
+                dest.push_str(&format!(
+                    r##"<sup class="footnote"{id_attr}>[<a id="_footnoteref_{index}" class="footnote" href="#_footnotedef_{index}" title="View footnote.">{index}</a>]</sup>"##
+                ));
+            }
+
+            None => {
+                // An unresolved reference: the ID was never defined.
+                dest.push_str(&format!(
+                    r#"<sup class="footnoteref red" title="Unresolved footnote reference.">[{text}]</sup>"#
+                ));
+            }
+        }
+    }
+}
+
+/// Writes an HTML attribute value to `dest`, escaping the double-quote
+/// delimiter as `&quot;`.
+///
+/// A `"` left raw inside a `"…"`-delimited attribute value would terminate the
+/// value early and let following text be parsed as additional attributes —
+/// attribute injection. Role and id values can carry a literal `"` (for
+/// example a single-quoted positional role such as `['a"b']`, or a
+/// single-quoted `role='a"b'` named attribute), so escape it here. The `<`,
+/// `>`, and `&` characters are left as-is: the surrounding content pipeline
+/// already escapes them for the constrained/inline paths, and Asciidoctor
+/// deliberately leaves them unescaped for a passthrough attribute list, so
+/// re-escaping here would double-escape the former and diverge on the latter.
+fn push_attribute_value(dest: &mut String, value: &str) {
+    // The overwhelmingly common value carries no `"` at all and is appended
+    // as one block copy; only a value that does pays the per-segment walk.
+    let mut rest = value;
+
+    while let Some(quote) = rest.find('"') {
+        dest.push_str(rest.get(..quote).unwrap_or_default());
+        dest.push_str("&quot;");
+        rest = rest.get(quote + 1..).unwrap_or_default();
+    }
+
+    dest.push_str(rest);
+}
+
+fn wrap_body_in_html_tag(
+    tag: &'static str,
+    id: Option<String>,
+    roles: Vec<&str>,
+    body: &str,
+    dest: &mut String,
+) {
+    dest.push('<');
+    dest.push_str(tag);
+
+    if let Some(id) = id.as_ref() {
+        dest.push_str(" id=\"");
+        push_attribute_value(dest, id);
+        dest.push('"');
+    }
+
+    if !roles.is_empty() {
+        let roles = roles.join(" ");
+        dest.push_str(" class=\"");
+        push_attribute_value(dest, &roles);
+        dest.push('"');
+    }
+
+    dest.push('>');
+    dest.push_str(body);
+    dest.push_str("</");
+    dest.push_str(tag);
+    dest.push('>');
+}
+
+fn render_icon_or_image(
+    attrlist: &Attrlist,
+    img: &str,
+    type_: &'static str,
+    link_self_href: Option<&str>,
+    self_href_from_uri_target: bool,
+    dest: &mut String,
+) {
+    let mut img = img.to_string();
+
+    // The `link` attribute value is used verbatim as the `href`, except that a
+    // `link=self` resolves to the image's own `src` (its data URI or web path)
+    // when one is available. An inline SVG (and a font/text icon) has no `src`
+    // to resolve to, so `link_self_href` is `None` there and the literal `self`
+    // is kept. (Ruby Asciidoctor, where `src` is undefined in those branches,
+    // instead drops the anchor entirely; this crate keeps it with the literal
+    // `self` target.)
+    if let Some(link) = attrlist.named_attribute("link") {
+        let is_self = link.value() == "self";
+
+        let href = if is_self {
+            link_self_href.unwrap_or("self")
+        } else {
+            link.value()
+        };
+
+        // An explicit `link=` destination whose scheme could execute script is
+        // not turned into a live link; the image is rendered without the
+        // wrapping anchor. Escaping the `"` delimiter alone would still leave a
+        // live `javascript:` URI, so the destination is rejected outright — the
+        // same policy the explicit `link:` macro applies, and the macro layer
+        // records the accompanying warning. `link=self` resolves to the image's
+        // own `src`, which may legitimately be a `data:image/*` URI, so it is
+        // checked with the more permissive [`has_dangerous_self_href`] (a
+        // `javascript:` or non-image `data:` src — or an author-supplied SVG
+        // data URI target — still resolves to a live script URI here and is
+        // rejected).
+        let rejected = if is_self {
+            has_dangerous_self_href(href, self_href_from_uri_target)
+        } else {
+            has_dangerous_scheme(link.value())
+        };
+
+        if !rejected {
+            img = format!(
+                r#"<a class="image" href="{href}"{link_constraint_attrs}>{img}</a>"#,
+                // Both sources of `href` — the image's own `src` (a resolved web
+                // path that can carry a stray `"`) and an author-supplied
+                // `link=` value — are escaped for the `"` delimiter so neither
+                // can break out of the attribute.
+                href = encode_attribute_value(href.to_owned()),
+                link_constraint_attrs = link_constraint_attrs(attrlist, None)
+            );
+        }
+    }
+
+    let mut roles: Vec<&str> = attrlist.roles();
+
+    if let Some(float) = attrlist.named_attribute("float") {
+        roles.insert(0, float.value());
+    }
+
+    roles.insert(0, type_);
+
+    dest.push_str(r#"<span class=""#);
+
+    // The wrapper's own `type_` is a literal, but every other role here — an
+    // attribute-list role, and a `float=` value — is author-supplied and takes
+    // the same quote escape the `href` above and the icon branch's own `class`
+    // fragments take.
+    dest.push_str(
+        &roles
+            .iter()
+            .map(|role| encode_attribute_value((*role).to_owned()))
+            .collect::<Vec<String>>()
+            .join(" "),
+    );
+
+    dest.push_str(r#"">"#);
+    dest.push_str(&img);
+    dest.push_str("</span>");
+}
+
+fn encode_attribute_value(value: String) -> String {
+    value.replace('"', "&quot;")
+}
+
+/// Reports whether `target` begins with a URI scheme that can execute script
+/// when placed in an `href` — `javascript:`, `data:`, or `vbscript:`.
+///
+/// Leading control and space characters are ignored first, because a browser
+/// strips them before it parses the scheme (so `"\u{1}javascript:…"` is still
+/// live). The comparison is ASCII-case-insensitive.
+///
+/// Escaping the quote delimiter (see [`encode_attribute_value`]) stops an
+/// author from breaking out of an attribute, but not from placing a live
+/// script URI in an `href`; that requires rejecting the scheme outright. This
+/// guards the explicit `link:` macro and the `image:`/`icon:` `link=`
+/// attribute. The auto-linker already restricts bare URLs to a safe scheme set
+/// (`https?`/`file`/`ftp`/`irc`).
+pub(crate) fn has_dangerous_scheme(target: &str) -> bool {
+    let target = target.trim_start_matches(|c: char| c <= ' ');
+
+    const DANGEROUS_SCHEMES: [&str; 3] = ["javascript:", "data:", "vbscript:"];
+
+    DANGEROUS_SCHEMES.iter().any(|scheme| {
+        target
+            .get(..scheme.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(scheme))
+    })
+}
+
+/// Reports whether `href` — the `src` a `link=self` image/icon resolves to —
+/// would place a script-capable URI in the wrapping anchor's `href`.
+///
+/// `link=self` names the image's own `src`, so it cannot simply be run through
+/// [`has_dangerous_scheme`]: an embedded image (`data-uri`) legitimately
+/// resolves to a `data:image/*` URI, and there is an Asciidoctor-parity test
+/// for exactly that. A `data:image/*` source is therefore exempt. Every other
+/// dangerous scheme — `javascript:`, `vbscript:`, or a non-image `data:` such
+/// as `data:text/html,…` — is never a valid image source, so promoting it into
+/// an `href` is rejected: only the anchor is dropped (the harmless `<img src>`
+/// is left intact), mirroring the `link=` policy above.
+///
+/// `from_uri_target` narrows that exemption. It is set when the `src` was
+/// passed through verbatim from an author-supplied URI target, rather than
+/// resolved from a local file path (a plain web path, or a crate-embedded
+/// `data-uri`). A `data:image/svg+xml` document *executes* its embedded script
+/// when it is navigated to — which following the `href` on click does — unlike
+/// a raster image data URI, which merely displays. An embedded SVG comes from a
+/// trusted local file (the parity case) and stays exempt; an author-supplied
+/// `data:image/svg…` target is script-navigable and is rejected.
+pub(crate) fn has_dangerous_self_href(href: &str, from_uri_target: bool) -> bool {
+    if !has_dangerous_scheme(href) {
+        return false;
+    }
+
+    // A dangerous scheme that is not a `data:image/*` source (`javascript:`,
+    // `vbscript:`, `data:text/html`, …) is always rejected.
+    if !is_image_data_uri(href) {
+        return true;
+    }
+
+    // A `data:image/*` source is exempt, except an author-supplied SVG data
+    // URI, whose script runs when the anchor is followed.
+    from_uri_target && is_svg_data_uri(href)
+}
+
+/// Reports whether `href` is a `data:image/*` URI (the leading control/space
+/// characters are ignored and the comparison is ASCII-case-insensitive, as in
+/// [`has_dangerous_scheme`]). This is the one `data:` form that is a legitimate
+/// image source, so it is exempt from the `link=self` rejection above.
+fn is_image_data_uri(href: &str) -> bool {
+    let href = href.trim_start_matches(|c: char| c <= ' ');
+
+    const IMAGE_DATA_PREFIX: &str = "data:image/";
+
+    href.get(..IMAGE_DATA_PREFIX.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(IMAGE_DATA_PREFIX))
+}
+
+/// Reports whether `href` is a `data:image/svg…` URI. SVG is the one image
+/// media type that executes embedded script when the URI is opened as a
+/// top-level document, so an author-supplied SVG data URI is not a safe
+/// `link=self` target (see [`has_dangerous_self_href`]). Raster image data URIs
+/// never begin with `svg`, so they are unaffected.
+fn is_svg_data_uri(href: &str) -> bool {
+    let href = href.trim_start_matches(|c: char| c <= ' ');
+
+    const SVG_DATA_PREFIX: &str = "data:image/svg";
+
+    href.get(..SVG_DATA_PREFIX.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(SVG_DATA_PREFIX))
+}
+
+/// Escapes a value for safe interpolation into an HTML attribute.
+///
+/// Unlike [`encode_attribute_value`] (which only guards the quote delimiter to
+/// mirror Asciidoctor's image-alt handling), this escapes the full set of
+/// characters that could break out of, or corrupt, an attribute value. It is
+/// used for author-supplied `xref` `window`/`role` values, which — unlike the
+/// hard-coded `window` strings the link macro passes — can contain arbitrary
+/// text.
+fn encode_html_attribute(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for c in value.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '"' => out.push_str("&quot;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn normalize_web_path(
+    target: &str,
+    context: &RenderContext,
+    start: Option<&str>,
+    preserve_uri_target: bool,
+) -> String {
+    if preserve_uri_target && is_uri_ish(target) {
+        encode_spaces_in_uri(target)
+    } else {
+        context.path_resolver.web_path(target, start)
+    }
+}
+
+pub(crate) fn is_uri_ish(path: &str) -> bool {
+    path.contains(':') && URI_SNIFF.is_match(path)
+}
+
+/// Returns the file extension (including the leading `.`) of the final path
+/// segment of `path`, or `None` when that segment carries no extension (its `.`
+/// is the first or last character of the segment, or there is no `.`). Mirrors
+/// Asciidoctor's `Helpers.extname`.
+fn extname(path: &str) -> Option<&str> {
+    let segment = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    match segment.rfind('.') {
+        Some(i) if i > 0 && i < segment.len() - 1 => Some(&segment[i..]),
+        _ => None,
+    }
+}
+
+/// Reports whether the final path segment of `path` carries a file extension.
+/// Mirrors Asciidoctor's `Helpers.extname?`, used by the icon macro to decide
+/// whether the `icontype` attribute should be appended.
+fn has_extname(path: &str) -> bool {
+    extname(path).is_some()
+}
+
+/// Determines the MIME type for a `data:` URI from the target image's file
+/// extension, mirroring Asciidoctor's `generate_data_uri`: `.svg` maps to
+/// `image/svg+xml`, any other extension maps to `image/<ext>`, and a target
+/// with no extension maps to `application/octet-stream`.
+///
+/// The `image/<ext>` mapping is verbatim, matching Asciidoctor: `.jpg` yields
+/// `image/jpg` (not the IANA-registered `image/jpeg`), while `.jpeg` yields
+/// `image/jpeg`. This parity with Asciidoctor is deliberate.
+fn data_uri_mimetype(target: &str) -> String {
+    match extname(target) {
+        Some(".svg") => "image/svg+xml".to_string(),
+
+        // `extname` always includes the leading `.`, which is dropped here.
+        Some(ext) => format!("image/{ext}", ext = ext.strip_prefix('.').unwrap_or(ext)),
+        None => "application/octet-stream".to_string(),
+    }
+}
+
+fn encode_spaces_in_uri(s: &str) -> String {
+    s.replace(' ', "%20")
+}
+
+/// Matches the opening `<svg …>` tag at the start of an SVG document.
+///
+/// Like Ruby Asciidoctor's equivalent (`/\A<svg[^>]*>/`), the `[^>]*` stops at
+/// the first `>`, so a `>` appearing unencoded inside an attribute value would
+/// truncate the match. That cannot happen in well-formed XML (where `>` must be
+/// written as `&gt;`), so this only affects malformed input, and then only by
+/// leaving the opening tag's dimensions unrewritten.
+static SVG_START_TAG_RX: LazyLock<Regex> = LazyLock::new(|| {
+    #[allow(clippy::unwrap_used)]
+    Regex::new(r"\A<svg[^>]*>").unwrap()
+});
+
+/// Matches a `width`, `height`, or `style` attribute (with its leading
+/// whitespace) so they can be stripped from an SVG's opening tag.
+static SVG_SNIFF_WIDTH_HEIGHT_RX: LazyLock<Regex> = LazyLock::new(|| {
+    #[allow(clippy::unwrap_used)]
+    Regex::new(r#"(?s)\s+(?:width|height|style)=(?:"[^"]*"|'[^']*')"#).unwrap()
+});
+
+/// Reads and prepares the raw contents of an SVG file for inline embedding
+/// (`image:target.svg[opts=inline]`).
+///
+/// The SVG contents are supplied by the parser's [`SvgFileHandler`]; when no
+/// handler is registered (or it can't find the file) this returns `None` and
+/// the caller falls back to rendering the alt text.
+///
+/// Before returning, the contents are prepared to match Ruby Asciidoctor:
+///
+/// * any XML preamble or doctype preceding the `<svg>` tag is removed, and
+/// * if an explicit `width` and/or `height` was supplied on the macro, the
+///   opening `<svg>` tag's own `width`, `height`, and `style` attributes are
+///   dropped and the requested dimensions are appended in their place.
+///
+/// [`SvgFileHandler`]: crate::parser::SvgFileHandler
+fn read_svg_contents(
+    src: &str,
+    width: Option<&str>,
+    height: Option<&str>,
+    context: &RenderContext,
+) -> Option<String> {
+    let handler = context.svg_file_handler.as_ref()?;
+    let mut svg = handler.resolve_svg(src, context)?;
+
+    // Strip anything that precedes the opening `<svg>` tag (e.g. `<?xml … ?>`).
+    if svg.starts_with('<')
+        && let Some(start) = svg.find("<svg")
+        && start > 0
+    {
+        svg = svg[start..].to_string();
+    }
+
+    // Rewrite the opening tag's dimensions only when at least one was supplied.
+    if (width.is_some() || height.is_some())
+        && let Some(start_tag) = SVG_START_TAG_RX.find(&svg).map(|m| m.as_str().to_string())
+    {
+        let rest = svg[start_tag.len()..].to_string();
+
+        // Attributes between `<svg` and the closing `>`, with any existing
+        // width/height/style removed.
+        let inner = &start_tag[4..start_tag.len() - 1];
+        let mut new_tag = format!("<svg{}", SVG_SNIFF_WIDTH_HEIGHT_RX.replace_all(inner, ""));
+
+        if let Some(width) = width {
+            new_tag.push_str(&format!(r#" width="{width}""#));
+        }
+
+        if let Some(height) = height {
+            new_tag.push_str(&format!(r#" height="{height}""#));
+        }
+
+        new_tag.push('>');
+        svg = format!("{new_tag}{rest}");
+    }
+
+    Some(svg)
+}
+
+/// Detects strings that resemble URIs.
+///
+/// ## Examples
+///
+/// * `http://domain`
+/// * `https://domain`
+/// * `file:///path`
+/// * `data:info`
+///
+/// ## Counter-examples (do not match)
+///
+/// * `c:/sample.adoc`
+/// * `c:\sample.adoc`
+static URI_SNIFF: LazyLock<Regex> = LazyLock::new(|| {
+    #[allow(clippy::unwrap_used)]
+    Regex::new(
+        r#"(?x)
+        \A                             # Anchor to start of string
+        \p{Alphabetic}                 # First character must be a letter
+        [\p{Alphabetic}\p{Nd}.+-]+     # Followed by one or more alphanum or . + -
+        :                              # Literal colon
+        /{0,2}                         # Zero to two slashes
+    "#,
+    )
+    .unwrap()
+});
+
+/// Removes the anchor (`<a …>` / `</a>`) tags from `text`, keeping everything
+/// between them.
+///
+/// Used when a cross-reference's link text is drawn from its target's reference
+/// text and that reftext itself contains an anchor — an inline link, or a
+/// cross-reference embedded in the target's title. HTML forbids nesting an
+/// `<a>` inside another, so the inner anchor tags are stripped, leaving their
+/// text in place. Mirrors Asciidoctor's `DropAnchorRx = /<(?:a\b[^>]*|\/a)>/`.
+fn drop_anchor_tags(text: &str) -> String {
+    // The common case — a reftext with no anchor at all — allocates a plain
+    // copy and does no scanning.
+    if !text.contains("<a") {
+        return text.to_string();
+    }
+
+    #[allow(clippy::unwrap_used)]
+    static DROP_ANCHOR_RX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"<(?:a\b[^>]*|/a)>").unwrap());
+
+    DROP_ANCHOR_RX.replace_all(text, "").into_owned()
+}
+
+/// Builds the display text for a resolved cross-reference under the selected
+/// [`XrefStyle`].
+///
+/// `base` is the target's reference text (its title, when the target has no
+/// explicit reftext). Styling applies only when a style is selected *and* the
+/// target carries an [`XrefSignifier`] (a numbered section or captioned block);
+/// otherwise `base` is returned unchanged. The HTML conventions live here in
+/// the HTML renderer: a title is wrapped in typographic quotes, except a
+/// chapter or appendix title, which is emphasized with `<em>` (in every style).
+fn apply_xrefstyle(
+    style: Option<XrefStyle>,
+    signifier: Option<&XrefSignifier>,
+    base: String,
+) -> String {
+    let (Some(style), Some(signifier)) = (style, signifier) else {
+        return base;
+    };
+
+    match style {
+        XrefStyle::Full if signifier.emphasize => {
+            format!("{label}, <em>{base}</em>", label = signifier.label)
+        }
+        XrefStyle::Full => {
+            format!("{label}, &#8220;{base}&#8221;", label = signifier.label)
+        }
+        XrefStyle::Short => signifier.label.clone(),
+        XrefStyle::Basic if signifier.emphasize => format!("<em>{base}</em>"),
+        XrefStyle::Basic => base,
+    }
+}
+
+/// Builds the `target`/`rel` attributes for a cross-reference whose `xref:`
+/// macro carried a `window` attribute. Mirrors the link macro: a `_blank`
+/// window automatically adds `rel="noopener"`.
+fn xref_constraint_attrs(window: Option<&str>) -> String {
+    let Some(window) = window else {
+        return String::new();
+    };
+
+    let rel_noopener = if window == "_blank" {
+        r#" rel="noopener""#
+    } else {
+        ""
+    };
+
+    // The `window` value is author-supplied, so it is escaped before being
+    // interpolated into the `target` attribute. The `_blank` comparison above
+    // runs on the raw value, which is correct for the well-formed inputs that
+    // trigger `rel="noopener"`.
+    format!(
+        r#" target="{window}"{rel_noopener}"#,
+        window = encode_html_attribute(window)
+    )
+}
+
+fn link_constraint_attrs(attrlist: &Attrlist<'_>, window: Option<&str>) -> String {
+    let rel = if attrlist.has_option("nofollow") {
+        Some("nofollow")
+    } else {
+        None
+    };
+
+    if let Some(window) = attrlist
+        .named_attribute("window")
+        .map(|a| a.value())
+        .or(window)
+    {
+        let rel_noopener = if window == "_blank" || attrlist.has_option("noopener") {
+            if let Some(rel) = rel {
+                format!(r#" rel="{rel} noopener""#)
+            } else {
+                r#" rel="noopener""#.to_owned()
+            }
+        } else {
+            "".to_string()
+        };
+
+        // The `window` is author-supplied (a `window=` attribute, or the `^`
+        // suffix's hard-coded `_blank`), so the quote delimiter is escaped
+        // here for the same reason the `href` and `title` escape it. The
+        // `_blank` comparison above reads the value as written, before the
+        // escape, so a `rel="noopener"` decision is unaffected.
+        format!(
+            r#" target="{window}"{rel_noopener}"#,
+            window = encode_attribute_value(window.to_owned())
+        )
+    } else if let Some(rel) = rel {
+        format!(r#" rel="{rel}""#)
+    } else {
+        "".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        HtmlInlineRenderer, InlineRenderer, QuoteScope, QuoteType, data_uri_mimetype,
+        drop_anchor_tags, encode_html_attribute, extname, has_extname,
+    };
+    use crate::{Span, attributes::Attrlist};
+
+    #[test]
+    fn a_mark_carrying_an_id_or_a_role_renders_as_a_span() {
+        // Asciidoctor renders `#text#` as `<mark>`, but a *styled* one — given
+        // an id or a role — as a `<span>` instead. The builder reaches the same
+        // outcome one step earlier, by classifying a `#…#` that carries an
+        // attribute list as `Unquoted` rather than `Mark` (see
+        // `style_variant_of`), so no parse ever hands this method a `Mark` with
+        // either. That does not make the rule dead: `render_styled` is public,
+        // and a caller folding a node it built itself can present exactly that
+        // combination — so the reference backend has to answer for it, and this
+        // pins the answer.
+        let renderer = HtmlInlineRenderer {};
+        let attrlist = Attrlist::empty(Span::new(""));
+
+        let mut dest = String::new();
+        renderer.render_styled(
+            QuoteType::Mark,
+            QuoteScope::Constrained,
+            &attrlist,
+            Some("anchor".to_owned()),
+            "text",
+            &mut dest,
+        );
+        assert_eq!(dest, r#"<span id="anchor">text</span>"#);
+
+        // With neither an id nor a role it is a plain `<mark>`, which is the
+        // branch every parsed `#text#` takes.
+        let mut dest = String::new();
+        renderer.render_styled(
+            QuoteType::Mark,
+            QuoteScope::Constrained,
+            &attrlist,
+            None,
+            "text",
+            &mut dest,
+        );
+        assert_eq!(dest, "<mark>text</mark>");
+    }
+
+    #[test]
+    fn extname_extracts_final_segment_extension() {
+        // A normal extension on the final path segment.
+        assert_eq!(extname("fixtures/dot.gif"), Some(".gif"));
+        assert_eq!(extname("circle.svg"), Some(".svg"));
+
+        // A dot in an earlier segment does not count; only the final segment's
+        // extension does.
+        assert_eq!(extname("a.b/c"), None);
+
+        // A leading or trailing dot in the segment is not an extension.
+        assert_eq!(extname(".hidden"), None);
+        assert_eq!(extname("trailing."), None);
+
+        // No dot at all.
+        assert_eq!(extname("plain"), None);
+
+        // `has_extname` is the boolean form.
+        assert!(has_extname("a/b.png"));
+        assert!(!has_extname("a.b/c"));
+    }
+
+    #[test]
+    fn data_uri_mimetype_maps_extension() {
+        // `.svg` is special-cased; every other extension maps to `image/<ext>`.
+        assert_eq!(data_uri_mimetype("circle.svg"), "image/svg+xml");
+        assert_eq!(data_uri_mimetype("fixtures/dot.gif"), "image/gif");
+        assert_eq!(data_uri_mimetype("photo.png"), "image/png");
+
+        // The extension is used verbatim (matching Asciidoctor), so `.jpg`
+        // yields `image/jpg` rather than the registered `image/jpeg`, while
+        // `.jpeg` yields `image/jpeg`.
+        assert_eq!(data_uri_mimetype("photo.jpg"), "image/jpg");
+        assert_eq!(data_uri_mimetype("photo.jpeg"), "image/jpeg");
+
+        // A target with no extension falls back to a generic binary type.
+        assert_eq!(data_uri_mimetype("noext"), "application/octet-stream");
+    }
+
+    #[test]
+    fn encode_html_attribute_escapes_special_characters() {
+        // Each of the four characters that could break out of or corrupt an
+        // HTML attribute value is replaced with its entity; ordinary characters
+        // pass through untouched.
+        assert_eq!(
+            encode_html_attribute(r#"a&b"c<d>e"#),
+            "a&amp;b&quot;c&lt;d&gt;e"
+        );
+        assert_eq!(encode_html_attribute("plain"), "plain");
+    }
+
+    #[test]
+    fn drop_anchor_tags_strips_anchor_markup_keeping_text() {
+        // Anchor-free text is returned unchanged.
+        assert_eq!(drop_anchor_tags("plain text"), "plain text");
+
+        // A single anchor's tags are removed, keeping the link text.
+        assert_eq!(
+            drop_anchor_tags(r#"Consult <a href="https://google.com">Google</a>"#),
+            "Consult Google"
+        );
+
+        // A bracketed cross-reference fallback embedded in a reftext.
+        assert_eq!(drop_anchor_tags(r##"B <a href="#a">[a]</a>"##), "B [a]");
+
+        // Multiple anchors are all stripped.
+        assert_eq!(
+            drop_anchor_tags(r##"<a href="#x">X</a> and <a href="#y">Y</a>"##),
+            "X and Y"
+        );
+
+        // A `<article>` tag is not an anchor and must be left intact (the `\b`
+        // word boundary in the pattern keeps `<a` from matching `<article>`).
+        assert_eq!(
+            drop_anchor_tags("<article>text</article>"),
+            "<article>text</article>"
+        );
+    }
+}

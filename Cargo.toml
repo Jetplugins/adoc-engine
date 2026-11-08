@@ -1,7 +1,7 @@
 [workspace]
 members = ["crates/engine", "crates/cli"]
 resolver = "2"
-exclude = ["vendor/adocers-typst"]
+exclude = ["vendor/adocers-typst", "vendor/asciidoc-parser", "vendor/asciidoc-html5", "vendor/adocers-render-core"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
@@ -10,4 +10,3 @@ rust-version = "1.96"
 [profile.release]
 lto = "thin"
 codegen-units = 1
-

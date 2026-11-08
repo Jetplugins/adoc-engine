@@ -1,0 +1,15 @@
+= Continued list blocks
+
+. Validate the target cluster.
+.. Check available capacity.
+.. Confirm that the staging namespace exists.
+. Deploy the application.
++
+[source,shell]
+----
+atlas deploy --environment staging --version 2.4
+atlas status --watch
+----
++
+TIP: Keep the previous release until health checks have completed.
+. Promote the verified release.

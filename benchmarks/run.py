@@ -52,6 +52,7 @@ def main():
     # Include expansion measured with the same directory and safe mode for all engines.
     cases.append(('includes',{'source':(ROOT/'fixtures/includes/main.adoc').read_text(),'options':{'safeMode':'safe','baseDir':str(ROOT/'fixtures/includes')}}))
     cases.append(('include-selection',{'source':(ROOT/'fixtures/includes/selection.adoc').read_text(),'options':{'safeMode':'safe','baseDir':str(ROOT/'fixtures/includes')}}))
+    cases.append(('showcase',{'source':(ROOT/'fixtures/showcase/main.adoc').read_text(),'options':{'safeMode':'safe','baseDir':str(ROOT/'fixtures/showcase')}}))
     edit_variants=['= Editing\n\n'+('Base text with *formatting*.\n\n'*1000)+f'Changed line {i}.'for i in range(20)]
     cases.append(('repeated-edits',{'source':edit_variants[0],'options':{'safeMode':'secure','attributes':{}}}))
     if a.cases:
@@ -124,6 +125,7 @@ def main():
     a.output.mkdir(parents=True,exist_ok=True)
     def version(cmd):return subprocess.check_output(cmd,text=True,cwd=ROOT).strip()
     metadata={'timestampUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'platform':platform.platform(),'cpu':subprocess.check_output(['sysctl','-n','machdep.cpu.brand_string'],text=True).strip() if platform.system()=='Darwin' else platform.processor(),'machine':platform.machine(),'python':platform.python_version(),'node':version(['node','--version']),'ruby':version(['ruby','--version']),'asciidoctorRuby':'2.0.26','asciidoctorJs':'3.0.4','rust':version([a.rust,'--version']),'rustBinarySha256':hashlib.sha256(Path(a.rust).read_bytes()).hexdigest(),'commit':subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,capture_output=True,text=True).stdout.strip(),'options':vars(a)|{'output':str(a.output)},'cases':parity}
+    metadata['workingTreeDirty']=bool(subprocess.run(['git','status','--porcelain'],cwd=ROOT,capture_output=True,text=True,check=True).stdout.strip())
     (a.output/'raw.json').write_text(json.dumps({'metadata':metadata,'samples':raw,'memory':memory},indent=2))
     with (a.output/'raw.csv').open('w')as f:
         writer=csv.DictWriter(f,fieldnames=['case','engine','mode','sample','nanos','bytes']);writer.writeheader();writer.writerows(raw)

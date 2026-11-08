@@ -1,0 +1,19 @@
+// This paragraph is outside the selected tag and should not appear.
+
+// tag::recovery[]
+== Recovery drill
+
+This section comes from `includes/recovery.adoc`.
+
+. Restore the most recent verified artifact.
+. Re-run the readiness checks.
+. Record the outcome in the incident log.
+
+[TIP]
+====
+An include should behave like source written directly in the parent document.
+Its section numbering and references should remain consistent.
+====
+// end::recovery[]
+
+// This footer is outside the selected tag, too.

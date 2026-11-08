@@ -1,0 +1,254 @@
+= Atlas Operations Handbook
+The Atlas Team
+v2.4, 2026-11-08: Renderer comparison edition
+:doctype: article
+:toc:
+:toclevels: 2
+:sectnums:
+:experimental:
+:showtitle:
+:product: Atlas
+:release: 2.4
+:imagesdir: images
+:idprefix:
+:idseparator: -
+:example-caption: Example
+:source-highlighter: none
+
+[.lead]
+A practical field guide to *{product} {release}*: from first deployment to incident response.
+This single source exercises document structure, inline substitutions, compound blocks, tables, references, images, and includes.
+
+NOTE: Each engine receives the same source, attributes, include directory, and safe mode. The HTML is displayed with the same stylesheet.
+
+[[typography]]
+== Typography and navigation
+
+Write *strong statements*, _careful emphasis_, `inline_code()`, and *_combined emphasis_*.
+Use #marked text#, [small]#small text#, [.underline]#underlining#, [.line-through]#strikethrough#, H~2~O, and x^2^.
+Typographic substitutions include (C), (R), (TM), an ellipsis... and an arrow ->.
+Constrained and unconstrained formatting can appear inside a word: un**break**able.
+
+Open menu:File[New > Project], press kbd:[Ctrl+Shift+P], then choose btn:[Create].
+Visit https://example.org[the project site] or mailto:ops@example.org[contact operations].
+The deployment procedure is in <<deployment>>; <<capacity,our capacity table>> summarizes resource allocation.
+The test environment is reproducible.footnote:environment[All examples use a local staging environment with three worker nodes.]
+The same environment is used for recovery drills.footnote:environment[]
+
+.Preserve line breaks with a hardbreak option
+[%hardbreaks]
+One control plane.
+Three worker nodes.
+One reproducible release.
+
+[[deployment]]
+== Deployment and nested lists
+
+=== Ordered steps and attached blocks
+
+. Validate the target cluster.
+.. Check available capacity.
+.. Confirm that the staging namespace exists.
+. Deploy the application.
++
+[source,shell]
+----
+atlas deploy --environment staging --version 2.4
+atlas status --watch
+----
++
+TIP: Keep the previous release until health checks have completed.
+. Promote the verified release.
+
+=== Unordered lists and checklists
+
+* Control plane
+** API gateway
+** Scheduler
+*** Queue monitoring
+*** Retry policy
+* Workers
+** Storage adapter
+** Rendering service
+
+.Release checklist
+* [x] Build reproducible artifacts
+* [x] Verify the source document
+* [ ] Review the staging deployment
+* [ ] Promote to production
+
+=== Description lists
+
+Control plane:: Accepts requests and dispatches jobs.
+Worker:: Converts one input into an output artifact.
+Artifact:: A versioned HTML, PDF, EPUB, or SVG result.
+
+[horizontal]
+RTO:: Recovery time objective: 15 minutes.
+RPO:: Recovery point objective: 5 minutes.
+
+[[capacity]]
+== Tables and cell styles
+
+.Capacity allocation
+[cols="2,1,1,2",options="header,footer"]
+|===
+|Component |Replicas |CPU |Purpose
+
+|Gateway |2 |1 |Accept and validate requests
+|Scheduler |1 |1 |Distribute work fairly
+|Worker |3 |4 |Render the document
+
+2+|Total reserved capacity |6 |Release 2.4
+|===
+
+.Mixed content, spanning cells, and vertical alignment
+[cols="1,2a,1",options="header"]
+|===
+|Stage |Verification |Owner
+
+.2+|Build
+|* Compile the renderer
+* Package the executable
+|Engineering
+
+|Check checksums and the license.
+|Release
+
+|Review
+|A compound cell can contain *formatting* and a second paragraph.
+
+NOTE: Retain the verification logs.
+|Operations
+|===
+
+.CSV input
+[format="csv",options="header",cols="2,1,1"]
+|===
+Region,Nodes,State
+Sydney,3,Ready
+Frankfurt,2,Ready
+|===
+
+== Code, callouts, and literal text
+
+.A minimal rendering client
+[source,rust]
+----
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = std::fs::read_to_string("guide.adoc")?; // <1>
+    let html = render(&source)?; // <2>
+    std::fs::write("guide.html", html)?; // <3>
+    Ok(())
+}
+----
+<1> Read the original UTF-8 source.
+<2> Convert it with the selected renderer.
+<3> Save the generated document.
+
+.Literal text preserves spacing and punctuation
+....
+INPUT                 OUTPUT
+guide.adoc     -->    guide.html
+*not bold*            <not an element>
+....
+
+.A listing with attribute substitution enabled
+[subs="attributes"]
+----
+product = {product}
+release = {release}
+----
+
+== Admonitions and compound blocks
+
+NOTE: A note adds context without interrupting the procedure.
+
+TIP: Cache immutable assets between builds.
+
+IMPORTANT: Verify the generated document before publishing it.
+
+CAUTION: Changing an identifier can break an existing cross-reference.
+
+WARNING: This sample is documentation, not a production deployment script.
+
+[IMPORTANT]
+.Before switching traffic
+====
+Run both checks:
+
+* Confirm that the new release answers requests.
+* Confirm that rollback artifacts are available.
+====
+
+.An example with a nested block
+====
+A release is ready when the checks pass.
+
+[source,json]
+----
+{"release":"2.4","verified":true,"targets":["html","pdf","epub","svg"]}
+----
+====
+
+.Operator's sidebar
+****
+Keep deployment notes close to the procedure.
+
+* Record the release identifier.
+* Keep the incident link.
+****
+
+[quote,The Atlas Team,Operations principles]
+____
+A document is useful when its reader can act with confidence.
+____
+
+[verse,On-call notebook]
+____
+Read the signal,
+check the source,
+leave a clear trail.
+____
+
+== Images and captions
+
+[[pipeline]]
+.The document processing pipeline
+image::pipeline.svg[Source document flowing through a renderer to HTML PDF EPUB and SVG,640,160]
+
+Figure <<pipeline>> is a local SVG image; no diagram extension or network service is required.
+
+== Includes and conditional content
+
+The following section is expanded from a separate file with a tag selector and a level offset.
+
+include::includes/recovery.adoc[tag=recovery,leveloffset=+1]
+
+ifdef::release[]
+This sentence is visible because the `release` attribute is set to *{release}*.
+endif::[]
+
+ifndef::draft[]
+This release copy omits draft-only material.
+endif::[]
+
+ifeval::["{release}" == "2.4"]
+The numeric release gate selects the 2.4 documentation.
+endif::[]
+
+== References and final checks
+
+The procedure links back to <<deployment>> and uses the terms in <<typography>>.
+For background, consult <<atlas-guide>>.
+
+[bibliography]
+=== Further reading
+
+* [[[atlas-guide,ATLAS-24]]] The Atlas Team. _Atlas Operations Guide_. 2026.
+
+'''
+
+pass:[<details><summary>Verification note (HTML passthrough)</summary><p>This disclosure is authored as safe, local HTML in the source document.</p></details>]
+
+This is the end of the shared feature showcase.

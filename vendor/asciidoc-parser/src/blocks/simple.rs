@@ -1,0 +1,1017 @@
+use crate::{
+    HasSpan, Parser, Span,
+    attributes::Attrlist,
+    blocks::{
+        ChildBlocks, CompoundDelimitedBlock, ContentModel, IsBlock, ListItemMarker,
+        RawDelimitedBlock, TableBlock,
+        caption::assign_block_caption,
+        metadata::{BlockMetadata, block_title_text},
+    },
+    content::{Content, SubstitutionGroup},
+    inlines::InlineNode,
+    span::MatchedItem,
+    strings::CowStr,
+};
+
+/// The style of a simple block.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub enum SimpleBlockStyle {
+    /// A paragraph block with normal substitutions.
+    Paragraph,
+
+    /// A literal block with no substitutions.
+    Literal,
+
+    /// Blocks and paragraphs assigned the listing style display their rendered
+    /// content exactly as you see it in the source. Listing content is
+    /// converted to preformatted text (i.e., `<pre>`). The content is presented
+    /// in a fixed-width font and endlines are preserved. Only [special
+    /// characters] and callouts are replaced when the document is converted.
+    ///
+    /// [special characters]: https://docs.asciidoctor.org/asciidoc/latest/subs/special-characters/
+    Listing,
+
+    /// A source block is a specialization of a listing block. Developers are
+    /// accustomed to seeing source code colorized to emphasize the code’s
+    /// structure (i.e., keywords, types, delimiters, etc.).
+    Source,
+}
+
+impl std::fmt::Debug for SimpleBlockStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SimpleBlockStyle::Paragraph => write!(f, "SimpleBlockStyle::Paragraph"),
+            SimpleBlockStyle::Literal => write!(f, "SimpleBlockStyle::Literal"),
+            SimpleBlockStyle::Listing => write!(f, "SimpleBlockStyle::Listing"),
+            SimpleBlockStyle::Source => write!(f, "SimpleBlockStyle::Source"),
+        }
+    }
+}
+
+/// A block that's treated as contiguous lines of paragraph text (and subject to
+/// normal substitutions) (e.g., a paragraph block).
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct SimpleBlock<'src> {
+    content: Content<'src>,
+    source: Span<'src>,
+    style: SimpleBlockStyle,
+    title_source: Option<Span<'src>>,
+    title: Option<Content<'src>>,
+    caption: Option<String>,
+    number: Option<usize>,
+    anchor: Option<Span<'src>>,
+    anchor_reftext: Option<Span<'src>>,
+    attrlist: Option<Attrlist<'src>>,
+}
+
+impl<'src> SimpleBlock<'src> {
+    /// Returns a document-order iterator over this block's direct child blocks.
+    ///
+    /// A simple (paragraph) block never has child blocks, so this iterator is
+    /// always empty. See [`FindBlocks`](crate::blocks::FindBlocks) to search
+    /// from a [`Block`](crate::blocks::Block) or [`Document`](crate::Document).
+    pub fn child_blocks(&'src self) -> ChildBlocks<'src> {
+        ChildBlocks::empty()
+    }
+
+    /// Returns the block's title as a mutable [`Content`], if the block has
+    /// one.
+    ///
+    /// This narrow seam exists for the document-order title resolution pass
+    /// (see `document::title_refs`), which installs the re-rendered title
+    /// after resolving any cross-references embedded in it. All other access
+    /// goes through the read-only [`IsBlock::title`]/[`IsBlock::title_content`]
+    /// accessors.
+    pub(crate) fn title_content_mut(&mut self) -> Option<&mut Content<'src>> {
+        self.title.as_mut()
+    }
+
+    pub(crate) fn parse(
+        metadata: &BlockMetadata<'src>,
+        parser: &mut Parser,
+    ) -> Option<MatchedItem<'src, Self>> {
+        let MatchedItem {
+            item: (content, style),
+            after,
+        } = parse_lines(
+            metadata.block_start,
+            &metadata.attrlist,
+            false,
+            false,
+            false,
+            parser,
+            &[],
+        )?;
+
+        // A paragraph carrying a captionable block style (e.g. `[example]`) is
+        // captioned and numbered just like its delimited counterpart. The raw
+        // context is `paragraph`; `assign_block_caption` resolves the block
+        // style to the captioning context.
+        let caption = assign_block_caption(
+            parser,
+            "paragraph",
+            metadata.attrlist.as_ref(),
+            metadata.title.is_some(),
+        );
+        let number = caption.as_ref().and_then(|caption| caption.number);
+        let caption = caption.map(|caption| caption.prefix);
+
+        Some(MatchedItem {
+            item: Self {
+                content,
+                source: metadata
+                    .source
+                    .trim_remainder(after)
+                    .trim_trailing_whitespace(),
+                style,
+                title_source: metadata.title_source,
+                title: metadata.title.clone(),
+                caption,
+                number,
+                anchor: metadata.anchor,
+                anchor_reftext: metadata.anchor_reftext,
+                attrlist: metadata.attrlist.clone(),
+            },
+            after: after.discard_empty_lines(),
+        })
+    }
+
+    pub(crate) fn parse_for_list_item(
+        metadata: &BlockMetadata<'src>,
+        parser: &mut Parser,
+        is_continuation: bool,
+        parent_list_markers: &[ListItemMarker<'src>],
+    ) -> Option<MatchedItem<'src, Self>> {
+        let MatchedItem {
+            item: (content, style),
+            after,
+        } = parse_lines(
+            metadata.block_start,
+            &metadata.attrlist,
+            true,
+            false,
+            is_continuation,
+            parser,
+            parent_list_markers,
+        )?;
+
+        // A paragraph carrying a captionable block style (e.g. `[example]`) is
+        // captioned and numbered just like its delimited counterpart. The raw
+        // context is `paragraph`; `assign_block_caption` resolves the block
+        // style to the captioning context.
+        let caption = assign_block_caption(
+            parser,
+            "paragraph",
+            metadata.attrlist.as_ref(),
+            metadata.title.is_some(),
+        );
+        let number = caption.as_ref().and_then(|caption| caption.number);
+        let caption = caption.map(|caption| caption.prefix);
+
+        Some(MatchedItem {
+            item: Self {
+                content,
+                source: metadata
+                    .source
+                    .trim_remainder(after)
+                    .trim_trailing_whitespace(),
+                style,
+                title_source: metadata.title_source,
+                title: metadata.title.clone(),
+                caption,
+                number,
+                anchor: metadata.anchor,
+                anchor_reftext: metadata.anchor_reftext,
+                attrlist: metadata.attrlist.clone(),
+            },
+            after,
+        })
+    }
+
+    /// Parse a simple block for use in a definition list item.
+    ///
+    /// In definition lists, indented content is treated as a paragraph
+    /// with the indentation stripped, not as a literal block.
+    pub(crate) fn parse_for_definition_list(
+        metadata: &BlockMetadata<'src>,
+        parser: &mut Parser,
+    ) -> Option<MatchedItem<'src, Self>> {
+        let MatchedItem {
+            item: (content, style),
+            after,
+        } = parse_lines(
+            metadata.block_start,
+            &metadata.attrlist,
+            true,
+            true,
+            false,
+            parser,
+            &[],
+        )?;
+
+        // A paragraph carrying a captionable block style (e.g. `[example]`) is
+        // captioned and numbered just like its delimited counterpart. The raw
+        // context is `paragraph`; `assign_block_caption` resolves the block
+        // style to the captioning context.
+        let caption = assign_block_caption(
+            parser,
+            "paragraph",
+            metadata.attrlist.as_ref(),
+            metadata.title.is_some(),
+        );
+        let number = caption.as_ref().and_then(|caption| caption.number);
+        let caption = caption.map(|caption| caption.prefix);
+
+        Some(MatchedItem {
+            item: Self {
+                content,
+                source: metadata
+                    .source
+                    .trim_remainder(after)
+                    .trim_trailing_whitespace(),
+                style,
+                title_source: metadata.title_source,
+                title: metadata.title.clone(),
+                caption,
+                number,
+                anchor: metadata.anchor,
+                anchor_reftext: metadata.anchor_reftext,
+                attrlist: metadata.attrlist.clone(),
+            },
+            after,
+        })
+    }
+
+    pub(crate) fn parse_fast(
+        source: Span<'src>,
+        parser: &Parser,
+    ) -> Option<MatchedItem<'src, Self>> {
+        let MatchedItem {
+            item: (content, style),
+            after,
+        } = parse_lines(source, &None, false, false, false, parser, &[])?;
+
+        let source = content.original();
+
+        Some(MatchedItem {
+            item: Self {
+                content,
+                source,
+                style,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            },
+            after: after.discard_empty_lines(),
+        })
+    }
+
+    /// Return the interpreted content of this block.
+    pub fn content(&self) -> &Content<'src> {
+        &self.content
+    }
+
+    /// Return the style of this block.
+    pub fn style(&self) -> SimpleBlockStyle {
+        self.style
+    }
+}
+
+/// Parse the content-bearing lines for this block.
+///
+/// If `force_paragraph_style` is true, indented content is treated as a
+/// paragraph (with indentation stripped) rather than as a literal block. This
+/// is used for definition list items where indentation is purely visual
+/// formatting.
+///
+/// If `preserve_literal_indent` is true and the content is a literal block,
+/// indentation is preserved as-is (used for `+` continuation content).
+fn parse_lines<'src>(
+    source: Span<'src>,
+    attrlist: &Option<Attrlist<'src>>,
+    mut stop_for_list_items: bool,
+    force_paragraph_style: bool,
+    preserve_literal_indent: bool,
+    parser: &Parser,
+    parent_list_markers: &[ListItemMarker<'src>],
+) -> Option<MatchedItem<'src, (Content<'src>, SimpleBlockStyle)>> {
+    let source_after_whitespace = source.discard_whitespace();
+    let first_line_indent = source_after_whitespace.col() - 1;
+
+    // Track if we're in "indented literal" mode (literal style from
+    // indentation). In this mode, we should still stop for list markers
+    // that are NOT indented.
+    let mut indented_literal_mode = false;
+
+    let mut style = if source_after_whitespace.col() == source.col() || force_paragraph_style {
+        // When force_paragraph_style is true, we still need to track that the
+        // content is indented so we can properly stop at unindented
+        // list markers.
+        if source_after_whitespace.col() != source.col() {
+            indented_literal_mode = true;
+        }
+        SimpleBlockStyle::Paragraph
+    } else {
+        // Indented content treated as literal: don't stop for list markers
+        // (they become part of the literal content).
+        stop_for_list_items = false;
+        SimpleBlockStyle::Literal
+    };
+
+    // Block style can override the interpretation of literal from reading
+    // indentation.
+    if let Some(attrlist) = attrlist {
+        match attrlist.block_style() {
+            Some("normal") => {
+                style = SimpleBlockStyle::Paragraph;
+            }
+
+            Some("literal") => {
+                stop_for_list_items = false;
+                indented_literal_mode = false;
+                style = SimpleBlockStyle::Literal;
+            }
+
+            Some("listing") => {
+                stop_for_list_items = false;
+                indented_literal_mode = false;
+                style = SimpleBlockStyle::Listing;
+            }
+
+            Some("source") => {
+                stop_for_list_items = false;
+                indented_literal_mode = false;
+                style = SimpleBlockStyle::Source;
+            }
+
+            _ => {}
+        }
+    }
+
+    // A `[comment]` paragraph is raw: its content is retained verbatim and not
+    // interpreted, so (like the `////` and `[comment]` open-block forms) inner
+    // `//` lines must be preserved rather than stripped as line comments.
+    let comment_style = is_comment_style(attrlist.as_ref());
+
+    let mut next = source;
+    let mut filtered_lines: Vec<&'src str> = vec![];
+
+    // Source span of each surviving line, kept in lockstep with
+    // `filtered_lines` so the attribute-references substitution can locate
+    // an `attribute-missing=warn` warning at the precise source offset of
+    // the offending reference (see `Content::from_filtered_lines`).
+    let mut skipped_comment_line = false;
+
+    // Determine how much indentation to strip from literal paragraphs.
+    // In definition list continuations, use minimum indentation across all
+    // lines to preserve relative indent. In outline list continuations and
+    // non-continuation contexts, strip based on the first line's indent.
+    let in_definition_list = parent_list_markers
+        .iter()
+        .any(|m| matches!(m, ListItemMarker::DefinedTerm { .. }));
+
+    let strip_indent =
+        if preserve_literal_indent && style == SimpleBlockStyle::Literal && in_definition_list {
+            // Two-pass approach: find minimum indentation across all lines.
+            let mut scan = source;
+            let mut min_indent = first_line_indent;
+            let mut line_count = 0;
+
+            while let Some(line_mi) = scan.take_non_empty_line() {
+                let line = line_mi.item;
+
+                // Apply same stop conditions as the main loop.
+                if line_count > 0 && line.data() == "+" {
+                    break;
+                }
+
+                if let Some(n) = line.position(|c| c != ' ' && c != '\t') {
+                    min_indent = min_indent.min(n);
+                }
+
+                line_count += 1;
+                scan = line_mi.after;
+            }
+            min_indent
+        } else {
+            first_line_indent
+        };
+
+    while let Some(line_mi) = next.take_non_empty_line() {
+        let mut line = line_mi.item;
+
+        // If we've skipped a comment line and this is a section header, stop
+        // here so the section can be parsed as a separate block. Only
+        // do this at the top level (not inside lists), indicated by
+        // stop_for_list_items being false.
+        if !stop_for_list_items
+            && skipped_comment_line
+            && style == SimpleBlockStyle::Paragraph
+            && is_section_header(line.data(), parser.level_offset())
+        {
+            break;
+        }
+
+        // A leading line comment sitting directly above a line that begins a
+        // new block — block metadata (a `.Title`, or a `[...]`
+        // attribute list or `[[...]]` anchor) or a block delimiter (a
+        // delimited block or a table) — must not absorb that line as
+        // paragraph content. Terminate the comment-only block here so
+        // the following line gets a fresh dispatch and can attach as
+        // metadata to (or open) the block it decorates. Without this,
+        // the first such line after the comment is swallowed as
+        // paragraph text. This is scoped to the case where only comment lines
+        // have been consumed so far (`filtered_lines` still empty); once real
+        // content has accumulated, the general stop conditions below take over.
+        // Like the section-heading case above, it applies at the top level and
+        // in paragraph style only. The `[...]` test mirrors the general
+        // attribute-line stop below (it treats any bracketed line as a block
+        // boundary, valid metadata or not), so a comment directly above such a
+        // line is split the same way `text` directly above it already is.
+        if !stop_for_list_items
+            && skipped_comment_line
+            && filtered_lines.is_empty()
+            && style == SimpleBlockStyle::Paragraph
+            && (block_title_text(line).is_some()
+                || (line.starts_with('[') && line.ends_with(']'))
+                || RawDelimitedBlock::is_valid_delimiter(&line)
+                || CompoundDelimitedBlock::is_valid_delimiter(&line)
+                || TableBlock::is_table_delimiter(&line))
+        {
+            break;
+        }
+
+        // There are several stop conditions for simple paragraph blocks. These
+        // "shouldn't" be encountered on the first line (we shouldn't be calling
+        // `SimpleBlock::parse` in these conditions), but in case it is, we
+        // simply ignore them on the first line.
+        if !filtered_lines.is_empty() {
+            // In indented literal mode, only stop for list markers that are NOT
+            // indented (at column 1). This allows definition list
+            // items to be properly separated.
+            let should_check_for_list_marker =
+                stop_for_list_items && (!indented_literal_mode || line.col() == 1);
+
+            // If we've already started accumulating content for this list item
+            // paragraph, we don't stop for list markers at any
+            // level other than our own or a parent level.
+            if should_check_for_list_marker
+                && let Some(marker_mi) = ListItemMarker::parse(line, parser)
+            {
+                // In description list continuation context, don't stop for
+                // deeper-nested description list markers (e.g., ::: when the
+                // current context is ::). They are treated as paragraph text.
+                let is_ancestor_list = parent_list_markers
+                    .iter()
+                    .any(|p| p.is_match_for(&marker_mi.item));
+
+                if is_ancestor_list || !preserve_literal_indent {
+                    break;
+                }
+            }
+
+            if line.data() == "+" {
+                break;
+            }
+
+            if line.starts_with('[') && line.ends_with(']') {
+                break;
+            }
+
+            if (line.starts_with('/')
+                || line.starts_with('-')
+                || line.starts_with('.')
+                || line.starts_with('+')
+                || line.starts_with('=')
+                || line.starts_with('*')
+                || line.starts_with('_')
+                || line.starts_with('`'))
+                && (RawDelimitedBlock::is_valid_delimiter(&line)
+                    || CompoundDelimitedBlock::is_valid_delimiter(&line))
+            {
+                break;
+            }
+        }
+
+        next = line_mi.after;
+
+        // Only strip comment lines in paragraph style. In
+        // literal/listing/source blocks, "//" lines are preserved as
+        // content; likewise a `[comment]` paragraph retains its content
+        // verbatim (raw).
+        if !comment_style
+            && style == SimpleBlockStyle::Paragraph
+            && line.starts_with("//")
+            && !line.starts_with("///")
+        {
+            skipped_comment_line = true;
+            continue;
+        }
+
+        // Strip at most the calculated indentation amount.
+        let should_strip_indent = strip_indent > 0;
+
+        if should_strip_indent && let Some(n) = line.position(|c| c != ' ' && c != '\t') {
+            line = line.into_parse_result(n.min(strip_indent)).after;
+        };
+
+        let line = line.trim_trailing_whitespace();
+        filtered_lines.push(line.data());
+    }
+
+    let source = source.trim_remainder(next).trim_trailing_whitespace();
+    if source.is_empty() {
+        return None;
+    }
+
+    let mut content: Content<'src> = Content::from_filtered_lines(source, &filtered_lines);
+
+    // A `[comment]`-styled paragraph is the single-paragraph form of a comment
+    // block. Its content is retained in the parsed model (this parser does not
+    // discard comments) but is not interpreted: no substitutions are applied,
+    // matching the raw content model of a `////` comment block.
+    let sub_group = if comment_style {
+        SubstitutionGroup::None
+    } else {
+        base_substitution_group(style).override_via_attrlist(attrlist.as_ref(), Some(parser))
+    };
+
+    sub_group.apply(&mut content, parser, attrlist.as_ref());
+
+    Some(MatchedItem {
+        item: (content, style),
+        after: next,
+    })
+}
+
+/// The base substitution group for a simple block of the given style, before
+/// any `subs` override from the attribute list is applied.
+///
+/// Only literal paragraphs (detected by indentation) use verbatim
+/// substitutions; the listing and source styles declared via an attribute list
+/// still use normal substitutions.
+fn base_substitution_group(style: SimpleBlockStyle) -> SubstitutionGroup {
+    match style {
+        SimpleBlockStyle::Literal => SubstitutionGroup::Verbatim,
+        SimpleBlockStyle::Listing | SimpleBlockStyle::Source | SimpleBlockStyle::Paragraph => {
+            SubstitutionGroup::Normal
+        }
+    }
+}
+
+/// Returns `true` if this paragraph carries the `comment` block style (i.e.
+/// `[comment]`), making it a comment paragraph whose content is retained but
+/// not interpreted.
+fn is_comment_style(attrlist: Option<&Attrlist<'_>>) -> bool {
+    attrlist.and_then(|attrlist| attrlist.block_style()) == Some("comment")
+}
+
+impl<'src> IsBlock<'src> for SimpleBlock<'src> {
+    fn content_model(&self) -> ContentModel {
+        ContentModel::Simple
+    }
+
+    fn content_mut(&mut self) -> Option<&mut Content<'src>> {
+        Some(&mut self.content)
+    }
+
+    fn rendered_html_content(&self) -> Option<&str> {
+        Some(self.content.rendered_html())
+    }
+
+    fn inlines(&'src self) -> Option<&'src [InlineNode<'src>]> {
+        Some(self.content.inlines())
+    }
+
+    fn raw_context(&self) -> CowStr<'src> {
+        "paragraph".into()
+    }
+
+    fn title_source(&'src self) -> Option<Span<'src>> {
+        self.title_source
+    }
+
+    fn title(&self) -> Option<&str> {
+        self.title.as_ref().map(Content::rendered_str)
+    }
+
+    fn title_content(&self) -> Option<&Content<'src>> {
+        self.title.as_ref()
+    }
+
+    fn caption(&self) -> Option<&str> {
+        self.caption.as_deref()
+    }
+
+    fn number(&self) -> Option<usize> {
+        self.number
+    }
+
+    fn anchor(&'src self) -> Option<Span<'src>> {
+        self.anchor
+    }
+
+    fn anchor_reftext(&'src self) -> Option<Span<'src>> {
+        self.anchor_reftext
+    }
+
+    fn attrlist(&'src self) -> Option<&'src Attrlist<'src>> {
+        self.attrlist.as_ref()
+    }
+
+    fn substitution_group(&'src self) -> SubstitutionGroup {
+        // Mirror the group actually applied to this block's content in
+        // `parse_lines`: a `[comment]` paragraph is raw (no substitutions),
+        // otherwise the base group derived from the style, then any `subs`
+        // override from the attribute list.
+        if is_comment_style(self.attrlist.as_ref()) {
+            SubstitutionGroup::None
+        } else {
+            base_substitution_group(self.style).override_via_attrlist(self.attrlist.as_ref(), None)
+        }
+    }
+}
+
+impl<'src> HasSpan<'src> for SimpleBlock<'src> {
+    fn span(&self) -> Span<'src> {
+        self.source
+    }
+}
+
+/// Reports whether `line` is a section heading (so a paragraph that has already
+/// swallowed a leading comment line must stop before it, letting the heading be
+/// parsed as its own section).
+///
+/// `level_offset` is the running `leveloffset` document attribute, which folds
+/// into the heading's effective level exactly as in
+/// [`SectionBlock::parse`](crate::blocks::SectionBlock). A heading of two or
+/// more markers (`== `/`## `, effective level 1+, or clamped up to 1 under a
+/// negative offset) is always a section. A single-marker heading (`= `/`# `) is
+/// a document title rather than a section *unless* a positive offset lifts it
+/// to level 1 or beyond — mirroring the level-0 rule in
+/// [`parse_title_line`](crate::blocks::section).
+pub(crate) fn is_section_header(line: &str, level_offset: i32) -> bool {
+    // AsciiDoc `=` style or Markdown `#` style.
+    let rest = if line.starts_with('=') {
+        line.trim_start_matches('=')
+    } else if line.starts_with('#') {
+        line.trim_start_matches('#')
+    } else {
+        return false;
+    };
+
+    // A section marker is one to six characters followed by a blank (space or
+    // tab), matching the whitespace `parse_title_line` requires after the
+    // marker (`take_required_whitespace`).
+    let count = line.len() - rest.len();
+    if count == 0 || count > 6 || !rest.starts_with([' ', '\t']) {
+        return false;
+    }
+
+    // A bare `=`/`#` (syntactic level 0) heads a section only when a positive
+    // `leveloffset` promotes it to level 1 or deeper; otherwise it is a
+    // document title, not a section. Any deeper marker is always a section (a
+    // negative offset that would push it below level 1 is clamped, not
+    // rejected).
+    let syntactic_level = (count - 1) as i32;
+    syntactic_level > 0 || syntactic_level.saturating_add(level_offset) >= 1
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use std::ops::Deref;
+
+    use crate::{
+        blocks::{ContentModel, SimpleBlockStyle, metadata::BlockMetadata},
+        tests::prelude::*,
+    };
+
+    #[test]
+    fn impl_clone() {
+        // Silly test to mark the #[derive(...)] line as covered.
+        let mut parser = Parser::default();
+
+        let b1 =
+            crate::blocks::SimpleBlock::parse(&BlockMetadata::new("abc"), &mut parser).unwrap();
+
+        let b2 = b1.item.clone();
+        assert_eq!(b1.item, b2);
+    }
+
+    #[test]
+    fn style_enum_impl_debug() {
+        assert_eq!(
+            format!("{:?}", SimpleBlockStyle::Paragraph),
+            "SimpleBlockStyle::Paragraph"
+        );
+
+        assert_eq!(
+            format!("{:?}", SimpleBlockStyle::Literal),
+            "SimpleBlockStyle::Literal"
+        );
+
+        assert_eq!(
+            format!("{:?}", SimpleBlockStyle::Listing),
+            "SimpleBlockStyle::Listing"
+        );
+
+        assert_eq!(
+            format!("{:?}", SimpleBlockStyle::Source),
+            "SimpleBlockStyle::Source"
+        );
+    }
+
+    #[test]
+    fn empty_source() {
+        let mut parser = Parser::default();
+        assert!(crate::blocks::SimpleBlock::parse(&BlockMetadata::new(""), &mut parser).is_none());
+    }
+
+    #[test]
+    fn only_spaces() {
+        let mut parser = Parser::default();
+        assert!(
+            crate::blocks::SimpleBlock::parse(&BlockMetadata::new("    "), &mut parser).is_none()
+        );
+    }
+
+    #[test]
+    fn single_line() {
+        let mut parser = Parser::default();
+        let mi =
+            crate::blocks::SimpleBlock::parse(&BlockMetadata::new("abc"), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "abc",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    rendered: "abc",
+                },
+                source: Span {
+                    data: "abc",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            },
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Simple);
+        assert_eq!(mi.item.rendered_html_content().unwrap(), "abc");
+        assert_eq!(mi.item.raw_context().deref(), "paragraph");
+        assert_eq!(mi.item.resolved_context().deref(), "paragraph");
+        assert!(mi.item.declared_style().is_none());
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "",
+                line: 1,
+                col: 4,
+                offset: 3
+            }
+        );
+    }
+
+    #[test]
+    fn multiple_lines() {
+        let mut parser = Parser::default();
+        let mi = crate::blocks::SimpleBlock::parse(&BlockMetadata::new("abc\ndef"), &mut parser)
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "abc\ndef",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    rendered: "abc\ndef",
+                },
+                source: Span {
+                    data: "abc\ndef",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "",
+                line: 2,
+                col: 4,
+                offset: 7
+            }
+        );
+
+        assert_eq!(mi.item.rendered_html_content().unwrap(), "abc\ndef");
+    }
+
+    #[test]
+    fn consumes_blank_lines_after() {
+        let mut parser = Parser::default();
+        let mi = crate::blocks::SimpleBlock::parse(&BlockMetadata::new("abc\n\ndef"), &mut parser)
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "abc",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    rendered: "abc",
+                },
+                source: Span {
+                    data: "abc",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "def",
+                line: 3,
+                col: 1,
+                offset: 5
+            }
+        );
+    }
+
+    #[test]
+    fn overrides_sub_group_via_subs_attribute() {
+        let mut parser = Parser::default();
+        let mi = crate::blocks::SimpleBlock::parse(
+            &BlockMetadata::new("[subs=quotes]\na<b>c *bold*\n\ndef"),
+            &mut parser,
+        )
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "a<b>c *bold*",
+                        line: 2,
+                        col: 1,
+                        offset: 14,
+                    },
+                    rendered: "a<b>c <strong>bold</strong>",
+                },
+                source: Span {
+                    data: "[subs=quotes]\na<b>c *bold*",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: Some(Attrlist {
+                    attributes: &[ElementAttribute {
+                        name: Some("subs"),
+                        value: "quotes",
+                        shorthand_items: &[],
+                    },],
+                    anchor: None,
+                    source: Span {
+                        data: "subs=quotes",
+                        line: 1,
+                        col: 2,
+                        offset: 1,
+                    },
+                },),
+            }
+        );
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "def",
+                line: 4,
+                col: 1,
+                offset: 28
+            }
+        );
+
+        assert_eq!(
+            mi.item.rendered_html_content().unwrap(),
+            "a<b>c <strong>bold</strong>"
+        );
+    }
+
+    mod is_section_header {
+        use super::super::is_section_header;
+
+        #[test]
+        fn multi_marker_is_always_a_section_regardless_of_offset() {
+            // Two or more markers followed by a space are always a section, at
+            // any offset (a negative offset that would push the level below 1
+            // is clamped in `parse_title_line`, not rejected).
+            assert!(is_section_header("== Section", 0));
+            assert!(is_section_header("=== Section", 0));
+            assert!(is_section_header("## Section", 0));
+            assert!(is_section_header("== Section", -1));
+        }
+
+        #[test]
+        fn single_marker_is_a_section_only_under_positive_offset() {
+            // A bare `=`/`#` is a document title, not a section, unless a
+            // positive `leveloffset` promotes it to level 1 or beyond.
+            assert!(!is_section_header("= Title", 0));
+            assert!(!is_section_header("# Title", 0));
+            assert!(is_section_header("= Title", 1));
+            assert!(is_section_header("# Title", 1));
+            assert!(is_section_header("= Title", 2));
+        }
+
+        #[test]
+        fn requires_a_blank_after_the_marker() {
+            assert!(!is_section_header("==nospace", 0));
+            assert!(!is_section_header("=nospace", 1));
+            assert!(!is_section_header("##nospace", 0));
+        }
+
+        #[test]
+        fn accepts_a_tab_after_the_marker() {
+            // `parse_title_line` accepts a tab (not just a space) after the
+            // marker, so the lookahead must too, or a valid tab-delimited
+            // heading would be swallowed as paragraph text.
+            assert!(is_section_header("==\tSection", 0));
+            assert!(is_section_header("=\tSection", 1));
+            assert!(!is_section_header("=\tSection", 0));
+        }
+
+        #[test]
+        fn non_marker_and_over_long_marker_are_not_sections() {
+            assert!(!is_section_header("paragraph", 1));
+
+            // Seven markers exceed the level-5 maximum, so this is not a
+            // heading.
+            assert!(!is_section_header("======= Too deep", 0));
+        }
+    }
+}

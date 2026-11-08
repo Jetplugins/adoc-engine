@@ -1,0 +1,2694 @@
+{
+  "metadata": {
+    "timestampUtc": "2026-11-08T07:23:16.849309+00:00",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M2 Pro",
+    "machine": "arm64",
+    "python": "3.14.7",
+    "node": "v24.22.0",
+    "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+    "asciidoctorRuby": "2.0.26",
+    "asciidoctorJs": "3.0.4",
+    "rust": "adoc-engine-cli 0.1.0",
+    "rustBinarySha256": "2aed2ba330572a1564f9d1a694e142ee25141124371b4f29f3e4736f2bcecaa8",
+    "commit": "804c21e80833e725b4d3195cb4a54332979c3727",
+    "options": {
+      "rust": "/Users/erikpragt/UserFiles/projects/intellij/adoc-engine/target/release/adoc-engine",
+      "samples": 100,
+      "warmup": 10,
+      "cold": 10,
+      "output": "verification/showcase-compatibility/showcase-performance",
+      "update_readme": false,
+      "verify_only": false,
+      "cases": "showcase"
+    },
+    "cases": [
+      {
+        "case": "showcase",
+        "eligible": true,
+        "sha256": "de647b0646c8c3f923a7d5bc228d26478f23661e90736d0db8a31026086869b2",
+        "inputBytes": 6492
+      }
+    ],
+    "workingTreeDirty": true
+  },
+  "samples": [
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 0,
+      "nanos": 3010000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 1,
+      "nanos": 2602000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 2,
+      "nanos": 2442000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 3,
+      "nanos": 2394000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 4,
+      "nanos": 3065000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 5,
+      "nanos": 2576000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 6,
+      "nanos": 3273000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 7,
+      "nanos": 3088000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 8,
+      "nanos": 2691000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 9,
+      "nanos": 2604000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 10,
+      "nanos": 2868000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 11,
+      "nanos": 2566000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 12,
+      "nanos": 3137000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 13,
+      "nanos": 2874000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 14,
+      "nanos": 4093000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 15,
+      "nanos": 3804000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 16,
+      "nanos": 2707000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 17,
+      "nanos": 2711000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 18,
+      "nanos": 2614000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 19,
+      "nanos": 3351000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 20,
+      "nanos": 2867000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 21,
+      "nanos": 2960000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 22,
+      "nanos": 2842000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 23,
+      "nanos": 2847000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 24,
+      "nanos": 3262000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 25,
+      "nanos": 2411000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 26,
+      "nanos": 2390000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 27,
+      "nanos": 2362000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 28,
+      "nanos": 2348000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 29,
+      "nanos": 2711000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 30,
+      "nanos": 2484000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 31,
+      "nanos": 2485000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 32,
+      "nanos": 3746000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 33,
+      "nanos": 2755000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 34,
+      "nanos": 2444000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 35,
+      "nanos": 2355000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 36,
+      "nanos": 2349000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 37,
+      "nanos": 2761000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 38,
+      "nanos": 3681000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 39,
+      "nanos": 2619000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 40,
+      "nanos": 2889000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 41,
+      "nanos": 2738000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 42,
+      "nanos": 2499000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 43,
+      "nanos": 2428000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 44,
+      "nanos": 2401000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 45,
+      "nanos": 2425000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 46,
+      "nanos": 2509000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 47,
+      "nanos": 3244000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 48,
+      "nanos": 2823000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 49,
+      "nanos": 2813000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 50,
+      "nanos": 2783000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 51,
+      "nanos": 3009000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 52,
+      "nanos": 2838000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 53,
+      "nanos": 2869000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 54,
+      "nanos": 2656000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 55,
+      "nanos": 2615000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 56,
+      "nanos": 2518000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 57,
+      "nanos": 3185000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 58,
+      "nanos": 3292000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 59,
+      "nanos": 2790000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 60,
+      "nanos": 2418000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 61,
+      "nanos": 2829000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 62,
+      "nanos": 2446000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 63,
+      "nanos": 2431000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 64,
+      "nanos": 2351000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 65,
+      "nanos": 3139000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 66,
+      "nanos": 2602000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 67,
+      "nanos": 2955000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 68,
+      "nanos": 2463000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 69,
+      "nanos": 2566000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 70,
+      "nanos": 2349000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 71,
+      "nanos": 2764000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 72,
+      "nanos": 2560000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 73,
+      "nanos": 2496000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 74,
+      "nanos": 2372000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 75,
+      "nanos": 2388000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 76,
+      "nanos": 2378000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 77,
+      "nanos": 2763000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 78,
+      "nanos": 2617000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 79,
+      "nanos": 2456000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 80,
+      "nanos": 2378000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 81,
+      "nanos": 3781000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 82,
+      "nanos": 3169000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 83,
+      "nanos": 2602000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 84,
+      "nanos": 2714000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 85,
+      "nanos": 2560000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 86,
+      "nanos": 2504000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 87,
+      "nanos": 2908000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 88,
+      "nanos": 2921000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 89,
+      "nanos": 2999000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 90,
+      "nanos": 2773000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 91,
+      "nanos": 2787000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 92,
+      "nanos": 3394000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 93,
+      "nanos": 2917000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 94,
+      "nanos": 2834000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 95,
+      "nanos": 2534000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 96,
+      "nanos": 2438000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 97,
+      "nanos": 2560000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 98,
+      "nanos": 3130000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "warm",
+      "sample": 99,
+      "nanos": 2663000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 0,
+      "nanos": 78055166,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 1,
+      "nanos": 77313375,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 2,
+      "nanos": 78417083,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 3,
+      "nanos": 80137583,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 4,
+      "nanos": 78531833,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 5,
+      "nanos": 77208541,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 6,
+      "nanos": 77337333,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 7,
+      "nanos": 78665291,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 8,
+      "nanos": 81297916,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "mode": "cold",
+      "sample": 9,
+      "nanos": 80453500,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 0,
+      "nanos": 11776834,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 1,
+      "nanos": 10668000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 2,
+      "nanos": 10418083,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 3,
+      "nanos": 9676833,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 4,
+      "nanos": 10410750,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 5,
+      "nanos": 10386500,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 6,
+      "nanos": 9451208,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 7,
+      "nanos": 10177083,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 8,
+      "nanos": 10032458,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 9,
+      "nanos": 9640708,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 10,
+      "nanos": 9225375,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 11,
+      "nanos": 9201292,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 12,
+      "nanos": 9554500,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 13,
+      "nanos": 9676542,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 14,
+      "nanos": 9743542,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 15,
+      "nanos": 8796625,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 16,
+      "nanos": 9969583,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 17,
+      "nanos": 8951625,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 18,
+      "nanos": 8617792,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 19,
+      "nanos": 9145292,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 20,
+      "nanos": 8789042,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 21,
+      "nanos": 8563375,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 22,
+      "nanos": 9233500,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 23,
+      "nanos": 9067625,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 24,
+      "nanos": 9144125,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 25,
+      "nanos": 9832041,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 26,
+      "nanos": 8983708,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 27,
+      "nanos": 8416375,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 28,
+      "nanos": 8436792,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 29,
+      "nanos": 8288833,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 30,
+      "nanos": 8897542,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 31,
+      "nanos": 8243959,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 32,
+      "nanos": 9022375,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 33,
+      "nanos": 8749750,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 34,
+      "nanos": 8511083,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 35,
+      "nanos": 8518458,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 36,
+      "nanos": 9812125,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 37,
+      "nanos": 9572583,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 38,
+      "nanos": 8723583,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 39,
+      "nanos": 8585250,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 40,
+      "nanos": 8479333,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 41,
+      "nanos": 8870208,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 42,
+      "nanos": 8190416,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 43,
+      "nanos": 9123583,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 44,
+      "nanos": 9259583,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 45,
+      "nanos": 8905167,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 46,
+      "nanos": 9062333,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 47,
+      "nanos": 11432125,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 48,
+      "nanos": 8838750,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 49,
+      "nanos": 8550583,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 50,
+      "nanos": 7894750,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 51,
+      "nanos": 8445792,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 52,
+      "nanos": 8601917,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 53,
+      "nanos": 8380958,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 54,
+      "nanos": 9184834,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 55,
+      "nanos": 8844416,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 56,
+      "nanos": 9380958,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 57,
+      "nanos": 9162625,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 58,
+      "nanos": 9859333,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 59,
+      "nanos": 9433667,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 60,
+      "nanos": 9033458,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 61,
+      "nanos": 8678833,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 62,
+      "nanos": 8614500,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 63,
+      "nanos": 9114042,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 64,
+      "nanos": 8877875,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 65,
+      "nanos": 8852625,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 66,
+      "nanos": 8675875,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 67,
+      "nanos": 8338417,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 68,
+      "nanos": 8653000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 69,
+      "nanos": 8467125,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 70,
+      "nanos": 9574417,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 71,
+      "nanos": 8512000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 72,
+      "nanos": 8700625,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 73,
+      "nanos": 8561375,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 74,
+      "nanos": 8264166,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 75,
+      "nanos": 8549917,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 76,
+      "nanos": 9685792,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 77,
+      "nanos": 9855250,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 78,
+      "nanos": 9197125,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 79,
+      "nanos": 8585917,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 80,
+      "nanos": 8131875,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 81,
+      "nanos": 8862042,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 82,
+      "nanos": 8398000,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 83,
+      "nanos": 8668125,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 84,
+      "nanos": 8179041,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 85,
+      "nanos": 8207125,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 86,
+      "nanos": 8287666,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 87,
+      "nanos": 8945459,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 88,
+      "nanos": 10145084,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 89,
+      "nanos": 8758792,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 90,
+      "nanos": 9746834,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 91,
+      "nanos": 8601291,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 92,
+      "nanos": 9397250,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 93,
+      "nanos": 8483958,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 94,
+      "nanos": 8080375,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 95,
+      "nanos": 9487625,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 96,
+      "nanos": 8258250,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 97,
+      "nanos": 7937500,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 98,
+      "nanos": 9032500,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "warm",
+      "sample": 99,
+      "nanos": 8905792,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 0,
+      "nanos": 138005417,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 1,
+      "nanos": 138004708,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 2,
+      "nanos": 137265792,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 3,
+      "nanos": 141231458,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 4,
+      "nanos": 141803917,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 5,
+      "nanos": 138770542,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 6,
+      "nanos": 142865417,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 7,
+      "nanos": 140198042,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 8,
+      "nanos": 139472375,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "js",
+      "mode": "cold",
+      "sample": 9,
+      "nanos": 139621792,
+      "bytes": 17963
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 0,
+      "nanos": 858042,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 1,
+      "nanos": 842750,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 2,
+      "nanos": 781584,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 3,
+      "nanos": 808084,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 4,
+      "nanos": 758875,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 5,
+      "nanos": 844208,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 6,
+      "nanos": 705708,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 7,
+      "nanos": 677792,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 8,
+      "nanos": 806458,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 9,
+      "nanos": 821125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 10,
+      "nanos": 828875,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 11,
+      "nanos": 767667,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 12,
+      "nanos": 745125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 13,
+      "nanos": 784667,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 14,
+      "nanos": 748916,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 15,
+      "nanos": 710000,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 16,
+      "nanos": 722292,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 17,
+      "nanos": 747084,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 18,
+      "nanos": 730333,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 19,
+      "nanos": 786292,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 20,
+      "nanos": 721459,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 21,
+      "nanos": 787000,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 22,
+      "nanos": 779375,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 23,
+      "nanos": 715083,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 24,
+      "nanos": 704875,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 25,
+      "nanos": 702125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 26,
+      "nanos": 734917,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 27,
+      "nanos": 681500,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 28,
+      "nanos": 726750,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 29,
+      "nanos": 855083,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 30,
+      "nanos": 712583,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 31,
+      "nanos": 676541,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 32,
+      "nanos": 695916,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 33,
+      "nanos": 726250,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 34,
+      "nanos": 828125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 35,
+      "nanos": 677458,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 36,
+      "nanos": 678750,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 37,
+      "nanos": 704083,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 38,
+      "nanos": 788792,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 39,
+      "nanos": 724167,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 40,
+      "nanos": 697083,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 41,
+      "nanos": 732000,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 42,
+      "nanos": 693834,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 43,
+      "nanos": 663916,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 44,
+      "nanos": 719250,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 45,
+      "nanos": 665125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 46,
+      "nanos": 697375,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 47,
+      "nanos": 754000,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 48,
+      "nanos": 837583,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 49,
+      "nanos": 718750,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 50,
+      "nanos": 704875,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 51,
+      "nanos": 708250,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 52,
+      "nanos": 685792,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 53,
+      "nanos": 674625,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 54,
+      "nanos": 677958,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 55,
+      "nanos": 971125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 56,
+      "nanos": 855125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 57,
+      "nanos": 953750,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 58,
+      "nanos": 841417,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 59,
+      "nanos": 812208,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 60,
+      "nanos": 1009542,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 61,
+      "nanos": 833416,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 62,
+      "nanos": 763958,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 63,
+      "nanos": 796417,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 64,
+      "nanos": 900042,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 65,
+      "nanos": 846292,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 66,
+      "nanos": 812959,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 67,
+      "nanos": 811666,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 68,
+      "nanos": 870417,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 69,
+      "nanos": 828000,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 70,
+      "nanos": 776708,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 71,
+      "nanos": 890375,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 72,
+      "nanos": 929125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 73,
+      "nanos": 893584,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 74,
+      "nanos": 857083,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 75,
+      "nanos": 869417,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 76,
+      "nanos": 821625,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 77,
+      "nanos": 833250,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 78,
+      "nanos": 796542,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 79,
+      "nanos": 797625,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 80,
+      "nanos": 817084,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 81,
+      "nanos": 901833,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 82,
+      "nanos": 967750,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 83,
+      "nanos": 864125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 84,
+      "nanos": 864209,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 85,
+      "nanos": 956708,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 86,
+      "nanos": 851834,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 87,
+      "nanos": 816125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 88,
+      "nanos": 951167,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 89,
+      "nanos": 894417,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 90,
+      "nanos": 887125,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 91,
+      "nanos": 954542,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 92,
+      "nanos": 906250,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 93,
+      "nanos": 869750,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 94,
+      "nanos": 884917,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 95,
+      "nanos": 822708,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 96,
+      "nanos": 779333,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 97,
+      "nanos": 947792,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 98,
+      "nanos": 709625,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "warm",
+      "sample": 99,
+      "nanos": 685333,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 0,
+      "nanos": 17881458,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 1,
+      "nanos": 17524333,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 2,
+      "nanos": 18587625,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 3,
+      "nanos": 19482334,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 4,
+      "nanos": 19049833,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 5,
+      "nanos": 18385375,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 6,
+      "nanos": 17580667,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 7,
+      "nanos": 17975834,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 8,
+      "nanos": 18547666,
+      "bytes": 17964
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "mode": "cold",
+      "sample": 9,
+      "nanos": 18816917,
+      "bytes": 17964
+    }
+  ],
+  "memory": [
+    {
+      "case": "showcase",
+      "engine": "js",
+      "peakRssBytes": 100024320
+    },
+    {
+      "case": "showcase",
+      "engine": "ruby",
+      "peakRssBytes": 25149440
+    },
+    {
+      "case": "showcase",
+      "engine": "rust",
+      "peakRssBytes": 19349504
+    }
+  ]
+}

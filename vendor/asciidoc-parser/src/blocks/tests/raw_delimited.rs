@@ -1,0 +1,1433 @@
+mod parse {
+    use crate::{blocks::ContentModel, tests::prelude::*};
+
+    #[test]
+    fn err_invalid_delimiter() {
+        let mut parser = Parser::default();
+
+        assert!(
+            crate::blocks::Block::parse(crate::Span::default(), &mut parser)
+                .unwrap_if_no_warnings()
+                .is_none()
+        );
+
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new("..."), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::Simple(SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "...",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    rendered: "&#8230;&#8203;",
+                },
+                source: Span {
+                    data: "...",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            })
+        );
+
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new("++++x"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::Simple(SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "++++x",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    rendered: "x",
+                },
+                source: Span {
+                    data: "++++x",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            })
+        );
+
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new("____x"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::Simple(SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "____x",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    rendered: "____x",
+                },
+                source: Span {
+                    data: "____x",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            })
+        );
+
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new("====x"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::Simple(SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "====x",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    rendered: "====x",
+                },
+                source: Span {
+                    data: "====x",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            })
+        );
+    }
+
+    #[test]
+    fn err_unterminated() {
+        let mut parser = Parser::default();
+        let maw =
+            crate::blocks::Block::parse(crate::Span::new("....\nblah blah blah"), &mut parser);
+
+        let mi = maw.item.unwrap().clone();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "blah blah blah",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "blah blah blah",
+                },
+                content_model: ContentModel::Verbatim,
+                context: "literal",
+                source: Span {
+                    data: "....\nblah blah blah",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Verbatim,
+            },)
+        );
+
+        assert_eq!(
+            maw.warnings,
+            vec![Warning {
+                source: Span {
+                    data: "....",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warning: WarningType::UnterminatedDelimitedBlock,
+            }]
+        );
+    }
+}
+
+mod comment {
+    use crate::{
+        blocks::{ContentModel, IsBlock},
+        tests::prelude::*,
+    };
+
+    #[test]
+    fn empty() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new("////\n////"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "",
+                },
+                content_model: ContentModel::Raw,
+                context: "comment",
+                source: Span {
+                    data: "////\n////",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::None,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Raw);
+        assert_eq!(mi.item.rendered_html_content(), Some(""));
+        assert_eq!(mi.item.raw_context().as_ref(), "comment");
+        assert_eq!(mi.item.resolved_context().as_ref(), "comment");
+        assert!(mi.item.declared_style().is_none());
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::None);
+    }
+
+    #[test]
+    fn title() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new(".comment\n////\nline1  \nline2\n////"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \nline2",
+                        line: 3,
+                        col: 1,
+                        offset: 14,
+                    },
+                    rendered: "line1  \nline2",
+                },
+                content_model: ContentModel::Raw,
+                context: "comment",
+                source: Span {
+                    data: ".comment\n////\nline1  \nline2\n////",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: Some(Span {
+                    data: "comment",
+                    line: 1,
+                    col: 2,
+                    offset: 1,
+                },),
+                title: Some("comment"),
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::None,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Raw);
+        assert_eq!(mi.item.rendered_html_content(), Some("line1  \nline2"));
+        assert_eq!(mi.item.raw_context().as_ref(), "comment");
+        assert_eq!(mi.item.resolved_context().as_ref(), "comment");
+        assert!(mi.item.declared_style().is_none());
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::None);
+
+        assert_eq!(
+            mi.item.title_source().unwrap(),
+            Span {
+                data: "comment",
+                line: 1,
+                col: 2,
+                offset: 1,
+            }
+        );
+
+        assert_eq!(mi.item.title_source().unwrap().data(), "comment");
+        assert_eq!(mi.item.title().unwrap(), "comment");
+
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+    }
+
+    #[test]
+    fn multiple_lines() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("////\nline1  \nline2\n////"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \nline2",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "line1  \nline2",
+                },
+                content_model: ContentModel::Raw,
+                context: "comment",
+                source: Span {
+                    data: "////\nline1  \nline2\n////",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::None,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Raw);
+        assert_eq!(mi.item.rendered_html_content(), Some("line1  \nline2"));
+        assert_eq!(mi.item.raw_context().as_ref(), "comment");
+        assert_eq!(mi.item.resolved_context().as_ref(), "comment");
+        assert!(mi.item.declared_style().is_none());
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::None);
+    }
+
+    #[test]
+    fn ignores_delimiter_prefix() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("////\nline1  \n/////\nline2\n////"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \n/////\nline2",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "line1  \n/////\nline2",
+                },
+                content_model: ContentModel::Raw,
+                context: "comment",
+                source: Span {
+                    data: "////\nline1  \n/////\nline2\n////",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::None,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Raw);
+        assert_eq!(
+            mi.item.rendered_html_content(),
+            Some("line1  \n/////\nline2")
+        );
+        assert_eq!(mi.item.raw_context().as_ref(), "comment");
+        assert_eq!(mi.item.resolved_context().as_ref(), "comment");
+        assert!(mi.item.declared_style().is_none());
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::None);
+    }
+}
+
+mod listing {
+    use crate::{
+        blocks::{ContentModel, IsBlock},
+        tests::prelude::*,
+    };
+
+    #[test]
+    fn empty() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new("----\n----"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "",
+                },
+                content_model: ContentModel::Verbatim,
+                context: "listing",
+                source: Span {
+                    data: "----\n----",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Verbatim,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Verbatim);
+        assert_eq!(mi.item.rendered_html_content(), Some(""));
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert!(mi.item.declared_style().is_none());
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Verbatim);
+    }
+
+    #[test]
+    fn multiple_lines() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("----\nline1  \nline2\n----"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \nline2",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "line1  \nline2",
+                },
+                content_model: ContentModel::Verbatim,
+                context: "listing",
+                source: Span {
+                    data: "----\nline1  \nline2\n----",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Verbatim,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Verbatim);
+        assert_eq!(mi.item.rendered_html_content(), Some("line1  \nline2"));
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert!(mi.item.declared_style().is_none());
+        assert_eq!(mi.item.child_blocks().next(), None);
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Verbatim);
+
+        assert_eq!(
+            mi.item.span(),
+            Span {
+                data: "----\nline1  \nline2\n----",
+                line: 1,
+                col: 1,
+                offset: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn title() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new(".listing title\n----\nline1  \nline2\n----"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \nline2",
+                        line: 3,
+                        col: 1,
+                        offset: 20,
+                    },
+                    rendered: "line1  \nline2",
+                },
+                content_model: ContentModel::Verbatim,
+                context: "listing",
+                source: Span {
+                    data: ".listing title\n----\nline1  \nline2\n----",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: Some(Span {
+                    data: "listing title",
+                    line: 1,
+                    col: 2,
+                    offset: 1,
+                },),
+                title: Some("listing title"),
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Verbatim,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Verbatim);
+        assert_eq!(mi.item.rendered_html_content(), Some("line1  \nline2"));
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert!(mi.item.declared_style().is_none());
+        assert_eq!(mi.item.child_blocks().next(), None);
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Verbatim);
+
+        assert_eq!(
+            mi.item.title_source().unwrap(),
+            Span {
+                data: "listing title",
+                line: 1,
+                col: 2,
+                offset: 1,
+            }
+        );
+
+        assert_eq!(mi.item.title_source().unwrap().data(), "listing title");
+        assert_eq!(mi.item.title().unwrap(), "listing title");
+
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+
+        assert_eq!(
+            mi.item.span(),
+            Span {
+                data: ".listing title\n----\nline1  \nline2\n----",
+                line: 1,
+                col: 1,
+                offset: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn ignores_delimiter_prefix() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("----\nline1  \n----/\nline2\n----"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \n----/\nline2",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "line1  \n----/\nline2",
+                },
+                content_model: ContentModel::Verbatim,
+                context: "listing",
+                source: Span {
+                    data: "----\nline1  \n----/\nline2\n----",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Verbatim,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Verbatim);
+        assert_eq!(
+            mi.item.rendered_html_content(),
+            Some("line1  \n----/\nline2")
+        );
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert!(mi.item.declared_style().is_none());
+        assert_eq!(mi.item.child_blocks().next(), None);
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Verbatim);
+
+        assert_eq!(
+            mi.item.span(),
+            Span {
+                data: "----\nline1  \n----/\nline2\n----",
+                line: 1,
+                col: 1,
+                offset: 0,
+            }
+        );
+    }
+}
+
+mod fenced {
+    use crate::{
+        blocks::{ContentModel, IsBlock},
+        tests::prelude::*,
+    };
+
+    #[test]
+    fn empty() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new("```\n```"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "",
+                        line: 2,
+                        col: 1,
+                        offset: 4,
+                    },
+                    rendered: "",
+                },
+                content_model: ContentModel::Verbatim,
+                context: "listing",
+                source: Span {
+                    data: "```\n```",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Verbatim,
+            })
+        );
+
+        // A fenced code block resolves to the same context and content model as
+        // a `----` listing block.
+        assert_eq!(mi.item.content_model(), ContentModel::Verbatim);
+        assert_eq!(mi.item.rendered_html_content(), Some(""));
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert!(mi.item.declared_style().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Verbatim);
+    }
+
+    #[test]
+    fn multiple_lines() {
+        let mut parser = Parser::default();
+
+        let mi =
+            crate::blocks::Block::parse(crate::Span::new("```\nline1  \nline2\n```"), &mut parser)
+                .unwrap_if_no_warnings()
+                .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \nline2",
+                        line: 2,
+                        col: 1,
+                        offset: 4,
+                    },
+                    rendered: "line1  \nline2",
+                },
+                content_model: ContentModel::Verbatim,
+                context: "listing",
+                source: Span {
+                    data: "```\nline1  \nline2\n```",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Verbatim,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Verbatim);
+        assert_eq!(mi.item.rendered_html_content(), Some("line1  \nline2"));
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Verbatim);
+
+        assert_eq!(
+            mi.item.span(),
+            Span {
+                data: "```\nline1  \nline2\n```",
+                line: 1,
+                col: 1,
+                offset: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn source_style_sets_language() {
+        // A `[source,ruby]` attrlist above the opening fence specializes the
+        // listing block with the `source` style (the mechanism by which a
+        // language is set for syntax highlighting).
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("[source,ruby]\n```\nputs 'hi'\n```"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(mi.item.content_model(), ContentModel::Verbatim);
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert_eq!(mi.item.declared_style(), Some("source"));
+        assert_eq!(mi.item.rendered_html_content(), Some("puts 'hi'"));
+    }
+
+    #[test]
+    fn language_on_fence_sets_source_style() {
+        // A language on the opening fence (```ruby) is shorthand for a source
+        // block: the block resolves like `[source,ruby]` over a listing block.
+        // The synthesized attribute list carries the `source` block style in
+        // the first position and the language in the second, so a
+        // downstream renderer can read the source language without this
+        // parser highlighting it.
+        let mut parser = Parser::default();
+
+        let mi =
+            crate::blocks::Block::parse(crate::Span::new("```ruby\nputs 'hi'\n```"), &mut parser)
+                .unwrap_if_no_warnings()
+                .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "puts 'hi'",
+                        line: 2,
+                        col: 1,
+                        offset: 8,
+                    },
+                    rendered: "puts 'hi'",
+                },
+                content_model: ContentModel::Verbatim,
+                context: "listing",
+                source: Span {
+                    data: "```ruby\nputs 'hi'\n```",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: Some(Attrlist {
+                    attributes: &[
+                        ElementAttribute {
+                            name: None,
+                            value: "source",
+                            shorthand_items: &["source"],
+                        },
+                        ElementAttribute {
+                            name: None,
+                            value: "ruby",
+                            shorthand_items: &[],
+                        },
+                    ],
+                    anchor: None,
+                    source: Span {
+                        data: "ruby",
+                        line: 1,
+                        col: 4,
+                        offset: 3,
+                    },
+                }),
+                substitution_group: SubstitutionGroup::Verbatim,
+            })
+        );
+
+        // The block resolves to a source (highlighted listing) block, and the
+        // language is exposed as the second positional attribute.
+        assert_eq!(mi.item.content_model(), ContentModel::Verbatim);
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert_eq!(mi.item.declared_style(), Some("source"));
+        assert_eq!(mi.item.rendered_html_content(), Some("puts 'hi'"));
+
+        assert_eq!(
+            mi.item
+                .attrlist()
+                .and_then(|a| a.nth_attribute(2))
+                .map(|a| a.value()),
+            Some("ruby")
+        );
+    }
+
+    #[test]
+    fn language_on_fence_closes_on_bare_fence() {
+        // The closing fence of a language-aware fenced block is a bare ``` —
+        // the language appears only on the opening fence, so the
+        // closing fence never repeats it.
+        let mut parser = Parser::default();
+
+        let mi =
+            crate::blocks::Block::parse(crate::Span::new("```rust\nlet x = 1;\n```"), &mut parser)
+                .unwrap_if_no_warnings()
+                .unwrap();
+
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert_eq!(mi.item.declared_style(), Some("source"));
+        assert_eq!(mi.item.rendered_html_content(), Some("let x = 1;"));
+
+        assert_eq!(
+            mi.item
+                .attrlist()
+                .and_then(|a| a.nth_attribute(2))
+                .map(|a| a.value()),
+            Some("rust")
+        );
+    }
+
+    #[test]
+    fn explicit_attrlist_takes_precedence_over_fence_language() {
+        // When the author supplies their own attribute list above the fence, it
+        // wins over the language shorthand on the fence line: the explicit
+        // `[source,python]` style is used and the fence's `ruby` is ignored.
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("[source,python]\n```ruby\nprint('hi')\n```"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(mi.item.resolved_context().as_ref(), "listing");
+        assert_eq!(mi.item.declared_style(), Some("source"));
+        assert_eq!(mi.item.rendered_html_content(), Some("print('hi')"));
+
+        assert_eq!(
+            mi.item
+                .attrlist()
+                .and_then(|a| a.nth_attribute(2))
+                .map(|a| a.value()),
+            Some("python")
+        );
+    }
+
+    #[test]
+    fn language_on_fence_unterminated() {
+        // An unterminated language-aware fence still opens a listing block; the
+        // warning points at the full opening fence line.
+        let mut parser = Parser::default();
+
+        let maw = crate::blocks::Block::parse(crate::Span::new("```ruby\nputs 'hi'"), &mut parser);
+
+        let mi = maw.item.unwrap().clone();
+
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.declared_style(), Some("source"));
+        assert_eq!(mi.item.rendered_html_content(), Some("puts 'hi'"));
+
+        assert_eq!(
+            maw.warnings,
+            vec![Warning {
+                source: Span {
+                    data: "```ruby",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warning: WarningType::UnterminatedDelimitedBlock,
+            }]
+        );
+    }
+
+    #[test]
+    fn four_backticks_with_language_is_not_a_fence() {
+        // A run of four (or more) backticks is not a fence, even when followed
+        // by a language token; it is ordinary paragraph text.
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("````ruby\nnot a fence\n````"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(mi.item.resolved_context().as_ref(), "paragraph");
+        assert_eq!(mi.item.content_model(), ContentModel::Simple);
+    }
+
+    #[test]
+    fn unterminated() {
+        let mut parser = Parser::default();
+
+        let maw = crate::blocks::Block::parse(crate::Span::new("```\nsource code"), &mut parser);
+
+        let mi = maw.item.unwrap().clone();
+
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.content_model(), ContentModel::Verbatim);
+        assert_eq!(mi.item.rendered_html_content(), Some("source code"));
+
+        assert_eq!(
+            maw.warnings,
+            vec![Warning {
+                source: Span {
+                    data: "```",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warning: WarningType::UnterminatedDelimitedBlock,
+            }]
+        );
+    }
+
+    #[test]
+    fn four_backticks_is_not_a_fence() {
+        // A run of four (or more) backticks is not a fenced code block; it is
+        // ordinary paragraph text.
+        let mut parser = Parser::default();
+
+        let mi =
+            crate::blocks::Block::parse(crate::Span::new("````\nnot a fence\n````"), &mut parser)
+                .unwrap_if_no_warnings()
+                .unwrap();
+
+        // A paragraph (simple) block, not a raw delimited block.
+        assert_eq!(mi.item.resolved_context().as_ref(), "paragraph");
+        assert_eq!(mi.item.content_model(), ContentModel::Simple);
+    }
+
+    #[test]
+    fn closing_fence_must_match_exactly() {
+        // A line of four backticks does not close a three-backtick fence, so
+        // the block runs to the end of the input and is reported as
+        // unterminated.
+        let mut parser = Parser::default();
+
+        let maw =
+            crate::blocks::Block::parse(crate::Span::new("```\nsource code\n````"), &mut parser);
+
+        let mi = maw.item.unwrap().clone();
+
+        assert_eq!(mi.item.raw_context().as_ref(), "listing");
+        assert_eq!(mi.item.rendered_html_content(), Some("source code\n````"));
+        assert_eq!(
+            maw.warnings,
+            vec![Warning {
+                source: Span {
+                    data: "```",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warning: WarningType::UnterminatedDelimitedBlock,
+            }]
+        );
+    }
+}
+
+mod pass {
+    use crate::{blocks::ContentModel, tests::prelude::*};
+
+    #[test]
+    fn empty() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new("++++\n++++"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "",
+                },
+                content_model: ContentModel::Raw,
+                context: "pass",
+                source: Span {
+                    data: "++++\n++++",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Pass,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Raw);
+        assert_eq!(mi.item.rendered_html_content(), Some(""));
+        assert_eq!(mi.item.raw_context().as_ref(), "pass");
+        assert_eq!(mi.item.resolved_context().as_ref(), "pass");
+        assert!(mi.item.declared_style().is_none());
+        assert_eq!(mi.item.child_blocks().next(), None);
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Pass);
+
+        assert_eq!(
+            mi.item.span(),
+            Span {
+                data: "++++\n++++",
+                line: 1,
+                col: 1,
+                offset: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn multiple_lines() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("++++\nline1  \nline2\n++++"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \nline2",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "line1  \nline2",
+                },
+                content_model: ContentModel::Raw,
+                context: "pass",
+                source: Span {
+                    data: "++++\nline1  \nline2\n++++",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Pass,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Raw);
+        assert_eq!(mi.item.rendered_html_content(), Some("line1  \nline2"));
+        assert_eq!(mi.item.raw_context().as_ref(), "pass");
+        assert_eq!(mi.item.resolved_context().as_ref(), "pass");
+        assert!(mi.item.declared_style().is_none());
+        assert_eq!(mi.item.child_blocks().next(), None);
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Pass);
+
+        assert_eq!(
+            mi.item.span(),
+            Span {
+                data: "++++\nline1  \nline2\n++++",
+                line: 1,
+                col: 1,
+                offset: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn title() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new(".pass title\n++++\nline1  \nline2\n++++"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \nline2",
+                        line: 3,
+                        col: 1,
+                        offset: 17,
+                    },
+                    rendered: "line1  \nline2",
+                },
+                content_model: ContentModel::Raw,
+                context: "pass",
+                source: Span {
+                    data: ".pass title\n++++\nline1  \nline2\n++++",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: Some(Span {
+                    data: "pass title",
+                    line: 1,
+                    col: 2,
+                    offset: 1,
+                },),
+                title: Some("pass title"),
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Pass,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Raw);
+        assert_eq!(mi.item.rendered_html_content(), Some("line1  \nline2"));
+        assert_eq!(mi.item.raw_context().as_ref(), "pass");
+        assert_eq!(mi.item.resolved_context().as_ref(), "pass");
+        assert!(mi.item.declared_style().is_none());
+        assert_eq!(mi.item.child_blocks().next(), None);
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Pass);
+
+        assert_eq!(
+            mi.item.title_source().unwrap(),
+            Span {
+                data: "pass title",
+                line: 1,
+                col: 2,
+                offset: 1,
+            }
+        );
+
+        assert_eq!(mi.item.title_source().unwrap().data(), "pass title");
+        assert_eq!(mi.item.title().unwrap(), "pass title");
+
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+
+        assert_eq!(
+            mi.item.span(),
+            Span {
+                data: ".pass title\n++++\nline1  \nline2\n++++",
+                line: 1,
+                col: 1,
+                offset: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn ignores_delimiter_prefix() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("++++\nline1  \n++++/\nline2\n++++"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::RawDelimited(RawDelimitedBlock {
+                content: Content {
+                    original: Span {
+                        data: "line1  \n++++/\nline2",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "line1  \n++++/\nline2",
+                },
+                content_model: ContentModel::Raw,
+                context: "pass",
+                source: Span {
+                    data: "++++\nline1  \n++++/\nline2\n++++",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                substitution_group: SubstitutionGroup::Pass,
+            })
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Raw);
+        assert_eq!(
+            mi.item.rendered_html_content(),
+            Some("line1  \n++++/\nline2")
+        );
+        assert_eq!(mi.item.raw_context().as_ref(), "pass");
+        assert_eq!(mi.item.resolved_context().as_ref(), "pass");
+        assert!(mi.item.declared_style().is_none());
+        assert_eq!(mi.item.child_blocks().next(), None);
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Pass);
+
+        assert_eq!(
+            mi.item.span(),
+            Span {
+                data: "++++\nline1  \n++++/\nline2\n++++",
+                line: 1,
+                col: 1,
+                offset: 0,
+            }
+        );
+    }
+}

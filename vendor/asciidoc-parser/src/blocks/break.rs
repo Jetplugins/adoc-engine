@@ -1,0 +1,576 @@
+use crate::{
+    HasSpan, Parser, Span,
+    attributes::Attrlist,
+    blocks::{ChildBlocks, ContentModel, IsBlock, metadata::BlockMetadata},
+    content::Content,
+    span::MatchedItem,
+    strings::CowStr,
+};
+
+/// A break block is used to represent a thematic or page break macro.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Break<'src> {
+    type_: BreakType,
+    source: Span<'src>,
+    title_source: Option<Span<'src>>,
+    title: Option<Content<'src>>,
+    anchor: Option<Span<'src>>,
+    attrlist: Option<Attrlist<'src>>,
+}
+
+/// A break may be one of two different types.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub enum BreakType {
+    /// A thematic break (aka horizontal rule).
+    Thematic,
+
+    /// A hint to the converter to insert a page break.
+    Page,
+}
+
+impl std::fmt::Debug for BreakType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BreakType::Thematic => write!(f, "BreakType::Thematic"),
+            BreakType::Page => write!(f, "BreakType::Page"),
+        }
+    }
+}
+
+impl<'src> Break<'src> {
+    /// Returns a document-order iterator over this block's direct child blocks.
+    ///
+    /// A thematic break never has child blocks, so this iterator is always
+    /// empty. See [`FindBlocks`](crate::blocks::FindBlocks) to search from a
+    /// [`Block`](crate::blocks::Block) or [`Document`](crate::Document).
+    pub fn child_blocks(&'src self) -> ChildBlocks<'src> {
+        ChildBlocks::empty()
+    }
+
+    /// Returns the block's title as a mutable [`Content`], if the block has
+    /// one.
+    ///
+    /// This narrow seam exists for the document-order title resolution pass
+    /// (see `document::title_refs`), which installs the re-rendered title
+    /// after resolving any cross-references embedded in it. All other access
+    /// goes through the read-only [`IsBlock::title`]/[`IsBlock::title_content`]
+    /// accessors.
+    pub(crate) fn title_content_mut(&mut self) -> Option<&mut Content<'src>> {
+        self.title.as_mut()
+    }
+
+    pub(crate) fn parse(
+        metadata: &BlockMetadata<'src>,
+        _parser: &mut Parser,
+    ) -> Option<MatchedItem<'src, Self>> {
+        let line = metadata.block_start.take_normalized_line();
+        let data = line.item.data();
+
+        let type_ = match data {
+            // The `-`/`*` markdown-style thematic breaks are spec-recognized.
+            // Asciidoctor additionally accepts the `_` forms (`___`, `_ _ _`)
+            // to ease Markdown migration, and this crate matches that. Only
+            // exactly three repeating characters count: a run of four or more
+            // underscores (`____`) is a quote block delimiter, so extended `_`
+            // runs are deliberately not matched here (unlike the apostrophe run
+            // handled below).
+            //
+            // Asciidoctor also tolerates 0–3 leading spaces before any of these
+            // markers. This crate intentionally does not: the marker must start
+            // at column 1, consistent with how AsciiDoc treats leading-space
+            // lines generally (they become literal paragraphs). This divergence
+            // is deliberate and settled, not a pending gap.
+            "---" | "- - -" | "***" | "* * *" | "___" | "_ _ _" => BreakType::Thematic,
+            "<<<" => BreakType::Page,
+
+            // A run of three or more apostrophes is a thematic break. The
+            // AsciiDoc language reference documents the canonical `'''` form,
+            // but Asciidoctor recognizes any longer run (`''''`, `'''''`, ...),
+            // and this crate matches that.
+            _ if data.len() >= 3 && data.bytes().all(|b| b == b'\'') => BreakType::Thematic,
+            _ => {
+                return None;
+            }
+        };
+
+        let source: Span = metadata.source.trim_remainder(line.after);
+        let source = source.slice(0..source.trim().len());
+
+        Some(MatchedItem {
+            item: Self {
+                type_,
+                source,
+                title_source: metadata.title_source,
+                title: metadata.title.clone(),
+                anchor: metadata.anchor,
+                attrlist: metadata.attrlist.clone(),
+            },
+
+            after: line.after.discard_empty_lines(),
+        })
+    }
+
+    /// Return the type of break detected.
+    pub fn type_(&self) -> BreakType {
+        self.type_
+    }
+}
+
+impl<'src> IsBlock<'src> for Break<'src> {
+    fn content_model(&self) -> ContentModel {
+        ContentModel::Empty
+    }
+
+    fn raw_context(&self) -> CowStr<'src> {
+        match self.type_ {
+            BreakType::Thematic => "thematic_break",
+            BreakType::Page => "page_break",
+        }
+        .into()
+    }
+
+    fn title_source(&'src self) -> Option<Span<'src>> {
+        self.title_source
+    }
+
+    fn title(&self) -> Option<&str> {
+        self.title.as_ref().map(Content::rendered_str)
+    }
+
+    fn title_content(&self) -> Option<&Content<'src>> {
+        self.title.as_ref()
+    }
+
+    fn anchor(&'src self) -> Option<Span<'src>> {
+        self.anchor
+    }
+
+    fn anchor_reftext(&'src self) -> Option<Span<'src>> {
+        None
+    }
+
+    fn attrlist(&'src self) -> Option<&'src Attrlist<'src>> {
+        self.attrlist.as_ref()
+    }
+}
+
+impl<'src> HasSpan<'src> for Break<'src> {
+    fn span(&self) -> Span<'src> {
+        self.source
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use std::ops::Deref;
+
+    use crate::{
+        blocks::{BreakType, ContentModel, metadata::BlockMetadata},
+        tests::prelude::*,
+    };
+
+    #[test]
+    fn impl_clone() {
+        // Silly test to mark the #[derive(...)] line as covered.
+        let mut parser = Parser::default();
+
+        let b1 = crate::blocks::Break::parse(&BlockMetadata::new("'''"), &mut parser)
+            .unwrap()
+            .item;
+
+        let b2 = b1.clone();
+        assert_eq!(b1, b2);
+    }
+
+    #[test]
+    fn err_empty_source() {
+        let mut parser = Parser::default();
+        assert!(crate::blocks::Break::parse(&BlockMetadata::new(""), &mut parser).is_none());
+    }
+
+    #[test]
+    fn err_only_spaces() {
+        let mut parser = Parser::default();
+        assert!(crate::blocks::Break::parse(&BlockMetadata::new("    "), &mut parser).is_none());
+    }
+
+    #[test]
+    fn err_unknown_break_pattern() {
+        let mut parser = Parser::default();
+        assert!(crate::blocks::Break::parse(&BlockMetadata::new("=="), &mut parser).is_none());
+        assert!(crate::blocks::Break::parse(&BlockMetadata::new("~~~"), &mut parser).is_none());
+        assert!(crate::blocks::Break::parse(&BlockMetadata::new("****"), &mut parser).is_none());
+        assert!(crate::blocks::Break::parse(&BlockMetadata::new(">>>"), &mut parser).is_none());
+    }
+
+    #[test]
+    fn thematic_break_triple_apostrophe() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("'''"), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Thematic,
+                source: Span {
+                    data: "'''",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "",
+                line: 1,
+                col: 4,
+                offset: 3
+            }
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Empty);
+        assert_eq!(mi.item.raw_context().deref(), "thematic_break");
+        assert_eq!(mi.item.type_(), BreakType::Thematic);
+        assert!(mi.item.child_blocks().next().is_none());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+    }
+
+    #[test]
+    fn thematic_break_extended_apostrophes() {
+        // Asciidoctor recognizes a run of three or more apostrophes as a
+        // thematic break, not just the canonical `'''`.
+        for line in ["''''", "'''''", "''''''"] {
+            let mut parser = Parser::default();
+            let mi = crate::blocks::Break::parse(&BlockMetadata::new(line), &mut parser).unwrap();
+            assert_eq!(
+                mi.item.type_(),
+                BreakType::Thematic,
+                "{line:?} should be a thematic break"
+            );
+            assert_eq!(mi.item.raw_context().deref(), "thematic_break");
+        }
+
+        // Fewer than three apostrophes is not a thematic break.
+        let mut parser = Parser::default();
+        assert!(crate::blocks::Break::parse(&BlockMetadata::new("''"), &mut parser).is_none());
+    }
+
+    #[test]
+    fn thematic_break_triple_hyphen() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("---"), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Thematic,
+                source: Span {
+                    data: "---",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "",
+                line: 1,
+                col: 4,
+                offset: 3
+            }
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Empty);
+        assert_eq!(mi.item.raw_context().deref(), "thematic_break");
+        assert_eq!(mi.item.type_(), BreakType::Thematic);
+    }
+
+    #[test]
+    fn thematic_break_spaced_hyphen() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("- - -"), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Thematic,
+                source: Span {
+                    data: "- - -",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(mi.item.type_(), BreakType::Thematic);
+    }
+
+    #[test]
+    fn thematic_break_triple_asterisk() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("***"), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Thematic,
+                source: Span {
+                    data: "***",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Empty);
+        assert_eq!(mi.item.raw_context().deref(), "thematic_break");
+        assert_eq!(mi.item.type_(), BreakType::Thematic);
+    }
+
+    #[test]
+    fn thematic_break_spaced_asterisk() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("* * *"), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Thematic,
+                source: Span {
+                    data: "* * *",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(mi.item.type_(), BreakType::Thematic);
+    }
+
+    #[test]
+    fn thematic_break_triple_underscore() {
+        // Asciidoctor accepts `___` as a markdown-style thematic break (an
+        // extension beyond the AsciiDoc spec's `-`/`*` forms); this crate
+        // matches that.
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("___"), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Thematic,
+                source: Span {
+                    data: "___",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Empty);
+        assert_eq!(mi.item.raw_context().deref(), "thematic_break");
+        assert_eq!(mi.item.type_(), BreakType::Thematic);
+    }
+
+    #[test]
+    fn thematic_break_spaced_underscore() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("_ _ _"), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Thematic,
+                source: Span {
+                    data: "_ _ _",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(mi.item.type_(), BreakType::Thematic);
+    }
+
+    #[test]
+    fn four_underscores_is_not_a_thematic_break() {
+        // A run of four or more underscores is a quote block delimiter, not a
+        // thematic break, so `Break::parse` must reject it. (Contrast the
+        // apostrophe run, where four or more `'` *is* a thematic break.)
+        let mut parser = Parser::default();
+        assert!(crate::blocks::Break::parse(&BlockMetadata::new("____"), &mut parser).is_none());
+
+        let mut parser = Parser::default();
+        assert!(crate::blocks::Break::parse(&BlockMetadata::new("_____"), &mut parser).is_none());
+    }
+
+    #[test]
+    fn page_break() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("<<<"), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Page,
+                source: Span {
+                    data: "<<<",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "",
+                line: 1,
+                col: 4,
+                offset: 3
+            }
+        );
+
+        assert_eq!(mi.item.content_model(), ContentModel::Empty);
+        assert_eq!(mi.item.raw_context().deref(), "page_break");
+        assert_eq!(mi.item.type_(), BreakType::Page);
+        assert!(mi.item.child_blocks().next().is_none());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+    }
+
+    #[test]
+    fn thematic_break_with_trailing_whitespace() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("'''   "), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Thematic,
+                source: Span {
+                    data: "'''",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(mi.item.type_(), BreakType::Thematic);
+    }
+
+    #[test]
+    fn page_break_with_trailing_whitespace() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Break::parse(&BlockMetadata::new("<<<   "), &mut parser).unwrap();
+
+        assert_eq!(
+            mi.item,
+            Break {
+                type_: BreakType::Page,
+                source: Span {
+                    data: "<<<",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                attrlist: None,
+            }
+        );
+
+        assert_eq!(mi.item.type_(), BreakType::Page);
+    }
+
+    mod break_type {
+        mod impl_debug {
+            use crate::blocks::BreakType;
+
+            #[test]
+            fn thematic() {
+                let break_type = BreakType::Thematic;
+                let debug_output = format!("{:?}", break_type);
+                assert_eq!(debug_output, "BreakType::Thematic");
+            }
+
+            #[test]
+            fn page() {
+                let break_type = BreakType::Page;
+                let debug_output = format!("{:?}", break_type);
+                assert_eq!(debug_output, "BreakType::Page");
+            }
+        }
+    }
+}

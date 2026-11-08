@@ -1,0 +1,1124 @@
+//! HTML5 renderer for [AsciiDoc](https://asciidoc.org).
+//!
+//! This crate converts AsciiDoc source (as parsed by [`asciidoc_parser`]) into
+//! an HTML5 document. The goal is output that is compatible with the default
+//! `html5` backend of [Asciidoctor], so that documents render identically
+//! whether they are processed by Asciidoctor or by this crate.
+//!
+//! The library deliberately depends only on [`asciidoc_parser`] and the
+//! standard library. It carries no CLI or argument-parsing dependencies so that
+//! it stays lean enough to embed in larger tools (for example, a future
+//! Antora-style static site generator) that need HTML conversion as one step of
+//! a bigger pipeline.
+//!
+//! # Examples
+//!
+//! ```no_run
+//! let html = asciidoc_html5::convert("= Hello\n\nWorld.");
+//! println!("{html}");
+//! ```
+//!
+//! To convert an AsciiDoc file on disk, use [`convert_file`]:
+//!
+//! ```no_run
+//! let html = asciidoc_html5::convert_file("document.adoc")?;
+//! println!("{html}");
+//! # Ok::<(), std::io::Error>(())
+//! ```
+//!
+//! To *load* a document — parse it without converting — use [`load`] (or
+//! [`load_file`]), inspect or transform the returned [`Document`], then render
+//! it with [`convert_document`]:
+//!
+//! ```
+//! let doc = asciidoc_html5::load("= Hello\n\nWorld.");
+//! assert_eq!(doc.doctitle(), Some("Hello"));
+//! let html = asciidoc_html5::convert_document(&doc);
+//! ```
+//!
+//! [Asciidoctor]: https://asciidoctor.org
+
+use std::{fs, io, path::Path};
+
+mod asset_writer;
+mod base64;
+mod copycss;
+mod docinfo_handler;
+mod html;
+mod include_handler;
+mod options;
+mod outline;
+mod renderer;
+mod svg_file_handler;
+
+pub use asciidoc_parser::{Document, Parser, ReferenceTime, SafeMode};
+pub use asset_writer::{AssetWriter, DirAssetWriter};
+pub use options::Options;
+pub use outline::OutlineOptions;
+
+#[cfg(test)]
+mod tests;
+
+/// Parses `source` as AsciiDoc and renders it to *embedded*, body-only HTML5.
+///
+/// This is the convenience entry point for callers that start from raw
+/// AsciiDoc text. It parses the source with a default [`Parser`] and then hands
+/// the resulting [`Document`] to [`convert_document`].
+///
+/// Like Asciidoctor's string `convert`, this returns embedded output — the
+/// converted body with no `<!DOCTYPE>`/`<head>`/`<body>` shell — suitable for
+/// dropping into a surrounding template. To render a complete standalone
+/// document from a string, convert with [`convert_with`] under
+/// [`Options::standalone(true)`](Options::standalone); the file entry point
+/// [`convert_file`] is standalone by default.
+///
+/// For callers that already hold a parsed [`Document`] (for example, to inspect
+/// or transform it first), call [`convert_document`] directly; produce that
+/// document with [`load`]/[`load_file`], which parse under [`Options`] the way
+/// this function does. To supply document attributes from outside the source
+/// (Asciidoctor's `-a name=value`), or to embed a custom stylesheet, use
+/// [`convert_with`].
+pub fn convert(source: &str) -> String {
+    convert_with(source, &Options::default())
+}
+
+/// Parses `source` as AsciiDoc and renders it to HTML5, seeding the parser with
+/// the document attributes carried by `options`.
+///
+/// Like [`convert`], this returns *embedded*, body-only output by default;
+/// pass [`Options::standalone(true)`](Options::standalone) for a complete
+/// standalone document.
+///
+/// This is the attribute-aware counterpart to [`convert`]: the attributes in
+/// `options` are the equivalent of Asciidoctor's `-a name=value` CLI option and
+/// the `attributes` API option, supplying (and, for overrides, locking) values
+/// from outside the document source. See [`Options`] for override vs. soft-set
+/// precedence.
+///
+/// Unlike [`convert_document`], this path also honors a custom stylesheet when
+/// the document selects one and it is *embedded* (rather than linked): the CSS
+/// comes from [`Options::stylesheet_content`] when the caller supplied it,
+/// otherwise it is read from disk relative to the base directory (see
+/// [`Options::base_dir`]/[`Options::input_file`]) under the same safe-mode jail
+/// as `include::` targets. Without a base directory — the plain [`convert`]
+/// case — an embedded custom stylesheet has no source to read, so its block is
+/// omitted.
+///
+/// # Examples
+///
+/// ```
+/// use asciidoc_html5::{convert_with, Options};
+///
+/// // A standalone document links the default stylesheet under `linkcss`.
+/// let opts = Options::new().standalone(true).set("linkcss");
+/// let html = convert_with("= Doc\n\nBody.", &opts);
+/// assert!(html.contains(r#"<link rel="stylesheet" href="./asciidoctor.css">"#));
+/// ```
+pub fn convert_with(source: &str, options: &Options) -> String {
+    let document = load_with(source, options);
+    convert_document_with(&document, options)
+}
+
+/// Parses and renders `source` like [`convert_with`], and additionally emits
+/// the companion files the conversion calls for through `writer`.
+///
+/// Today the only companion file is the stylesheet copied under the `copycss`
+/// attribute: when the stylesheet is *linked* and `copycss` is enabled (its
+/// default below the `secure` safe mode), the linked stylesheet is written
+/// through `writer` at its path relative to the output directory — the default
+/// stylesheet as `asciidoctor.css` (under `stylesdir` when set), a custom
+/// stylesheet at its `stylesdir` web path, the same location the head links.
+/// This is the piece [`convert_with`] cannot do on its own: the library
+/// renders text to text and does not own the output directory, so a caller that
+/// wants `copycss` to take effect supplies an [`AssetWriter`] (for the
+/// filesystem, [`DirAssetWriter`] rooted at the output directory) to receive
+/// the write.
+///
+/// The returned HTML is byte-identical to [`convert_with`]'s; `copycss` is a
+/// pure file side effect and never changes the document. A custom stylesheet's
+/// bytes are read from disk under the same base directory and safe-mode jail as
+/// an embedded stylesheet, so a copy happens only when a base directory anchors
+/// the read (see [`Options::base_dir`]/[`Options::input_file`]).
+///
+/// # Errors
+///
+/// Returns any [`io::Error`] raised while writing a companion file through
+/// `writer`.
+pub fn convert_with_writer(
+    source: &str,
+    options: &Options,
+    writer: &mut impl AssetWriter,
+) -> io::Result<String> {
+    let document = load_with(source, options);
+    convert_document_with_writer(&document, options, writer)
+}
+
+/// Renders `document` to HTML, resolving the embedded custom stylesheet the way
+/// [`convert_with`] does. Shared by the string entry points with and without an
+/// [`AssetWriter`].
+fn render(document: &Document<'_>, options: &Options) -> String {
+    // A custom, embedded stylesheet takes its CSS from the caller when
+    // supplied, otherwise from disk. Keeping this a separate binding keeps
+    // the borrow of `document` from the read helper separate from the
+    // render call. (Embedded output emits no stylesheet, so this is unused
+    // there — but resolving it is cheap and keeps the render call uniform.)
+    let stylesheet = options
+        .custom_stylesheet()
+        .map(str::to_owned)
+        .or_else(|| read_embedded_stylesheet(document, options));
+
+    // Anchor a block image's inline-embedded SVG (`image::…[opts=inline]`)
+    // read, and the `data-uri` embedding of images and icons, at the same
+    // base directory and safe mode the include/docinfo handlers use; with
+    // no base directory (the plain string `convert`), such an SVG is left
+    // unreadable and falls back to its alt text, and a `data-uri` image
+    // embeds as an empty data URI.
+    let svg_source = options
+        .effective_base_dir()
+        .map(|base| renderer::SvgSource::new(base, options.safe_mode_or_default()));
+
+    renderer::render_document(
+        document,
+        stylesheet.as_deref(),
+        options.is_standalone(),
+        svg_source,
+        options.source_locations_enabled(),
+    )
+}
+
+/// Writes the `copycss` stylesheet copy through `writer`, when the document
+/// calls for it: the primary stylesheet. A no-op when it does not apply.
+///
+/// Asciidoctor also copies the active syntax highlighter's stylesheet (e.g.
+/// CodeRay's), but the server-side highlighters are not supported here (see the
+/// project README), so there is no highlighter stylesheet to copy.
+fn emit_stylesheet_copy(
+    document: &Document<'_>,
+    options: &Options,
+    writer: &mut impl AssetWriter,
+) -> io::Result<()> {
+    if let Some(copy) = copycss::stylesheet_copy(document, options) {
+        writer.write_asset(&copy.dest, copy.content.as_bytes())?;
+    }
+
+    Ok(())
+}
+
+/// Reads a custom stylesheet from disk when the document selects one to
+/// *embed*, resolving it against the base directory the way an `include::`
+/// target resolves and confining the read to the safe mode's jail. Returns
+/// `None` when there is nothing to read — the stylesheet is linked, a URI, the
+/// default, or unset — or when no base directory anchors the lookup (the plain
+/// [`convert`] case) or the file cannot be read.
+fn read_embedded_stylesheet(document: &Document<'_>, options: &Options) -> Option<String> {
+    let target = renderer::embeddable_stylesheet_target(document)?;
+    let base_dir = options.effective_base_dir()?;
+    let safe = options.safe_mode_or_default();
+
+    let path = include_handler::resolve(&base_dir, safe, None, &target);
+
+    // An embedded stylesheet only needs its content; a missing, unreadable, or
+    // non-UTF-8 file is simply unavailable here.
+    match include_handler::read_confined(&base_dir, safe, &path) {
+        include_handler::ReadOutcome::Read(content) => Some(content),
+        include_handler::ReadOutcome::NotFound
+        | include_handler::ReadOutcome::NotReadable
+        | include_handler::ReadOutcome::NotDecodable => None,
+    }
+}
+
+/// Reads the AsciiDoc file at `path` and renders it to a complete HTML5
+/// document.
+///
+/// This is the file-based counterpart to [`convert`]: it reads `path` as UTF-8
+/// and hands the contents to [`convert`]. It is the simplest way to turn an
+/// AsciiDoc file on disk into a full HTML5 document, mirroring Asciidoctor's
+/// `convert_file`.
+///
+/// # Errors
+///
+/// Returns the [`io::Error`] from reading `path` — for example, when the file
+/// does not exist or does not contain valid UTF-8.
+///
+/// # Examples
+///
+/// ```no_run
+/// let html = asciidoc_html5::convert_file("document.adoc")?;
+/// println!("{html}");
+/// # Ok::<(), std::io::Error>(())
+/// ```
+pub fn convert_file<P: AsRef<Path>>(path: P) -> io::Result<String> {
+    convert_file_with(path, &Options::default())
+}
+
+/// Reads the AsciiDoc file at `path` and renders it to a complete HTML5
+/// document, seeding the parser with the document attributes carried by
+/// `options`.
+///
+/// This is the attribute-aware counterpart to [`convert_file`], the file-based
+/// counterpart to [`convert_with`]. See [`Options`] for the attributes it
+/// accepts and their override vs. soft-set precedence.
+///
+/// The `path` is recorded as the primary document (see
+/// [`Options::input_file`]), so its top-level `include::` directives resolve
+/// against the file's own directory, and — unless the caller sets one with
+/// [`Options::base_dir`] — that directory becomes the base directory that
+/// anchors and (under a jailed safe mode) confines include resolution.
+///
+/// # Errors
+///
+/// Returns the [`io::Error`] from reading `path` — for example, when the file
+/// does not exist or does not contain valid UTF-8.
+pub fn convert_file_with<P: AsRef<Path>>(path: P, options: &Options) -> io::Result<String> {
+    let path = path.as_ref();
+    let source = fs::read_to_string(path)?;
+    Ok(convert_with(
+        &source,
+        &options.clone().input_file(path).default_standalone(),
+    ))
+}
+
+/// Reads the AsciiDoc file at `path`, renders it like [`convert_file_with`],
+/// and emits the conversion's companion files through `writer`.
+///
+/// This is the file-based counterpart to [`convert_with_writer`] and the
+/// [`AssetWriter`]-aware counterpart to [`convert_file_with`]: reading `path`
+/// records it as the primary document (anchoring its `include::` resolution
+/// and, absent an explicit [`base_dir`](Options::base_dir), the base
+/// directory), so a custom stylesheet copied under `copycss` is read relative
+/// to the file's own directory. See [`convert_with_writer`] for what `copycss`
+/// writes.
+///
+/// # Errors
+///
+/// Returns the [`io::Error`] from reading `path`, or any error raised while
+/// writing a companion file through `writer`.
+pub fn convert_file_with_writer<P: AsRef<Path>>(
+    path: P,
+    options: &Options,
+    writer: &mut impl AssetWriter,
+) -> io::Result<String> {
+    let path = path.as_ref();
+    let source = fs::read_to_string(path)?;
+    convert_with_writer(
+        &source,
+        &options.clone().input_file(path).default_standalone(),
+        writer,
+    )
+}
+
+/// Parses `source` as AsciiDoc into a [`Document`] — the *load* step on its
+/// own, without converting.
+///
+/// This is the parse-only counterpart to [`convert`]: where `convert` parses
+/// and renders in one call, `load` stops at the parsed [`Document`], the
+/// in-memory model you can inspect (its title, attributes, and block structure)
+/// or transform before rendering it with [`convert_document`]. It mirrors
+/// Asciidoctor's `load` entry point.
+///
+/// The returned document is fully owned (`Document<'static>`): the parser
+/// copies what it needs from `source`, so the document does not borrow from it
+/// and can be returned, stored, or moved freely.
+///
+/// `load` parses under the default [`Options`] — the same configuration
+/// [`convert`] uses — so `convert_document(&load(source))` equals
+/// `convert(source)`. To parse under externally-supplied attributes or a chosen
+/// safe mode, use [`load_with`].
+///
+/// # Examples
+///
+/// ```
+/// let doc = asciidoc_html5::load("= Hello\n\nWorld.");
+/// assert_eq!(doc.doctitle(), Some("Hello"));
+/// ```
+pub fn load(source: &str) -> Document<'static> {
+    load_with(source, &Options::default())
+}
+
+/// Parses `source` as AsciiDoc into a [`Document`], applying the parse-time
+/// settings carried by `options` — the *load* step with [`Options`].
+///
+/// This is the parse-only counterpart to [`convert_with`] and the
+/// [`Options`]-aware counterpart to [`load`]. `options` seeds the parser
+/// exactly as [`convert_with`] does: the externally-supplied document
+/// attributes (with override vs. soft-default precedence), the [safe
+/// mode](Options::safe_mode), and — when the caller names a base directory or
+/// primary file — `include::` and docinfo resolution confined by the safe
+/// mode's jail. These settings live across several lower-level
+/// `asciidoc-parser` [`Parser`] builder methods; `load_with` is the single call
+/// that applies the whole [`Options`] bundle.
+///
+/// Options that affect only *rendering* — a custom stylesheet's embedded
+/// contents (see [`Options::stylesheet_content`]) — have no effect here, since
+/// `load_with` does not render. When those matter, render with [`convert_with`]
+/// (passing the same `options`) rather than [`convert_document`], which renders
+/// without them.
+pub fn load_with(source: &str, options: &Options) -> Document<'static> {
+    let mut parser = options.apply(Parser::default());
+    parser.parse(source)
+}
+
+/// Parses `source` as AsciiDoc into a [`Document`] with cross-references left
+/// **unresolved**, applying `options` like [`load_with`] — the *deferred*
+/// counterpart to [`load_with`] for multi-document pipelines.
+///
+/// [`load_with`] (and [`load`]) resolve cross-references (`<<id>>`,
+/// `xref:id[…]`) against the document's own catalog as part of parsing —
+/// exactly right for a single, self-contained document, but too early for a
+/// site-wide pipeline (e.g. an Antora-style generator, per
+/// `html5/ARCHITECTURE.md`'s multi-document story) that needs to parse every
+/// page first, build a combined cross-reference index, and only then resolve
+/// each page against it. `load_deferred` applies the same [`Options`] bundle
+/// `load_with` does — attributes, safe mode, and the include/docinfo/SVG
+/// handlers it installs — but calls `asciidoc-parser`'s
+/// [`Parser::parse_deferred`] instead of [`Parser::parse`], so the returned
+/// [`Document`] carries its cross-references unresolved.
+///
+/// Alongside the [`Document`], this also returns the [`Parser`] that parsed
+/// it: resolving a cross-reference re-renders the content around it, which
+/// needs the same parse-wide configuration (the path resolver and the
+/// image/SVG file handlers) [`Document::resolve_references`] takes as its
+/// `parser` argument. Building that `Parser` yourself — rather than getting it
+/// back from this function — would silently forgo everything [`Options::apply`]
+/// seeds (safe-mode attribute locks, the version intrinsics, the doctype pin,
+/// and so on), so `load_deferred` is the only supported way to get an
+/// `Options`-configured `Parser` for later resolution.
+///
+/// The typical flow: call `load_deferred` for every page, merge the pages'
+/// [`catalog`](Document::catalog)s into a combined index, then for each page
+/// call `document.resolve_references(&resolver, &renderer, &parser)` with a
+/// resolver backed by that index (and an [`HtmlInlineRenderer`], the
+/// [`InlineRenderer`] this crate always parses with) before rendering with
+/// [`convert_document_with`].
+///
+/// `load_deferred` plus resolving with a default,
+/// [`CatalogResolver`] backed by the document's own catalog reproduces
+/// [`load_with`]'s auto-resolution — `load_deferred` is a strict superset of
+/// what `load_with` does, deferring only the resolution step.
+///
+/// # Examples
+///
+/// ```
+/// use asciidoc_html5::{convert_document_with, Options};
+/// use asciidoc_parser::parser::{CatalogResolver, HtmlInlineRenderer};
+///
+/// let (mut doc, parser) = asciidoc_html5::load_deferred(
+///     "[#target]\n== Section\n\nSee <<target>>.",
+///     &Options::default(),
+/// );
+///
+/// // Resolve against this document's own catalog, standing in for a
+/// // site-wide index in a real multi-document pipeline.
+/// let catalog = doc.catalog().clone();
+/// let resolver = CatalogResolver::new(&catalog);
+/// doc.resolve_references(&resolver, &HtmlInlineRenderer {}, &parser);
+///
+/// let html = convert_document_with(&doc, &Options::default());
+/// assert!(html.contains("<a href=\"#target\">Section</a>"));
+/// ```
+///
+/// [`Parser::parse_deferred`]: asciidoc_parser::Parser::parse_deferred
+/// [`Document::resolve_references`]: asciidoc_parser::Document::resolve_references
+/// [`CatalogResolver`]: asciidoc_parser::parser::CatalogResolver
+/// [`HtmlInlineRenderer`]: asciidoc_parser::parser::HtmlInlineRenderer
+/// [`InlineRenderer`]: asciidoc_parser::parser::InlineRenderer
+pub fn load_deferred(source: &str, options: &Options) -> (Document<'static>, Parser) {
+    let mut parser = options.apply(Parser::default());
+    let document = parser.parse_deferred(source);
+    (document, parser)
+}
+
+/// Reads the AsciiDoc file at `path` and parses it into a [`Document`] — the
+/// *load* step for a file on disk.
+///
+/// This is the file-based counterpart to [`load`] and the parse-only
+/// counterpart to [`convert_file`]: it reads `path` as UTF-8 and parses the
+/// contents, returning the owned [`Document`]. It mirrors Asciidoctor's
+/// `load_file` entry point.
+///
+/// # Errors
+///
+/// Returns the [`io::Error`] from reading `path` — for example, when the file
+/// does not exist or does not contain valid UTF-8.
+///
+/// # Examples
+///
+/// ```no_run
+/// let doc = asciidoc_html5::load_file("document.adoc")?;
+/// println!("{:?}", doc.doctitle());
+/// # Ok::<(), std::io::Error>(())
+/// ```
+pub fn load_file<P: AsRef<Path>>(path: P) -> io::Result<Document<'static>> {
+    load_file_with(path, &Options::default())
+}
+
+/// Reads the AsciiDoc file at `path` and parses it into a [`Document`],
+/// applying the parse-time settings carried by `options` — the *load* step for
+/// a file, with [`Options`].
+///
+/// This is the file-based counterpart to [`load_with`] and the parse-only
+/// counterpart to [`convert_file_with`]. Like [`convert_file_with`], it records
+/// `path` as the primary document (see [`Options::input_file`]), so the file's
+/// top-level `include::` directives resolve against its own directory and —
+/// absent an explicit [`base_dir`](Options::base_dir) — that directory anchors
+/// and (under a jailed safe mode) confines include and docinfo resolution.
+///
+/// # Errors
+///
+/// Returns the [`io::Error`] from reading `path` — for example, when the file
+/// does not exist or does not contain valid UTF-8.
+pub fn load_file_with<P: AsRef<Path>>(path: P, options: &Options) -> io::Result<Document<'static>> {
+    let path = path.as_ref();
+    let source = fs::read_to_string(path)?;
+    Ok(load_with(&source, &options.clone().input_file(path)))
+}
+
+/// Renders an already-parsed [`Document`] to HTML5.
+///
+/// This is the render-only half of the load-and-convert split: pair it with
+/// [`load`]/[`load_file`] (which parse under [`Options`]) to run the load and
+/// convert steps separately, capturing or transforming the [`Document`] in
+/// between.
+///
+/// Like the string entry point [`convert`], this returns *embedded*, body-only
+/// output — the converted body with no `<!DOCTYPE>`/`<head>`/`<body>` shell —
+/// so `convert_document(&load(source))` equals `convert(source)`. To render a
+/// standalone document from a [`Document`] you already hold, convert with
+/// [`convert_with`] under [`Options::standalone(true)`](Options::standalone).
+///
+/// The renderer walks the document in block order, wrapping the HTML fragments
+/// the parser has already produced (see the note on inline substitution below)
+/// in Asciidoctor's block-level scaffolding. The traversal is described in
+/// `src/renderer.rs` and in `ARCHITECTURE.md`.
+///
+/// # Inline substitution is the parser's job
+///
+/// `asciidoc-parser` parses each block's inline content (quotes, replacements,
+/// macros, cross references, attribute references) into an inline AST and
+/// exposes its built-in HTML fold — the work of its default
+/// [`InlineRenderer`] — as the block's [`rendered_html_content`] and
+/// [`title`]: each is already an Asciidoctor-compatible inline HTML fragment.
+/// This crate does not re-implement inline formatting; it only assembles block
+/// structure around those fragments.
+///
+/// # Baseline coverage
+///
+/// This crate now renders the document skeleton and header, paragraphs,
+/// sections, the preamble, verbatim (listing/literal/source) blocks, the
+/// delimited example/sidebar/open blocks, admonitions, quotes/verses, lists
+/// (unordered/ordered/description/callout), tables, STEM blocks, the media
+/// blocks (block images plus video/audio), the `toc::[]` macro, and thematic
+/// and page breaks. A construct the renderer does not handle emits a visible
+/// `<!-- asciidoc-html5: unsupported … -->` comment so the output stays
+/// well-formed and the gap is easy to see. The aim, as coverage grows, is
+/// parity with Asciidoctor's `html5` backend; icons are the main remaining
+/// gap. (Interactive SVG renders as an `<object>`; an `opts=inline` SVG embeds
+/// the file's `<svg>` contents — for both the inline `image:` and block
+/// `image::` forms; and `data-uri` embeds referenced images and image-mode
+/// icons as base64 `data:` URIs below `Secure` — each honoring the safe mode;
+/// see the base-directory note below.)
+///
+/// # A block inline SVG (and a `data-uri` image) needs a base directory
+///
+/// A *block* image's inline-embedded SVG (`image::…[opts=inline]`), and any
+/// `data-uri` image or image-mode icon, is read from disk *at render time*, so
+/// it needs the base directory and safe mode that only [`Options`] carries —
+/// and this options-free entry point has neither. Rendered here, such a block
+/// SVG falls back to its alt text (a `<span class="alt">`), and a `data-uri`
+/// image embeds as an empty data URI — the same results Asciidoctor produces
+/// when it cannot read the file. To embed them, convert the file directly with
+/// [`convert_file`]/[`convert_file_with`], or render the [`Document`] with
+/// [`convert_document_with`] under [`Options`] that name the file or base
+/// directory ([`Options::input_file`] / [`Options::base_dir`]) — the same
+/// anchor [`convert_file_with`] sets for you. An *inline* image's `opts=inline`
+/// SVG is unaffected either way: `asciidoc-parser` reads and embeds it at parse
+/// time, so it is already present in the [`Document`] this renders.
+///
+/// [`InlineRenderer`]: asciidoc_parser::parser::InlineRenderer
+/// [`rendered_html_content`]: asciidoc_parser::blocks::IsBlock::rendered_html_content
+/// [`title`]: asciidoc_parser::blocks::IsBlock::title
+pub fn convert_document(document: &Document<'_>) -> String {
+    renderer::render_document(document, None, false, None, false)
+}
+
+/// Renders an already-parsed [`Document`] to HTML5 under `options` — the
+/// [`Options`]-aware counterpart to [`convert_document`].
+///
+/// This is the render step of [`convert_with`] split out from its parse step,
+/// for a caller that has already [`load`]ed the [`Document`] (for example, to
+/// inspect its [`warnings`](Document::warnings) first) and wants to render the
+/// *same* parse rather than parsing the source a second time:
+/// `convert_document_with(&load_with(source, options), options)` equals
+/// `convert_with(source, options)`.
+///
+/// Unlike [`convert_document`], this honors [`Options::standalone`] (emitting
+/// the full `<!DOCTYPE>`/`<head>`/`<body>` shell when set) and an *embedded*
+/// custom stylesheet exactly as [`convert_with`] does — see that function for
+/// how the stylesheet's CSS is resolved. It does not emit the `copycss`
+/// companion file; for that, render with [`convert_document_with_writer`].
+pub fn convert_document_with(document: &Document<'_>, options: &Options) -> String {
+    render(document, options)
+}
+
+/// Renders an already-parsed [`Document`] like [`convert_document_with`], and
+/// additionally emits the companion files the conversion calls for through
+/// `writer` — the render step of [`convert_with_writer`] split out from its
+/// parse step.
+///
+/// This lets a caller that has already [`load`]ed the [`Document`] render it
+/// without parsing the source again:
+/// `convert_document_with_writer(&load_with(source, options), options, writer)`
+/// equals [`convert_with_writer(source, options,
+/// writer)`](convert_with_writer). See [`convert_with_writer`] for what
+/// `copycss` writes through `writer`.
+///
+/// # Errors
+///
+/// Returns any [`io::Error`] raised while writing a companion file through
+/// `writer`.
+pub fn convert_document_with_writer(
+    document: &Document<'_>,
+    options: &Options,
+    writer: &mut impl AssetWriter,
+) -> io::Result<String> {
+    let html = render(document, options);
+
+    // Embedded output emits no stylesheet, so there is nothing to copy
+    // alongside it — matching Asciidoctor, which skips the `copycss` copy
+    // for embeddable output. Only a standalone document can reference a
+    // copied stylesheet.
+    if options.is_standalone() {
+        emit_stylesheet_copy(document, options, writer)?;
+    }
+
+    Ok(html)
+}
+
+/// Generates the HTML table of contents (the *outline*) for `document`.
+///
+/// This is the standalone TOC generator: give it a [`Document`] you have
+/// already [`load`]ed and it returns the nested `<ul class="sectlevel1">…</ul>`
+/// list of section links on its own — not a full document — so you can build a
+/// table of contents to embed in a page template. The returned `String` is
+/// empty when the document has no sections (there is then no TOC to build). The
+/// depth follows the document's own `toclevels` attribute (default `2`); to
+/// override it — or the `sectnumlevels` used for numbered sections — pass
+/// [`OutlineOptions`] to [`convert_outline_with`].
+///
+/// Each section becomes a `<li><a href="#id">title</a></li>`, and a section
+/// with subsections within the depth nests a child `<ul class="sectlevelN">`
+/// before its closing `</li>`. Discrete (floating) headings are not sections
+/// and do not appear. The markup matches Asciidoctor's default `html5` backend
+/// exactly.
+///
+/// # Examples
+///
+/// ```
+/// let doc = asciidoc_html5::load("= Doc\n\n== One\n\n== Two");
+/// let toc = asciidoc_html5::convert_outline(&doc);
+/// assert!(toc.starts_with("<ul class=\"sectlevel1\">"));
+/// ```
+pub fn convert_outline(document: &Document<'_>) -> String {
+    outline::render_outline(document, &OutlineOptions::default())
+}
+
+/// Generates the HTML TOC for `document` under `options` — the
+/// [`OutlineOptions`]-aware counterpart to [`convert_outline`].
+///
+/// `options` overrides the depth (`toclevels`) and the numbered-section depth
+/// (`sectnumlevels`) that [`convert_outline`] takes from the document's
+/// attributes; any option left unset falls back to the document's own value.
+/// See [`convert_outline`] for the shape of the returned list.
+///
+/// # Examples
+///
+/// ```
+/// use asciidoc_html5::OutlineOptions;
+///
+/// let doc = asciidoc_html5::load("= Doc\n\n== One\n\n=== Nested\n\n== Two");
+///
+/// // Limit the TOC to top-level sections; the nested section is dropped.
+/// let toc = asciidoc_html5::convert_outline_with(&doc, &OutlineOptions::new().toclevels(1));
+/// assert!(!toc.contains("sectlevel2"));
+/// ```
+pub fn convert_outline_with(document: &Document<'_>, options: &OutlineOptions) -> String {
+    outline::render_outline(document, options)
+}
+
+#[cfg(test)]
+mod writer_tests {
+    use std::{
+        io,
+        path::{Path, PathBuf},
+    };
+
+    use crate::{
+        asset_writer::RecordingAssetWriter, convert_file_with_writer, convert_with,
+        convert_with_writer, AssetWriter, Options, SafeMode,
+    };
+
+    /// An [`AssetWriter`] whose every write fails, so a test can check that a
+    /// companion-file I/O error is propagated by the `_with_writer` entry
+    /// points.
+    struct FailingAssetWriter;
+
+    impl AssetWriter for FailingAssetWriter {
+        fn write_asset(&mut self, _path: &Path, _content: &[u8]) -> io::Result<()> {
+            Err(io::Error::other("asset write failed"))
+        }
+    }
+
+    // The HTML `convert_with_writer` returns is identical to `convert_with`'s —
+    // `copycss` is a side effect that never changes the document — and the
+    // default stylesheet is offered to the writer as `asciidoctor.css`.
+    #[test]
+    fn writer_copies_the_default_stylesheet_without_changing_the_html() {
+        let source = "= Doc\n\nBody.";
+
+        // A copied stylesheet accompanies a standalone document (the string API
+        // is embedded by default, which emits no stylesheet to copy).
+        let options = Options::new()
+            .standalone(true)
+            .safe_mode(SafeMode::Safe)
+            .set("linkcss");
+
+        let mut writer = RecordingAssetWriter::default();
+        let html = convert_with_writer(source, &options, &mut writer).expect("convert");
+
+        assert_eq!(html, convert_with(source, &options));
+        assert_eq!(writer.written.len(), 1);
+        let (path, content) = &writer.written[0];
+        assert_eq!(path, &PathBuf::from("asciidoctor.css"));
+        assert!(content.starts_with(b"/*"));
+
+        // Asciidoctor `rstrip`s the stylesheet, so the copied `asciidoctor.css`
+        // ends without a trailing newline; the written bytes must match.
+        assert!(!content.ends_with(b"\n"));
+    }
+
+    // A server-side highlighter (`coderay`) draws no companion stylesheet: with
+    // `linkcss` and a source block, the writer still receives only the primary
+    // stylesheet. Asciidoctor would also copy `coderay-asciidoctor.css`, but
+    // server-side syntax highlighting is not supported here.
+    #[test]
+    fn writer_copies_only_the_primary_stylesheet_with_a_server_side_highlighter() {
+        let source = "= Doc\n\n[source,ruby]\n----\nputs 1\n----";
+        let options = Options::new()
+            .standalone(true)
+            .safe_mode(SafeMode::Safe)
+            .set("linkcss")
+            .attribute("source-highlighter", "coderay");
+
+        let mut writer = RecordingAssetWriter::default();
+        convert_with_writer(source, &options, &mut writer).expect("convert");
+
+        let names: Vec<&str> = writer
+            .written
+            .iter()
+            .filter_map(|(p, _)| p.to_str())
+            .collect();
+        assert_eq!(names, ["asciidoctor.css"]);
+    }
+
+    // A write error on the primary stylesheet copy is propagated by the
+    // `_with_writer` entry point rather than swallowed.
+    #[test]
+    fn a_write_error_on_the_primary_stylesheet_propagates() {
+        let options = Options::new()
+            .standalone(true)
+            .safe_mode(SafeMode::Safe)
+            .set("linkcss");
+
+        let mut writer = FailingAssetWriter;
+        let err = convert_with_writer("= Doc\n\nBody.", &options, &mut writer)
+            .expect_err("the failing writer aborts the conversion");
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+    }
+
+    // With no `linkcss` (the stylesheet is embedded), the writer is never
+    // called.
+    #[test]
+    fn writer_is_untouched_when_the_stylesheet_is_embedded() {
+        let mut writer = RecordingAssetWriter::default();
+        let options = Options::new().safe_mode(SafeMode::Safe);
+        convert_with_writer("= Doc\n\nBody.", &options, &mut writer).expect("convert");
+        assert!(writer.written.is_empty());
+    }
+
+    // `convert_file_with_writer` anchors the custom stylesheet read at the
+    // input file's own directory, so a linked custom stylesheet is copied
+    // to its web path with the on-disk contents.
+    #[test]
+    fn file_writer_copies_a_custom_stylesheet_from_the_input_directory() {
+        let dir = std::env::temp_dir().join(format!("adoc-lib-copycss-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("css")).expect("create dirs");
+        std::fs::write(dir.join("main.adoc"), "= Doc\n\nBody.").expect("write adoc");
+        std::fs::write(dir.join("css/theme.css"), "body { color: teal; }").expect("write css");
+
+        let options = Options::new()
+            .safe_mode(SafeMode::Safe)
+            .set("linkcss")
+            .attribute("stylesdir", "css")
+            .attribute("stylesheet", "theme.css");
+
+        let mut writer = RecordingAssetWriter::default();
+        convert_file_with_writer(dir.join("main.adoc"), &options, &mut writer).expect("convert");
+
+        assert_eq!(writer.written.len(), 1);
+        let (path, content) = &writer.written[0];
+        assert_eq!(path.to_string_lossy().replace('\\', "/"), "css/theme.css");
+        assert_eq!(content, b"body { color: teal; }");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // `convert_file_with_writer` honors the `copycss=<path>` read-from override
+    // (Asciidoctor's copy/link split): the bytes are read from the `copycss`
+    // path, but the copy is written to — and the HTML links — the `stylesheet`
+    // web path. This is the API-surface counterpart to the `adoc` copy/link
+    // split the CLI crate verifies and the `stylesheet_copy` unit test
+    // resolves.
+    #[test]
+    fn file_writer_honors_the_copycss_read_from_override() {
+        let dir =
+            std::env::temp_dir().join(format!("adoc-lib-copycss-split-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("vendor")).expect("create dirs");
+        std::fs::write(dir.join("main.adoc"), "= Doc\n\nBody.").expect("write adoc");
+        std::fs::write(dir.join("vendor/theme.css"), "body { color: maroon; }").expect("write css");
+
+        let options = Options::new()
+            .safe_mode(SafeMode::Safe)
+            .set("linkcss")
+            .attribute("copycss", "vendor/theme.css")
+            .attribute("stylesheet", "published.css");
+
+        let mut writer = RecordingAssetWriter::default();
+        let html = convert_file_with_writer(dir.join("main.adoc"), &options, &mut writer)
+            .expect("convert");
+
+        // The HTML links the stylesheet at its own web path, not the copycss
+        // one.
+        assert!(html.contains(r#"<link rel="stylesheet" href="./published.css">"#));
+
+        // The copy is written to that same web path, but its bytes come from
+        // the copycss read-from path.
+        assert_eq!(writer.written.len(), 1);
+        let (path, content) = &writer.written[0];
+        assert_eq!(path.to_string_lossy().replace('\\', "/"), "published.css");
+        assert_eq!(content, b"body { color: maroon; }");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod load_tests {
+    use asciidoc_parser::{blocks::FindBlocks as _, document::InterpretedValue};
+
+    use crate::{
+        convert, convert_document, convert_document_with, convert_with, load, load_deferred,
+        load_file, load_file_with, load_with, Options, SafeMode,
+    };
+
+    // `load` returns the parsed document, and rendering it with
+    // `convert_document` reproduces `convert` — the load and convert steps
+    // split apart and reassembled match the combined path.
+    #[test]
+    fn load_then_convert_document_matches_convert() {
+        let source = "= Hello\n\nWorld.";
+
+        let doc = load(source);
+        assert_eq!(doc.doctitle(), Some("Hello"));
+        assert!(doc.child_blocks().next().is_some());
+
+        assert_eq!(convert_document(&doc), convert(source));
+    }
+
+    // `load_with` applies the `Options` at parse time: an externally-supplied
+    // attribute lands in the document model, and rendering the loaded document
+    // matches `convert_with` for the same options.
+    #[test]
+    fn load_with_applies_options_at_parse_time() {
+        let source = "= Doc\n\nBody.";
+        let opts = Options::new()
+            .safe_mode(SafeMode::Server)
+            .attribute("author", "Ada Lovelace");
+
+        let doc = load_with(source, &opts);
+        assert_eq!(
+            doc.attribute_value("author"),
+            InterpretedValue::Value("Ada Lovelace".to_string())
+        );
+
+        // The separately loaded-and-rendered path equals the combined one.
+        assert_eq!(convert_document(&doc), convert_with(source, &opts));
+    }
+
+    // `load_file` reads and parses a file into an owned document, the
+    // file-based counterpart to `load`.
+    #[test]
+    fn load_file_reads_and_parses() {
+        let source = "= From File\n\nBody.";
+        let path = std::env::temp_dir().join(format!(
+            "asciidoc-html5-load-file-{}.adoc",
+            std::process::id()
+        ));
+        std::fs::write(&path, source).expect("write temp input");
+
+        let doc = load_file(&path).expect("load_file reads and parses");
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(doc.doctitle(), Some("From File"));
+    }
+
+    // `load_file_with` records the file as the primary document, so a relative
+    // top-level `include::` resolves against the file's own directory — the
+    // same anchoring `convert_file_with` performs.
+    #[test]
+    fn load_file_with_anchors_includes_at_the_file_directory() {
+        let dir = std::env::temp_dir().join(format!("adoc-load-file-inc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create dir");
+        std::fs::write(dir.join("main.adoc"), "= Doc\n\ninclude::part.adoc[]\n")
+            .expect("write main");
+        std::fs::write(dir.join("part.adoc"), "Included body.\n").expect("write part");
+
+        let doc = load_file_with(
+            dir.join("main.adoc"),
+            &Options::new().safe_mode(SafeMode::Safe),
+        )
+        .expect("load_file_with reads and parses");
+
+        // The include resolved, so the rendered document carries the included
+        // text.
+        assert!(convert_document(&doc).contains("Included body."));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // A *block* image's inline SVG (`image::…[opts=inline]`) is read at render
+    // time, so it needs the base directory only `Options` carries. The
+    // options-free `convert_document` has none, so it degrades the block image
+    // to its alt text — while `convert_document_with`, given `Options` that
+    // name the file, supplies the base directory and embeds the file's
+    // `<svg>`. This locks the limitation and its documented workaround (see
+    // `convert_document`). An *inline* `image:` SVG is embedded at parse time,
+    // so it is present either way and is covered separately in the SVG
+    // Images page.
+    #[test]
+    fn block_inline_svg_embedding_needs_a_base_directory() {
+        let dir = std::env::temp_dir().join(format!("adoc-load-svg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create dir");
+        std::fs::write(
+            dir.join("sample.svg"),
+            "<svg viewBox=\"0 0 4 4\"><circle/></svg>\n",
+        )
+        .expect("write svg");
+        std::fs::write(
+            dir.join("main.adoc"),
+            "= Doc\n\nimage::sample.svg[Diagram,opts=inline]\n",
+        )
+        .expect("write main");
+
+        let main = dir.join("main.adoc");
+        let opts = Options::new().safe_mode(SafeMode::Unsafe);
+        let doc = load_file_with(&main, &opts).expect("load_file_with reads and parses");
+
+        // Options-free: no base directory, so the block SVG degrades to alt
+        // text.
+        let without = convert_document(&doc);
+        assert!(
+            without.contains("<span class=\"alt\">Diagram</span>"),
+            "{without}"
+        );
+        assert!(!without.contains("<svg"), "{without}");
+
+        // With `Options` naming the file: the base directory anchors the read,
+        // so the file's `<svg>` is embedded.
+        let with = convert_document_with(&doc, &opts.clone().input_file(&main));
+        assert!(
+            with.contains("<svg viewBox=\"0 0 4 4\"><circle/></svg>"),
+            "{with}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // `load_file_with` populates the input-file attribute family on the loaded
+    // document — `docfile`, `docdir`, `docname`, `docfilesuffix` — the way
+    // Asciidoctor's `load_file` does, honoring the safe mode. This is the
+    // load-path counterpart to the `Options` unit tests for the same
+    // intrinsics: the attributes are observable directly on the returned
+    // `Document`.
+    #[test]
+    fn load_file_with_populates_the_input_file_attributes() {
+        let dir = std::env::temp_dir().join(format!("adoc-load-file-attrs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let file = dir.join("guide.adoc");
+        std::fs::write(&file, "= Doc\n\nBody.").expect("write file");
+
+        let canonical_file = file.canonicalize().expect("canonicalize file");
+        let canonical_dir = dir.canonicalize().expect("canonicalize dir");
+
+        // Below `Server`, `docfile`/`docdir` are the absolute path and
+        // directory, matching Asciidoctor's `load_file` under `safe:
+        // :safe`.
+        let doc = load_file_with(&file, &Options::new().safe_mode(SafeMode::Safe))
+            .expect("load_file_with");
+        assert_eq!(
+            doc.attribute_value("docfile"),
+            InterpretedValue::Value(canonical_file.to_string_lossy().into_owned())
+        );
+        assert_eq!(
+            doc.attribute_value("docdir"),
+            InterpretedValue::Value(canonical_dir.to_string_lossy().into_owned())
+        );
+        assert_eq!(
+            doc.attribute_value("docname"),
+            InterpretedValue::Value("guide".to_string())
+        );
+        assert_eq!(
+            doc.attribute_value("docfilesuffix"),
+            InterpretedValue::Value(".adoc".to_string())
+        );
+
+        // `Server` and above conceal the host location: `docfile` is trimmed to
+        // its basename and `docdir` is emptied, while `docname`/`docfilesuffix`
+        // (which expose no more than the basename) are unchanged.
+        let concealed = load_file_with(&file, &Options::new().safe_mode(SafeMode::Server))
+            .expect("load_file_with");
+        assert_eq!(
+            concealed.attribute_value("docfile"),
+            InterpretedValue::Value("guide.adoc".to_string())
+        );
+        assert_eq!(
+            concealed.attribute_value("docdir"),
+            InterpretedValue::Value(String::new())
+        );
+        assert_eq!(
+            concealed.attribute_value("docfilesuffix"),
+            InterpretedValue::Value(".adoc".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // A string `load` names no file, so `docfile` is never set — matching
+    // Asciidoctor, whose string and IO inputs carry no `docfile`.
+    #[test]
+    fn load_of_a_string_has_no_docfile() {
+        let doc = load("= Doc\n\nBody.");
+        assert!(!matches!(
+            doc.attribute_value("docfile"),
+            InterpretedValue::Value(_)
+        ));
+    }
+
+    // `load_deferred` applies `Options` exactly like `load_with` — the same
+    // document attributes land in the parsed document — differing only in
+    // leaving cross-references unresolved.
+    #[test]
+    fn load_deferred_applies_options_like_load_with() {
+        let source = "= Doc\n\nBody.";
+        let opts = Options::new()
+            .safe_mode(SafeMode::Server)
+            .attribute("author", "Ada Lovelace");
+
+        let (doc, _parser) = load_deferred(source, &opts);
+        assert_eq!(
+            doc.attribute_value("author"),
+            InterpretedValue::Value("Ada Lovelace".to_string())
+        );
+        assert_eq!(doc.doctitle(), load_with(source, &opts).doctitle());
+    }
+
+    // A same-document cross-reference is left unresolved by `load_deferred`.
+    // Resolving it back against the document's own catalog — using the
+    // returned `Parser`, the seam `Document::resolve_references` needs since
+    // asciidoc-parser 0.31 — with the default `CatalogResolver` reproduces
+    // `load`'s auto-resolved output. This is the equivalence the deferred
+    // path promises: `load_deferred` + default-resolver `resolve_references`
+    // equals `load`.
+    #[test]
+    fn load_deferred_plus_default_resolver_matches_load() {
+        use asciidoc_parser::parser::{CatalogResolver, HtmlInlineRenderer};
+
+        let source = "[#target]\n== Section\n\nSee <<target>>.";
+
+        let (mut deferred_doc, parser) = load_deferred(source, &Options::default());
+        let catalog = deferred_doc.catalog().clone();
+        let resolver = CatalogResolver::new(&catalog);
+        deferred_doc.resolve_references(&resolver, &HtmlInlineRenderer {}, &parser);
+
+        assert_eq!(
+            convert_document(&deferred_doc),
+            convert_document(&load(source))
+        );
+    }
+
+    // The `Parser` `load_deferred` hands back is not a formality: resolving a
+    // cross-reference re-renders the whole content it appears in (a *refold*
+    // of the inline tree), and that refold consults the file handlers of
+    // *whichever* `Parser` is passed to `resolve_references` —
+    // `asciidoc-parser`'s `Content::refold` rebuilds its `RenderContext` from
+    // that argument, not from whatever parsed the document originally. A
+    // paragraph mixing an inline `opts=inline` SVG image with a
+    // cross-reference exercises exactly that: resolving the reference forces
+    // the paragraph to refold, so only a `Parser` still carrying the SVG
+    // handler `Options::apply` installed reproduces the embedded `<svg>`;
+    // this locks in why `load_deferred` returns its own `Parser` rather than
+    // leaving the caller to build one (see `load_deferred`'s docs).
+    #[test]
+    fn load_deferred_resolution_reembeds_svg_through_the_returned_parser() {
+        use asciidoc_parser::{
+            parser::{CatalogResolver, HtmlInlineRenderer},
+            Parser,
+        };
+
+        let dir =
+            std::env::temp_dir().join(format!("adoc-load-deferred-svg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create dir");
+        std::fs::write(
+            dir.join("sample.svg"),
+            "<svg viewBox=\"0 0 4 4\"><circle/></svg>\n",
+        )
+        .expect("write svg");
+        let main = dir.join("main.adoc");
+        let source =
+            "[#target]\n== Section\n\nimage:sample.svg[Diagram,opts=inline] see <<target>>.\n";
+        std::fs::write(&main, source).expect("write main");
+
+        let opts = Options::new().safe_mode(SafeMode::Unsafe).input_file(&main);
+
+        // Resolving with the `Parser` `load_deferred` itself hands back keeps
+        // the SVG handler `Options::apply` installed from the same
+        // `input_file`, so the paragraph's refold re-embeds the file.
+        let (mut doc, parser) = load_deferred(source, &opts);
+        let catalog = doc.catalog().clone();
+        let resolver = CatalogResolver::new(&catalog);
+        doc.resolve_references(&resolver, &HtmlInlineRenderer {}, &parser);
+        let html = convert_document(&doc);
+        assert!(
+            html.contains("<svg viewBox=\"0 0 4 4\"><circle/></svg>"),
+            "{html}"
+        );
+
+        // Resolving the *same* deferred parse with a hand-built, unconfigured
+        // `Parser` instead — the workaround `load_deferred` exists to make
+        // unnecessary — silently degrades the already-embedded SVG to its
+        // alt-text fallback on refold, since that bare parser carries no SVG
+        // handler.
+        let (mut bare_doc, _configured_parser) = load_deferred(source, &opts);
+        let bare_catalog = bare_doc.catalog().clone();
+        let bare_resolver = CatalogResolver::new(&bare_catalog);
+        let bare_parser = Parser::default();
+        bare_doc.resolve_references(&bare_resolver, &HtmlInlineRenderer {}, &bare_parser);
+        let degraded_html = convert_document(&bare_doc);
+        assert!(!degraded_html.contains("<svg"), "{degraded_html}");
+        assert!(
+            degraded_html.contains("<span class=\"alt\">Diagram</span>"),
+            "{degraded_html}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

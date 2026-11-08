@@ -1,0 +1,4627 @@
+use std::{collections::HashSet, fmt, sync::LazyLock};
+
+use regex::Regex;
+
+use crate::{
+    HasSpan, Parser, Span,
+    attributes::Attrlist,
+    blocks::{
+        Block, ChildBlocks, ContentModel, IsBlock, metadata::BlockMetadata,
+        parse_utils::parse_blocks_until,
+    },
+    content::{
+        Content, DeferredParts, SubstitutionGroup, inline_builder::fold_reference_text,
+        substitute_attributes_in_reftext,
+    },
+    document::{InterpretedValue, RefType, title_freeze},
+    inlines::InlineNode,
+    internal::debug::DebugSliceReference,
+    parser::{ResolvedAttributes, ResolvedReference, XrefSignifier},
+    span::MatchedItem,
+    strings::CowStr,
+    warnings::{Warning, WarningType},
+};
+
+/// Sections partition the document into a content hierarchy. A section is an
+/// implicit enclosure. Each section begins with a title and ends at the next
+/// sibling section, ancestor section, or end of document. Nested section levels
+/// must be sequential.
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub struct SectionBlock<'src> {
+    level: usize,
+    section_title: Content<'src>,
+    blocks: Vec<Block<'src>>,
+    source: Span<'src>,
+    title_source: Option<Span<'src>>,
+    title: Option<Content<'src>>,
+    anchor: Option<Span<'src>>,
+    anchor_reftext: Option<Span<'src>>,
+    attrlist: Option<Attrlist<'src>>,
+    section_type: SectionType,
+    section_id: Option<String>,
+    caption: Option<String>,
+    section_number: Option<SectionNumber>,
+}
+
+impl<'src> SectionBlock<'src> {
+    /// Returns a document-order iterator over this section's direct child
+    /// blocks.
+    ///
+    /// For the full subtree, or to search from a [`Block`] or [`Document`], use
+    /// [`FindBlocks`](crate::blocks::FindBlocks).
+    ///
+    /// [`Document`]: crate::Document
+    pub fn child_blocks(&'src self) -> ChildBlocks<'src> {
+        ChildBlocks::from_slice(&self.blocks)
+    }
+
+    pub(crate) fn parse(
+        metadata: &BlockMetadata<'src>,
+        parser: &mut Parser,
+        warnings: &mut Vec<Warning<'src>>,
+    ) -> Option<MatchedItem<'src, Self>> {
+        let discrete = metadata.is_discrete();
+
+        // A section heading is only recognized at the document top level or
+        // within another section's body. Inside a delimited block (example,
+        // sidebar, open, or quote), a `== …` line is literal content — a
+        // paragraph — not a section, so decline here and let the line fall
+        // through to `SimpleBlock`. A discrete heading is an ordinary block,
+        // not a section, and remains valid in these contexts, so it is
+        // not suppressed.
+        if !discrete && parser.in_delimited_block {
+            return None;
+        }
+
+        let source = metadata.block_start.discard_empty_lines();
+
+        // The heading's effective level folds in the running `leveloffset`
+        // document attribute. A positive offset (the usual case, from
+        // `include::[leveloffset=+1]`) pushes headings down — notably promoting
+        // an included file's level-0 document title (`=`) into a real section —
+        // while a negative offset pulls them up. A heading whose effective
+        // level is below 1 is rejected as an unsupported level-0
+        // heading (the warning is raised inside `parse_title_line`).
+        let level_and_title = parse_title_line(source, parser.level_offset(), discrete, warnings)?;
+
+        // Take a snapshot of `sectids` value before reading child blocks
+        // because the value might be altered while parsing.
+        let sectids = parser.is_attribute_set("sectids");
+
+        let level = level_and_title.item.0;
+
+        // A level-0 section heading in the document body (a bare `=` that no
+        // positive `leveloffset` promoted to a real section) is only valid
+        // under `:doctype: book`, where it is a book part. Under any
+        // other doctype Asciidoctor logs "level 0 sections can only be
+        // used when doctype is book"; raise that warning here, where
+        // the doctype is known. The heading is still modeled as a
+        // level-0 section either way, so a renderer can emit
+        // `<h1 class="sect0">`. A discrete level-0 heading is a floating
+        // `<h1>`, not a section, and is exempt.
+        if !discrete && level == 0 && !is_book_doctype(parser) {
+            warnings.push(Warning::new(
+                source.take_normalized_line().item,
+                WarningType::Level0SectionHeadingNotSupported,
+            ));
+        }
+
+        // An explicit ID supplied *above* the heading (a `[#id]`/`[id=…]` block
+        // attribute or a `[[id]]` block anchor) always wins. It also suppresses
+        // embedded-anchor processing below, so a `[[id]]` embedded in the title
+        // is then left in place and rendered as an ordinary inline anchor.
+        let attr_or_anchor_id = metadata
+            .attrlist
+            .as_ref()
+            .and_then(|a| a.id())
+            .or_else(|| metadata.anchor.as_ref().map(|anchor| anchor.data()));
+
+        // AsciiDoc lets a section define its ID via an anchor embedded at the
+        // end of the title (`== Title [[id]] ==`, optionally
+        // `[[id,reftext]]`). When present (and not already overridden
+        // by an explicit ID above), the anchor is consumed to set the
+        // section ID and removed from the rendered title, rather than
+        // being rendered as an inline anchor.
+        let (title_span, embedded_id, embedded_reftext) = if attr_or_anchor_id.is_none() {
+            match_embedded_section_anchor(level_and_title.item.1)
+        } else {
+            (level_and_title.item.1, None, None)
+        };
+
+        // Assign the section type. At level 1, we look for an `appendix`
+        // section style; at all other levels, we inherit the section
+        // type from parent.
+        let section_type = if discrete {
+            SectionType::Discrete
+        } else if level == 1 {
+            let section_type = if let Some(ref attrlist) = metadata.attrlist
+                && let Some(block_style) = attrlist.block_style()
+                && block_style == "appendix"
+            {
+                SectionType::Appendix
+            } else {
+                SectionType::Normal
+            };
+            parser.topmost_section_type = section_type;
+            section_type
+        } else {
+            parser.topmost_section_type
+        };
+
+        // Assign section number BEFORE parsing child blocks so that sections
+        // are numbered in document order (parent before children).
+        //
+        // Appendix sections are lettered (A, B, ...) independently of
+        // `sectnums` because their title prefix is governed by the
+        // `appendix-caption` attribute (see the "Appendix label"
+        // section of the spec). An appendix root — the section that
+        // directly carries the `appendix` style — therefore always
+        // advances the appendix counter so it (and the numbering of any
+        // subsection) can derive its letter, even when `sectnums` is unset.
+        // A level-0 section (a book part) is not numbered through `sectnums`
+        // (parts use the separate `partnums` attribute, which this crate does
+        // not yet model), so section numbering is restricted to level 1
+        // and deeper.
+        let declared_style = metadata
+            .attrlist
+            .as_ref()
+            .and_then(|attrs| attrs.block_style());
+        let book = matches!(parser.attribute_value("doctype"), InterpretedValue::Value(value) if value == "book");
+        let special = declared_style.is_some_and(|style| {
+            matches!(
+                style,
+                "bibliography"
+                    | "glossary"
+                    | "index"
+                    | "preface"
+                    | "colophon"
+                    | "dedication"
+                    | "acknowledgments"
+                    | "partintro"
+            ) || (style == "abstract" && !book)
+        });
+        let number_all = matches!(parser.attribute_value("sectnums"), InterpretedValue::Value(value) if value == "all");
+        let suppress_numbering = if special {
+            !number_all
+        } else {
+            parser.in_unnumbered_special_section
+        };
+        let sectnums_active = parser.is_attribute_set("sectnums")
+            && level >= MIN_SECTION_LEVEL as usize
+            && level <= parser.sectnumlevels
+            && !discrete
+            && !suppress_numbering;
+
+        let is_appendix_root = !discrete && level == 1 && section_type == SectionType::Appendix;
+
+        // A cross-reference builds `full`/`short` xrefstyle text from a
+        // section's signifier and number, but only when the section has
+        // a number *and* no explicit reftext (an explicit reftext is
+        // used verbatim instead). An explicit reftext can come from a
+        // `reftext` attribute, the second field of a `[[id,reftext]]`
+        // block anchor, or the second field of an anchor embedded in
+        // the section title.
+        let has_explicit_reftext = metadata
+            .attrlist
+            .as_ref()
+            .and_then(|a| a.named_attribute("reftext"))
+            .is_some()
+            || metadata.anchor_reftext.is_some()
+            || embedded_reftext.is_some();
+
+        // An anchor reftext can carry attribute references (`[[install,install
+        // on {platform-name}]]`), whether the anchor sits above the heading
+        // (`metadata.anchor_reftext`) or is embedded in the title
+        // (`embedded_reftext`). Resolve them against the attributes in effect
+        // at the anchor's location — captured here, before the section
+        // body is parsed and can itself redefine those attributes —
+        // mirroring how the anchor ID and a `reftext=` attribute are
+        // already substituted when the attribute list is parsed.
+        let anchor_reftext = metadata
+            .anchor_reftext
+            .as_ref()
+            .map(|span| substitute_attributes_in_reftext(*span, parser));
+        let embedded_reftext =
+            embedded_reftext.map(|span| substitute_attributes_in_reftext(span, parser));
+
+        let (section_number, caption, xref_signifier) = if is_appendix_root {
+            // The appendix letter is resolved through the `appendix-number`
+            // counter (mirroring Ruby Asciidoctor's `Document#counter
+            // 'appendix-number', 'A'`): each appendix advances the counter, so
+            // a document-set `appendix-number` value is the letter *before* the
+            // first appendix (`:appendix-number: α` letters the appendices β,
+            // γ, …) and the attribute always reads back as the current letter.
+            let letter = parser.counter("appendix-number", Some("A"));
+
+            parser
+                .last_appendix_section_number
+                .assign_next_number(level);
+            parser.last_appendix_section_number.appendix_letter = Some(letter);
+
+            let number = parser.last_appendix_section_number.clone();
+            let caption = appendix_caption(parser, &number);
+
+            // An appendix is always lettered and its title is emphasized, even
+            // when `sectnums` is unset; its reference signifier is
+            // `appendix-refsig`.
+            let signifier = (!has_explicit_reftext).then(|| XrefSignifier {
+                label: join_signifier(
+                    parser.attribute_value("appendix-refsig").as_maybe_str(),
+                    &number.to_string(),
+                ),
+                emphasize: true,
+            });
+            let section_number = if sectnums_active { Some(number) } else { None };
+            (section_number, Some(caption), signifier)
+        } else if sectnums_active {
+            let number = parser.assign_section_number(level);
+            let signifier = (!has_explicit_reftext).then(|| XrefSignifier {
+                label: if special {
+                    number.to_string()
+                } else {
+                    join_signifier(
+                        parser.attribute_value("section-refsig").as_maybe_str(),
+                        &number.to_string(),
+                    )
+                },
+                emphasize: false,
+            });
+            (Some(number), None, signifier)
+        } else {
+            (None, None, None)
+        };
+
+        let mut most_recent_level = level;
+
+        // Apply the title's substitutions BEFORE parsing the section body, so
+        // that a `footnote:[…]` macro in the title is numbered ahead of any
+        // footnotes in the body (document order: the title precedes its body).
+        // Substituting before the body also means the title only sees document
+        // attributes defined ahead of it, not ones its body sets later.
+        //
+        // Asciidoctor instead converts headings eagerly and out of document
+        // order (to build IDs and cross-reference text), which numbers heading
+        // footnotes out of sequence. The crate deliberately diverges toward
+        // straightforward document-order numbering; see
+        // https://github.com/asciidoc-rs/asciidoc-parser/issues/594.
+        //
+        // A footnote in the title is a real, document-order footnote, but its
+        // marker must not leak into the section's reference text (an xref's
+        // link text) or auto-generated ID. The title's tree is what
+        // answers that: a footnote is a node, so the heading's own
+        // rendering and its footnote-free reference text are two folds
+        // of one tree ([`fold_reference_text`]), and "which regions
+        // were footnote markers" is a question about node kinds rather
+        // than about bytes. Still a single substitution pass, so
+        // counters and attribute-expanded footnotes are
+        // processed exactly once — which is what the sentinel pair this
+        // replaces used to buy.
+        let mut section_title = Content::from(title_span);
+        SubstitutionGroup::Title.apply(&mut section_title, parser, metadata.attrlist.as_ref());
+
+        // A fully-owned snapshot of the title's own deferred cross-references,
+        // registered below (once the section's final id is known) as a
+        // potential target for a *later* section's own demand — see
+        // `document::title_freeze` (issue #1110). `None` for the
+        // overwhelmingly common title with no embedded cross-reference at
+        // all, which this whole mechanism has nothing to do for.
+        //
+        // Built via `to_owned_title` rather than reading `section_title`'s
+        // own [`deferred_parts`](Content::deferred_parts) directly: that
+        // template is empty for any content but a *carried* title (an
+        // ordinary section heading always still has its tree to fold, so it
+        // never needs one) — `to_owned_title` is what synthesizes one from
+        // the tree, which the snapshot needs since it cannot keep the tree
+        // itself (see `title_freeze`'s own docs).
+        let recomputable_title =
+            section_title
+                .to_owned_title(parser)
+                .deferred_parts()
+                .map(|deferred| title_freeze::RecomputableTitle {
+                    block: deferred.block.to_vec(),
+                    footnote: deferred.footnote.to_vec(),
+                    template: deferred.template.to_vec(),
+                });
+
+        // Whether this section is about to auto-generate its own id: the one
+        // parse-time trigger for eagerly converting a title before the whole
+        // document — and so the complete catalog — is available, mirroring
+        // Asciidoctor's `generate_id` -> `Section#title` path. `manual_id`
+        // (below) folds in the same two sources once more, for the branch
+        // that actually assigns the id; this is computed ahead of it because
+        // it also decides *how* `title_reftext` is computed next.
+        let will_auto_generate_id = sectids && attr_or_anchor_id.is_none() && embedded_id.is_none();
+
+        // A title with no embedded cross-reference folds exactly as before:
+        // this pass and the ordinary per-content one already agree, since
+        // there is nothing left for either to resolve. A title carrying one,
+        // when this section is about to auto-generate its own id, is instead
+        // resolved *now*, against the catalog as it currently stands —
+        // recursively demanding (and permanently freezing) any *earlier*
+        // title it depends on, exactly the eager conversion Asciidoctor
+        // performs at this same point to build the id string. This section's
+        // *own* result is used only for that string (and, below, as a
+        // provisional catalog reference text) — never frozen itself; see
+        // `title_freeze`'s own "It is the target, never the demander"
+        // section. Every other title (an explicit id, or `sectids` disabled)
+        // keeps the plain unresolved-fallback fold: nothing forces its
+        // conversion this early either way.
+        let title_reftext = match will_auto_generate_id
+            .then_some(recomputable_title.as_ref())
+            .flatten()
+        {
+            Some(node) => {
+                title_freeze::resolve_now(node, parser, &mut HashSet::new())
+                    .0
+                    .rendered
+            }
+            None => fold_reference_text(
+                section_title.inlines(),
+                &*parser.renderer,
+                &parser.render_context(),
+            ),
+        };
+
+        // A section carrying the `bibliography` style implicitly adds that
+        // style to each top-level unordered list in its body (see the
+        // "Bibliography section syntax" section of the spec). Record
+        // that we are parsing such a section's body so
+        // `ListBlock::parse` can detect it, and restore the
+        // previous value afterward so the style does not leak into sibling
+        // sections (or, via a non-bibliography subsection, into its children).
+        let is_bibliography_section = !discrete
+            && metadata
+                .attrlist
+                .as_ref()
+                .and_then(|attrlist| attrlist.block_style())
+                == Some("bibliography");
+
+        let previously_in_bibliography_section = parser.parsing_bibliography_section_body;
+        parser.parsing_bibliography_section_body = is_bibliography_section;
+
+        // A special section that does not support nested sections (a
+        // `glossary`, `bibliography`, `colophon`, `dedication`, or
+        // `index` section) logs an error for each subsection found
+        // directly within it. Only a level-1 section carries a
+        // special-section style, and a discrete heading is not
+        // part of the section hierarchy, so the check is limited accordingly.
+        // The offending subsections are detected below, once the body is
+        // parsed.
+        let no_subsection_style = if !discrete && level == 1 {
+            metadata
+                .attrlist
+                .as_ref()
+                .and_then(|attrlist| attrlist.block_style())
+                .filter(|style| special_section_forbids_subsections(style))
+        } else {
+            None
+        };
+
+        // A block title above a section heading does not become the section's
+        // title; it is carried over to the first block inside the section
+        // (matching Asciidoctor). Stash it on the parser: the next block parsed
+        // claims it — usually the section's first child, or (when the section
+        // body is empty) the sibling section that follows, which re-stashes it
+        // for its own first block. A discrete heading is an ordinary block, not
+        // a section, so it keeps its title. See `Block::parse_internal` for the
+        // claiming side.
+        if !discrete && let Some(title) = metadata.title.as_ref() {
+            // The carried title travels as an owned snapshot, keeping any
+            // deferred cross-references so an embedded `<<id>>` still resolves
+            // for the claiming block once the catalog is complete. The snapshot
+            // is taken here, while the title's inline tree is still alive: its
+            // placeholder template is synthesized from that tree (see
+            // `Content::to_owned_title`), which the restored content — whose
+            // nodes cannot cross this hop — renders from.
+            let owned_title = title.to_owned_title(parser);
+            parser.pending_block_title = Some(owned_title);
+        }
+
+        let previous_numbering_scope = parser.in_unnumbered_special_section;
+        parser.in_unnumbered_special_section = suppress_numbering;
+
+        let mut maw_blocks = parse_blocks_until(
+            level_and_title.after,
+            |i, parser| {
+                discrete
+                    || peer_or_ancestor_section(*i, level, &mut most_recent_level, warnings, parser)
+            },
+            parser,
+        );
+
+        parser.parsing_bibliography_section_body = previously_in_bibliography_section;
+        parser.in_unnumbered_special_section = previous_numbering_scope;
+
+        let blocks = maw_blocks.item;
+        let source = metadata.source.trim_remainder(blocks.after);
+
+        // Emit an error for each subsection found directly inside a special
+        // section that does not support nested sections. The error points at
+        // the offending subsection's heading line, mirroring
+        // Asciidoctor's `<sectname> sections do not support nested
+        // sections` diagnostic. The subsection's title source is used
+        // rather than its whole span, whose first line is any block
+        // metadata (an anchor, attribute list, or block title) that
+        // precedes the heading.
+        if let Some(style) = no_subsection_style {
+            for block in &blocks.item {
+                if let Block::Section(subsection) = block
+                    && subsection.section_type() != SectionType::Discrete
+                {
+                    warnings.push(Warning::new(
+                        subsection
+                            .section_title_source()
+                            .take_normalized_line()
+                            .item,
+                        WarningType::SpecialSectionCannotHaveNestedSections(style.to_string()),
+                    ));
+                }
+            }
+        }
+
+        let proposed_base_id = generate_section_id(&title_reftext, parser);
+
+        // An explicit ID above the heading wins; otherwise an anchor embedded
+        // in the title supplies the ID.
+        let manual_id = attr_or_anchor_id.or(embedded_id);
+
+        // Reftext precedence mirrors `Block::block_reftext`: an explicit
+        // `reftext` attribute, then a `[[id,reftext]]` block-anchor reftext,
+        // then an embedded-anchor reftext (both with their attribute
+        // references already resolved above), then the section title.
+        let reftext: CowStr<'_> = metadata
+            .attrlist
+            .as_ref()
+            .and_then(|a| {
+                a.named_attribute("reftext")
+                    .map(|a| CowStr::from(a.value()))
+            })
+            .or_else(|| anchor_reftext.clone())
+            .or_else(|| embedded_reftext.clone())
+            .unwrap_or_else(|| CowStr::from(title_reftext.as_str()));
+
+        // Whether a `manual_id` above was actually registered to *this*
+        // section — `false` when `register_ref` rejected it as a duplicate,
+        // in which case the id belongs to whichever section claimed it
+        // first, not this one. `effective_id` below reads this rather than
+        // assuming `manual_id`'s mere presence means ownership.
+        let mut manual_id_registered = false;
+
+        // Whether this section auto-generates its own id — reused below to
+        // compute `effective_id`, since which branch actually ran is exactly
+        // what decides whether `section_id` (set unconditionally from
+        // `embedded_id` in the `else` branch, duplicate or not — see that
+        // branch's own comment) is safe to treat as this section's own.
+        let is_auto_generated_id = sectids && manual_id.is_none();
+
+        let section_id = if is_auto_generated_id {
+            let id = parser.generate_and_register_unique_id(
+                &proposed_base_id,
+                Some(&reftext),
+                RefType::Section,
+            );
+            if let Some(signifier) = xref_signifier {
+                parser.set_ref_signifier(&id, signifier);
+            }
+            Some(id)
+        } else {
+            if let Some(manual_id) = manual_id {
+                match parser.register_ref(manual_id, Some(&reftext), RefType::Section) {
+                    Ok(()) => {
+                        manual_id_registered = true;
+                        if let Some(signifier) = xref_signifier {
+                            parser.set_ref_signifier(manual_id, signifier);
+                        }
+                    }
+                    Err(_duplicate_error) => {
+                        warnings.push(Warning::new(
+                            metadata.source.trim_remainder(level_and_title.after),
+                            WarningType::DuplicateId(manual_id.to_string()),
+                        ));
+                    }
+                }
+            }
+
+            // An ID drawn from an anchor embedded in the title has no `anchor`
+            // span or attrlist entry for `id()` to read it back from, so record
+            // it here (unlike an ID supplied above the heading, which `id()`
+            // sources directly from the anchor/attrlist).
+            embedded_id.map(str::to_string)
+        };
+
+        // The section's effective id: `section_id` (the field, and the local
+        // variable of the same name above) only ever holds an id drawn from
+        // an *embedded* title anchor — everything else `id()`/`reference_id()`
+        // read directly from `attrlist`/`anchor` instead (see
+        // `reference_id`'s own docs) — so an id supplied *above* the heading
+        // falls back to `manual_id` here, but only when this section actually
+        // won that id: a rejected duplicate must not be treated as this
+        // section's own, or `title_freeze::register_recomputable_title` below
+        // would replace the legitimate owner's snapshot with this section's.
+        //
+        // `section_id` itself cannot answer that for the *embedded*-anchor
+        // case: `id()`/`reference_id()` deliberately reads it back
+        // unconditionally, duplicate or not (see the `else` branch above),
+        // the same way `attrlist.id()` reflects a duplicate *attribute* id
+        // regardless of registration. Reusing it here would let exactly the
+        // same rejected duplicate back in, just from the other source — so
+        // this reads `is_auto_generated_id` instead, to know which branch
+        // actually ran, rather than trying to infer ownership from its result.
+        let effective_id = if is_auto_generated_id {
+            section_id.clone()
+        } else {
+            manual_id_registered
+                .then(|| manual_id.map(str::to_string))
+                .flatten()
+        };
+
+        // A section without an explicit reftext is a *recomputable*
+        // cross-reference target: another (later) section's own
+        // auto-generated id may still need to demand this one's reference
+        // text — either freezing it right away (`title_freeze::resolve_now`
+        // above already did exactly that for a demand originating *here*,
+        // against whatever earlier titles *this* section's own title
+        // references) or, lacking any demand at all, once the whole
+        // document's catalog is known, in the ordinary document-order pass
+        // (`document::title_refs`). Either way that needs this section's own
+        // deferred cross-references on hand, so register them under the id
+        // just determined — this section's own eager conversion above never
+        // freezes *itself* (see `title_freeze`'s own docs), so this always
+        // runs regardless of `will_auto_generate_id`. See
+        // `document::title_freeze` (issue #1110).
+        if !has_explicit_reftext
+            && let Some(id) = effective_id.as_deref()
+            && let Some(recomputable_title) = recomputable_title
+        {
+            title_freeze::register_recomputable_title(parser, id, recomputable_title);
+        }
+
+        // Restore "normal" top-level section type if exiting a level 1
+        // appendix.
+        if level == 1 && !discrete {
+            parser.topmost_section_type = SectionType::Normal;
+        }
+
+        warnings.append(&mut maw_blocks.warnings);
+
+        Some(MatchedItem {
+            item: Self {
+                level,
+                section_title,
+                blocks: blocks.item,
+                source: source.trim_trailing_whitespace(),
+
+                // A non-discrete section never keeps a block title; it was
+                // stashed above for the next block parsed to claim.
+                title_source: if discrete {
+                    metadata.title_source
+                } else {
+                    None
+                },
+                title: if discrete {
+                    metadata.title.clone()
+                } else {
+                    None
+                },
+                anchor: metadata.anchor,
+                anchor_reftext: metadata.anchor_reftext,
+                attrlist: metadata.attrlist.clone(),
+                section_type,
+                section_id,
+                caption,
+                section_number,
+            },
+            after: blocks.after,
+        })
+    }
+
+    /// Return the section's level.
+    ///
+    /// The section title must be prefixed with a section marker, which
+    /// indicates the section level. The number of equal signs in the marker
+    /// represents the section level using a 0-based index (e.g., two equal
+    /// signs represents level 1). A section marker can range from two to six
+    /// equal signs and must be followed by a space.
+    ///
+    /// This function will return an integer between 1 and 5 for an ordinary
+    /// section. It returns 0 for a level-0 (`=`) heading modeled as a `sect0`
+    /// section — a body document title / book part — and for a level-0 (`=`)
+    /// `discrete` (floating) heading rendered as an `<h1>` floating title.
+    pub fn level(&self) -> usize {
+        self.level
+    }
+
+    /// Return a [`Span`] containing the section title source.
+    pub fn section_title_source(&self) -> Span<'src> {
+        self.section_title.original()
+    }
+
+    /// Return the processed section title after substitutions have been
+    /// applied.
+    pub fn section_title(&'src self) -> &'src str {
+        self.section_title.rendered_html()
+    }
+
+    /// Return the type of this section (normal or appendix).
+    pub fn section_type(&'src self) -> SectionType {
+        self.section_type
+    }
+
+    /// Accessor intended to be used for testing only. Use the `id()` accessor
+    /// in the `IsBlock` trait to retrieve the effective ID for this block,
+    /// which considers both auto-generated IDs and manually-set IDs.
+    #[cfg(test)]
+    pub(crate) fn section_id(&'src self) -> Option<&'src str> {
+        self.section_id.as_deref()
+    }
+
+    /// Return the section number assigned to this section, if any.
+    pub fn section_number(&'src self) -> Option<&'src SectionNumber> {
+        self.section_number.as_ref()
+    }
+
+    /// Returns the section title's deferred cross-references, if the title
+    /// contains any.
+    ///
+    /// Used by the document-order title resolution pass (see
+    /// [`Document::resolve_references`]).
+    ///
+    /// [`Document::resolve_references`]: crate::Document::resolve_references
+    pub(crate) fn section_title_deferred_parts(&self) -> Option<DeferredParts<'_>> {
+        self.section_title.deferred_parts()
+    }
+
+    /// Overwrites the rendered section title, used by the document-order title
+    /// resolution pass to install a title whose cross-references were resolved
+    /// with cross-title coordination.
+    pub(crate) fn set_section_title_rendered(&mut self, rendered: String) {
+        self.section_title.set_rendered(rendered);
+    }
+
+    /// Mirrors the section title's resolved cross-reference destinations —
+    /// computed by the document-order title resolution pass — into the title's
+    /// inline tree, so a caller that walks the title's
+    /// [`inlines`](Content::inlines) sees the same destinations
+    /// [`set_section_title_rendered`](Self::set_section_title_rendered)
+    /// installed in the rendered string. A no-op when no inline tree was built.
+    pub(crate) fn mirror_section_title_tree_xrefs(
+        &mut self,
+        block_ordered: &[Option<ResolvedReference>],
+        footnote_ordered: &[Option<ResolvedReference>],
+    ) {
+        self.section_title
+            .mirror_tree_xref_resolution(block_ordered, footnote_ordered);
+    }
+
+    /// Returns the section title's inline tree — the tree the document-order
+    /// title pass folds to render this heading, and which that pass then
+    /// mirrors its resolved destinations into.
+    pub(crate) fn section_title_inlines(&self) -> &[InlineNode<'src>] {
+        self.section_title.inlines()
+    }
+
+    /// Returns the section title's [`Content`] itself, for a caller that needs
+    /// more of it than [`section_title_inlines`](Self::section_title_inlines)
+    /// and [`section_title_render_attributes`](Self::section_title_render_attributes)
+    /// expose — the deferred cross-reference segments a heading carries, which
+    /// the document-order title pass resolves.
+    ///
+    /// No longer test-only: that pass folds a heading's own defining footnotes
+    /// through [`Content::collect_own_folded_footnotes`], which wants the
+    /// content rather than the two halves, so that both passes which collect
+    /// folds ask for them the same way.
+    pub(crate) fn section_title_content(&self) -> &Content<'src> {
+        &self.section_title
+    }
+
+    /// Returns the section's `.Title` decoration as a mutable [`Content`], if
+    /// it has one — a **discrete heading** keeps its own (see
+    /// [`parse`](Self::parse)'s carried-title hop, which every non-discrete
+    /// section takes instead).
+    ///
+    /// The same narrow seam every other titled block exposes, and for the same
+    /// caller: the document-order title resolution pass
+    /// (`document::title_refs`), which installs the re-rendered title after
+    /// resolving any cross-references embedded in it. Distinct from the
+    /// section *heading*, which that pass reaches through
+    /// [`section_title_content`](Self::section_title_content).
+    pub(crate) fn title_content_mut(&mut self) -> Option<&mut Content<'src>> {
+        self.title.as_mut()
+    }
+
+    /// The document attributes in force where this heading was written, when
+    /// they were retained — the order-dependent half of the render context a
+    /// fold of the tree above needs. See
+    /// [`Content::render_attributes`](crate::content::Content).
+    pub(crate) fn section_title_render_attributes(&self) -> Option<&ResolvedAttributes> {
+        self.section_title.render_attributes()
+    }
+
+    /// Returns the ID under which this section is registered in the catalog, if
+    /// any, as an owned string.
+    ///
+    /// Mirrors the effective-ID precedence of [`IsBlock::id`] (attribute-list
+    /// ID, then explicit anchor, then the auto-generated section ID) but
+    /// without the `&'src self` borrow, so the document-order title
+    /// resolution pass can key titles by ID while walking `&mut` blocks.
+    pub(crate) fn reference_id(&self) -> Option<String> {
+        self.attrlist
+            .as_ref()
+            .and_then(|attrlist| attrlist.id())
+            .map(str::to_string)
+            .or_else(|| self.anchor.map(|a| a.data().to_string()))
+            .or_else(|| self.section_id.clone())
+    }
+
+    /// Returns `true` when the section's reference text comes from an explicit
+    /// `reftext` attribute or a `[[id,reftext]]` anchor reftext, rather than
+    /// from its title. Such a section's reference text does not change when its
+    /// title's cross-references resolve, so the title resolution pass does not
+    /// treat it as a recomputable target.
+    pub(crate) fn has_explicit_reftext(&self) -> bool {
+        self.attrlist
+            .as_ref()
+            .and_then(|attrlist| attrlist.named_attribute("reftext"))
+            .is_some()
+            || self.anchor_reftext.is_some()
+    }
+}
+
+/// Builds the appendix title prefix (caption) for an appendix root section.
+///
+/// The prefix combines the `appendix-caption` label (which defaults to
+/// "`Appendix`"), the appendix letter (A, B, ...), and a separator. When
+/// `appendix-caption` is set, the prefix is `"<label> <letter>: "`; when it is
+/// unset (or empty), the label is dropped, leaving `"<letter>. "`. This mirrors
+/// Ruby Asciidoctor.
+fn appendix_caption(parser: &Parser, number: &SectionNumber) -> String {
+    let letter = number.to_string();
+    match parser.attribute_value("appendix-caption") {
+        InterpretedValue::Value(label) if !label.is_empty() => format!("{label} {letter}: "),
+        _ => format!("{letter}. "),
+    }
+}
+
+/// Combines a reference signifier with a reference number for the
+/// `full`/`short` xrefstyle label. When the signifier is set the label is
+/// `"<signifier> <number>"` (e.g. `"Section 2.3"`); when it is unset (or empty)
+/// — as after `:!section-refsig:` — the signifier is dropped and only the
+/// number remains.
+fn join_signifier(signifier: Option<&str>, number: &str) -> String {
+    match signifier {
+        Some(signifier) if !signifier.is_empty() => format!("{signifier} {number}"),
+        _ => number.to_string(),
+    }
+}
+
+/// Returns `true` when the active `doctype` is `book`, the only doctype under
+/// which a level-0 section heading (a book part) is valid.
+fn is_book_doctype(parser: &Parser) -> bool {
+    matches!(
+        parser.attribute_value("doctype"),
+        InterpretedValue::Value(ref v) if v == "book"
+    )
+}
+
+impl<'src> IsBlock<'src> for SectionBlock<'src> {
+    fn content_model(&self) -> ContentModel {
+        ContentModel::Compound
+    }
+
+    // `content_mut` keeps the default `None`: the section's own resolvable
+    // content is its heading, which is resolved by the document-order title
+    // pass (see `document::title_refs`) rather than the per-content pass —
+    // that pass coordinates cross-references *between* titles (forward and
+    // circular), which per-content resolution cannot see.
+
+    fn raw_context(&self) -> CowStr<'src> {
+        // A discrete (floating) heading is modeled by Asciidoctor as a block
+        // with the `floating_title` context rather than a section, so a
+        // consumer that switches on block context can tell it apart from an
+        // ordinary section — for instance, to exclude it from the table of
+        // contents or to pick a converter method.
+        if self.section_type == SectionType::Discrete {
+            "floating_title".into()
+        } else {
+            "section".into()
+        }
+    }
+
+    fn child_blocks_mut(&mut self) -> &mut [Block<'src>] {
+        &mut self.blocks
+    }
+
+    fn title_source(&'src self) -> Option<Span<'src>> {
+        self.title_source
+    }
+
+    fn title(&self) -> Option<&str> {
+        self.title.as_ref().map(Content::rendered_str)
+    }
+
+    fn title_content(&self) -> Option<&Content<'src>> {
+        self.title.as_ref()
+    }
+
+    fn anchor(&'src self) -> Option<Span<'src>> {
+        self.anchor
+    }
+
+    fn anchor_reftext(&'src self) -> Option<Span<'src>> {
+        self.anchor_reftext
+    }
+
+    fn attrlist(&'src self) -> Option<&'src Attrlist<'src>> {
+        self.attrlist.as_ref()
+    }
+
+    fn caption(&self) -> Option<&str> {
+        self.caption.as_deref()
+    }
+
+    fn id(&'src self) -> Option<&'src str> {
+        // An explicit ID above the heading wins, and an attribute-list ID
+        // (`[id=…]`/`[#id]`) takes precedence over a `[[id]]` block anchor —
+        // matching the precedence used when the section registers itself in the
+        // catalog (see `attr_or_anchor_id` in `SectionBlock::parse`), so this
+        // accessor reports the same ID the section is cross-referenced under.
+        self.attrlist()
+            .and_then(|attrlist| attrlist.id())
+            .or_else(|| self.anchor().map(|a| a.data()))
+            // Fall back to auto-generated ID if no explicit ID is set.
+            .or(self.section_id.as_deref())
+    }
+}
+
+impl<'src> HasSpan<'src> for SectionBlock<'src> {
+    fn span(&self) -> Span<'src> {
+        self.source
+    }
+}
+
+impl std::fmt::Debug for SectionBlock<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SectionBlock")
+            .field("level", &self.level)
+            .field("section_title", &self.section_title)
+            .field("blocks", &DebugSliceReference(&self.blocks))
+            .field("source", &self.source)
+            .field("title_source", &self.title_source)
+            .field("title", &self.title)
+            .field("anchor", &self.anchor)
+            .field("anchor_reftext", &self.anchor_reftext)
+            .field("attrlist", &self.attrlist)
+            .field("section_type", &self.section_type)
+            .field("section_id", &self.section_id)
+            .field("caption", &self.caption)
+            .field("section_number", &self.section_number)
+            .finish()
+    }
+}
+
+/// The lowest and highest levels a section heading may occupy. A syntactic
+/// heading level (0 for `=`, up to 5 for `======`) shifted by `leveloffset`
+/// must land within this inclusive range; a result outside it is clamped.
+const MIN_SECTION_LEVEL: i32 = 1;
+const MAX_SECTION_LEVEL: i32 = 5;
+
+/// Strips an optional symmetric ATX title close from `title`: a trailing run of
+/// `marker` exactly `count` long, preceded by whitespace (e.g. the ` ==` in
+/// `== Title ==`). A run that does not match the opening marker (`== Title
+/// ===`) or is not preceded by whitespace (`== Title==`) is left intact, and a
+/// title consisting only of the close is left intact. Mirrors the trailing
+/// `(?: +\1)?` group of Asciidoctor's section-title regex.
+pub(crate) fn strip_symmetric_title_close(title: Span<'_>, marker: char, count: usize) -> Span<'_> {
+    // The close must be separated from the title by an ASCII blank (space or
+    // tab), matching Asciidoctor's `CG_BLANK` (`[ \t]`) — not arbitrary Unicode
+    // whitespace, so e.g. `== Title<NBSP>==` keeps its `==` as title text.
+    const BLANK: [char; 2] = [' ', '\t'];
+    let close = marker.to_string().repeat(count);
+    match title.data().strip_suffix(&close) {
+        Some(without_close)
+            if without_close.ends_with(BLANK)
+                && !without_close.trim_end_matches(BLANK).is_empty() =>
+        {
+            title.slice_to(..without_close.trim_end_matches(BLANK).len())
+        }
+        _ => title,
+    }
+}
+
+/// Matches an anchor embedded at the end of a section title (after the
+/// symmetric ATX close has already been stripped): the title text, optional
+/// escape, the anchor ID, and an optional reftext.
+///
+/// Mirrors Asciidoctor's `InlineSectionAnchorRx`. The anchor must be separated
+/// from the title by at least one blank; the ID follows the usual name rules
+/// (leading letter/`_`/`:`, then letters/digits/`_`/`-`/`:`/`.`); an optional
+/// reftext after the first comma may itself contain commas.
+#[allow(clippy::unwrap_used)]
+static EMBEDDED_SECTION_ANCHOR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?x)
+        ^(.*?)                                                # (1) title text before the anchor
+        [\ \t]+                                               # blank(s) separating title from anchor
+        (\\)?                                                 # (2) optional escape backslash
+        \[\[
+          ( [\p{Alphabetic}_:] [\p{Alphabetic}\p{Nd}_\-:.]* )  # (3) anchor id
+          (?: , [\ \t]* (\S.*) )?                             # (4) optional reftext (may contain commas)
+        \]\]
+        $",
+    )
+    .unwrap()
+});
+
+/// Detects and consumes an anchor embedded at the end of a section `title`
+/// (`Title [[id]]` or `Title [[id,reftext]]`), returning the title span with
+/// the anchor removed, the anchor ID, and the reftext (each `None` when
+/// absent).
+///
+/// The `title` span must already have had any symmetric ATX close stripped. An
+/// *escaped* anchor (`Title \[[id]]`) is intentionally left intact — the ID is
+/// not adopted and the title is returned unchanged so the inline-anchor
+/// substitution can unescape it — mirroring Ruby Asciidoctor.
+fn match_embedded_section_anchor<'src>(
+    title: Span<'src>,
+) -> (Span<'src>, Option<&'src str>, Option<Span<'src>>) {
+    // A quick reject avoids running the regex on the common no-anchor title.
+    if !title.data().ends_with("]]") {
+        return (title, None, None);
+    }
+
+    let Some(caps) = EMBEDDED_SECTION_ANCHOR.captures(title.data()) else {
+        return (title, None, None);
+    };
+
+    // An escaped anchor is not adopted as the section ID.
+    if caps.get(2).is_some() {
+        return (title, None, None);
+    }
+
+    let title_text = caps.get(1).map_or("", |m| m.as_str());
+    let id = caps.get(3).map(|m| m.as_str());
+
+    // Trailing whitespace is trimmed from the reftext, matching the
+    // inline-anchor substitution's handling of a shorthand
+    // `[[id,reftext]]`. The reftext is returned as a source span (rather
+    // than a `&str`) so its attribute references can be resolved against
+    // the document source at the caller.
+    let reftext = caps
+        .get(4)
+        .map(|m| title.slice(m.start()..m.end()).trim_trailing_whitespace());
+
+    (title.slice_to(..title_text.len()), id, reftext)
+}
+
+/// Parses a section title line, returning the section's *effective* level
+/// (with `offset`, the running `leveloffset`, already applied) and the span of
+/// the title text.
+///
+/// The syntactic level is 0-based: a bare `=` is 0, `==` is 1, up to `======`
+/// at 5. `offset` shifts it to the effective level, which is then constrained
+/// to a supported range:
+///
+/// * A bare `=` (syntactic level 0) that no positive offset lifts to level 1 or
+///   beyond is modeled as a level-0 section (Asciidoctor's `sect0`): a body
+///   document title / book part. The caller ([`SectionBlock::parse`]) raises
+///   [`WarningType::Level0SectionHeadingNotSupported`] for it under any doctype
+///   other than `book`. A `discrete` heading may likewise occupy level 0 (an
+///   `<h1>` floating title).
+/// * Any other heading whose effective level falls outside the
+///   [`MIN_SECTION_LEVEL`]..=[`MAX_SECTION_LEVEL`] range is clamped to the
+///   nearest valid level and a warning is recorded. The lower bound is
+///   [`MIN_SECTION_LEVEL`], or 0 for a `discrete` heading or a bare `=`.
+fn parse_title_line<'src>(
+    source: Span<'src>,
+    offset: i32,
+    discrete: bool,
+    warnings: &mut Vec<Warning<'src>>,
+) -> Option<MatchedItem<'src, (usize, Span<'src>)>> {
+    let mi = source.take_non_empty_line()?;
+    let mut line = mi.item;
+
+    let mut count = 0;
+
+    let marker_char = if line.starts_with('=') { '=' } else { '#' };
+
+    if marker_char == '=' {
+        while let Some(mi) = line.take_prefix("=") {
+            count += 1;
+            line = mi.after;
+        }
+    } else {
+        while let Some(mi) = line.take_prefix("#") {
+            count += 1;
+            line = mi.after;
+        }
+    }
+
+    if count == 0 {
+        return None;
+    }
+
+    if count > 6 {
+        warnings.push(Warning::new(
+            source.take_normalized_line().item,
+            WarningType::SectionHeadingLevelExceedsMaximum(count - 1),
+        ));
+
+        return None;
+    }
+
+    // Fold in the running `leveloffset`. `saturating_add` keeps a hostile
+    // offset (e.g. an absolute `:leveloffset:` near `i32::MAX`) from
+    // overflowing — a panic in debug builds and a wrap in release builds — the
+    // syntactic level itself is at most 5.
+    let syntactic_level = (count - 1) as i32;
+    let effective_level = syntactic_level.saturating_add(offset);
+
+    // The marker must be followed by whitespace to be a section title at all;
+    // validate that before clamping the level so a non-title line such as
+    // `==x` (or a bare `=blah`) is declined quietly, falling through to a
+    // paragraph without a spurious warning.
+    let title = line.take_required_whitespace()?;
+
+    let title_span = strip_symmetric_title_close(title.after, marker_char, count);
+
+    // A bare `=` (syntactic level 0) that no positive offset lifts to level 1
+    // or beyond is a document title appearing in the body. Rather than the
+    // document title (the single-document-title rule forbids a second one),
+    // it models a level-0 section — Asciidoctor's `sect0`, rendered as `<h1
+    // class="sect0">`, a book part under `:doctype: book`. It is carried
+    // through with level 0 so the block model can represent it;
+    // `SectionBlock::parse` raises
+    // [`WarningType::Level0SectionHeadingNotSupported`] for it under any
+    // doctype other than `book`, where it knows the doctype.
+    //
+    // A `discrete`/`float` heading is likewise valid at level 0: it renders as
+    // a floating `<h1>` rather than the document title.
+    //
+    // A real section heading whose offset-adjusted level lands outside the
+    // supported range is clamped into range and reported, rather than producing
+    // an out-of-range (or, under a hostile offset, absurd) level. The lower
+    // bound is [`MIN_SECTION_LEVEL`] normally, but 0 for a `discrete` heading
+    // or a bare `=` (syntactic level 0), each of which may legitimately
+    // occupy level 0.
+    let min_level = if discrete || syntactic_level == 0 {
+        0
+    } else {
+        MIN_SECTION_LEVEL
+    };
+
+    // A bare `=` (syntactic level 0) whose effective level a negative offset
+    // pushes below 0 still floors at level 0 — the level-0 case — rather than
+    // being reported as an out-of-range clamp. Its diagnostic is the
+    // doctype-gated [`WarningType::Level0SectionHeadingNotSupported`] that
+    // `SectionBlock::parse` raises, so no clamp warning is added for it here.
+    let is_level_0_heading = syntactic_level == 0 && !discrete;
+
+    let level = if effective_level < min_level {
+        if !is_level_0_heading {
+            warnings.push(Warning::new(
+                source.take_normalized_line().item,
+                WarningType::SectionHeadingLevelOutOfRange(effective_level, min_level as usize),
+            ));
+        }
+
+        min_level as usize
+    } else if effective_level > MAX_SECTION_LEVEL {
+        warnings.push(Warning::new(
+            source.take_normalized_line().item,
+            WarningType::SectionHeadingLevelOutOfRange(effective_level, MAX_SECTION_LEVEL as usize),
+        ));
+        MAX_SECTION_LEVEL as usize
+    } else {
+        effective_level as usize
+    };
+
+    Some(MatchedItem {
+        item: (level, title_span),
+        after: mi.after,
+    })
+}
+
+fn peer_or_ancestor_section<'src>(
+    source: Span<'src>,
+    level: usize,
+    most_recent_level: &mut usize,
+    warnings: &mut Vec<Warning<'src>>,
+    parser: &Parser,
+) -> bool {
+    // Skip over any block metadata (title, anchor, attrlist) to find the actual
+    // section line. We create a temporary parser to avoid modifying the real
+    // parser state.
+    let mut temp_parser = Parser::default();
+
+    // Block-metadata parsing consults `leveloffset` to decide whether a comment
+    // separating collected metadata from a following heading is transparent
+    // (see `skip_comments_before_section`): a bare `=` counts as a section only
+    // when a positive offset promotes it. Mirror the live parser's offset onto
+    // the temporary parser so the boundary look-ahead makes the same decision
+    // the real parse will — otherwise a peer/ancestor section reached across
+    // such a comment would be missed and wrongly nested. The stored offset is
+    // already an absolute integer, so it needs no further resolution.
+    let level_offset = parser.level_offset();
+    if level_offset != 0 {
+        temp_parser.set_attribute_by_value_from_header("leveloffset", level_offset.to_string());
+    }
+
+    let block_metadata_maw = BlockMetadata::parse(source, &mut temp_parser);
+
+    let block_metadata = block_metadata_maw.item;
+    if block_metadata.is_discrete() {
+        return false;
+    }
+
+    // Discard any blank lines between the collected metadata and the heading,
+    // mirroring the tolerance `Block::parse_internal` applies on the live parse
+    // path. Block metadata may be separated from its block by blank lines
+    // (including the blank lines around a comment that block-metadata parsing
+    // skips over), and `parse_title_line` requires a non-blank first line, so
+    // without this the boundary check would miss such a heading and wrongly
+    // fold the following peer/ancestor section into the current one.
+    let source_after_metadata = block_metadata.block_start.discard_empty_lines();
+
+    // Compare effective levels: the boundary heading's `leveloffset` is read
+    // from the *live* parser (every block up to this point, including any
+    // `:leveloffset:` attribute entry, has already been applied), while `level`
+    // is the current section's own effective level. A heading whose effective
+    // level is below 1 has no section representation, so `parse_title_line`
+    // returns `None` and it is treated as ordinary content — exactly as an
+    // un-offset level-0 heading would be.
+    //
+    // Any warnings the heading would raise (a clamped level, an unsupported
+    // level-0 heading, ...) are discarded here: this is only a look-ahead to
+    // find the section boundary, and the heading is parsed again — recording
+    // those warnings once — either as a child block of this section or in the
+    // enclosing scope once this section ends.
+    let mut ignored_warnings = vec![];
+
+    // A `discrete` heading has already been excluded above, so the boundary
+    // look-ahead never needs the level-0 exemption; pass `discrete = false` so
+    // a bare `=` here is treated as ordinary content, exactly as before.
+    if let Some(mi) = parse_title_line(
+        source_after_metadata,
+        parser.level_offset(),
+        false,
+        &mut ignored_warnings,
+    ) {
+        let found_level = mi.item.0;
+
+        if found_level > *most_recent_level + 1 {
+            warnings.push(Warning::new(
+                source.take_normalized_line().item,
+                WarningType::SectionHeadingLevelSkipped(*most_recent_level, found_level),
+            ));
+        }
+
+        *most_recent_level = found_level;
+
+        found_level <= level
+    } else {
+        false
+    }
+}
+
+/// Returns `true` if a section carrying the given block style is a special
+/// section that does not support nested sections.
+///
+/// Asciidoctor treats every section style other than the numbered `sect0`–
+/// `sect5` styles as a special section, and permits subsections only within the
+/// `appendix`, `preface`, and `abstract` special sections. The remaining
+/// well-known special sections — `glossary`, `bibliography`, `colophon`,
+/// `dedication`, and `index` — forbid them.
+fn special_section_forbids_subsections(style: &str) -> bool {
+    matches!(
+        style,
+        "glossary" | "bibliography" | "colophon" | "dedication" | "index"
+    )
+}
+
+/// Records a "section title out of sequence" warning for a *top-level* section
+/// whose level skips ahead of level 1 — the document root's expected first
+/// child level. The nested case (a section skipping a level under its *parent
+/// section*) is handled during parsing by [`peer_or_ancestor_section`]; this
+/// covers the document-root case (e.g. `= Doc` followed directly by `=== X`),
+/// which that boundary check never sees.
+///
+/// At most one such warning is possible: any later top-level section is a peer
+/// or ancestor of an earlier one (a deeper heading becomes a *child* instead),
+/// so it can never skip ahead of `most_recent_level + 1`.
+///
+/// Discrete headings are not part of the section sequence and are skipped. The
+/// caller restricts this to titled, non-`fragment` documents (a title-less
+/// document or a section fragment has no level-0 root to sequence against).
+pub(crate) fn root_section_sequence_warnings<'src>(blocks: &[Block<'src>]) -> Vec<Warning<'src>> {
+    let mut warnings = vec![];
+    let mut most_recent_level = 0;
+
+    for block in blocks {
+        let Block::Section(section) = block else {
+            continue;
+        };
+
+        if section.section_type() == SectionType::Discrete {
+            continue;
+        }
+
+        let found_level = section.level();
+
+        if found_level > most_recent_level + 1 {
+            warnings.push(Warning::new(
+                section.span().take_normalized_line().item,
+                WarningType::SectionHeadingLevelSkipped(most_recent_level, found_level),
+            ));
+        }
+
+        most_recent_level = found_level;
+    }
+
+    warnings
+}
+
+/// Propose a section ID from the section title.
+///
+/// This function is called when (1) no `id` attribute is specified explicitly,
+/// and (2) the `sectids` document attribute is set.
+///
+/// The ID is generated as described in the AsciiDoc language definition in [How
+/// a section ID is computed].
+///
+/// [How a section ID is computed](https://docs.asciidoctor.org/asciidoc/latest/sections/auto-ids/)
+fn generate_section_id(title: &str, parser: &Parser) -> String {
+    let idprefix = parser
+        .attribute_value("idprefix")
+        .as_maybe_str()
+        .unwrap_or_default()
+        .to_owned();
+
+    let idseparator = parser
+        .attribute_value("idseparator")
+        .as_maybe_str()
+        .unwrap_or_default()
+        .to_owned();
+
+    // Real HTML tags are stripped *first*, as their own pass, via the same
+    // tag-stripper `Document::doctitle_sanitized` uses — not folded into the
+    // regex below alongside the "invalid character" alternative. A single
+    // combined regex with both alternatives is order-dependent: at a
+    // position where a run of invalid characters happens to run straight
+    // into a tag's `<` (e.g. the `][forward]</a>`-shaped text a title's own
+    // *unresolved* cross-reference rendering produces — `[forward]` is the
+    // reference's bracketed fallback, `</a>` its enclosing anchor's closing
+    // tag), the greedy `[^ \w\-.]+` alternative — which matches starting at
+    // the `]`, not the `<` — already claims the tag's `<` and `/` before the
+    // tag alternative ever gets a chance to match the *whole* tag as one
+    // unit, leaking the tag name (`a`) through into the generated id. Tags
+    // are gone before that regex ever runs, so this can no longer happen.
+    let mut gen_id = crate::content::sanitize_title(title).to_lowercase();
+
+    #[allow(clippy::unwrap_used)]
+    static INVALID_SECTION_ID_CHARS: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"&lt;[^&]*&gt;|&(?:[a-z][a-z]+\d{0,2}|#\d{2,5}|#x[\da-f]{2,4});|[^ \w\-.]+")
+            .unwrap()
+    });
+
+    gen_id = INVALID_SECTION_ID_CHARS
+        .replace_all(&gen_id, "")
+        .to_string();
+
+    // Take only first character of separator if multiple provided.
+    let sep = idseparator
+        .chars()
+        .next()
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    gen_id = gen_id.replace([' ', '.', '-'], &sep);
+
+    if !sep.is_empty() {
+        while gen_id.contains(&format!("{}{}", sep, sep)) {
+            gen_id = gen_id.replace(&format!("{}{}", sep, sep), &sep);
+        }
+
+        if gen_id.ends_with(&sep) {
+            gen_id.pop();
+        }
+
+        // Strip a leading separator (e.g. from a title beginning with a space
+        // or hyphen) before the prefix is applied, matching Ruby
+        // Asciidoctor. This keeps a leading separator out of the final
+        // ID and avoids doubling it up against a non-empty `idprefix`
+        // (e.g. `=== {sp}Heading` → `_heading`, not `__heading`).
+        if gen_id.starts_with(&sep) {
+            gen_id = gen_id[sep.len()..].to_string();
+        }
+    }
+
+    format!("{idprefix}{gen_id}")
+}
+
+/// Represents the type of a section.
+///
+/// This crate currently supports the `appendix` section style, which results in
+/// special section numbering. All other sections are treated as `Normal`
+/// sections.
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
+pub enum SectionType {
+    /// Most sections are of this type.
+    #[default]
+    Normal,
+
+    /// Represents a section with the style `appendix`.
+    Appendix,
+
+    /// Represents a discrete section heading.
+    /// A discrete section heading will have no nested blocks.
+    Discrete,
+}
+
+impl std::fmt::Debug for SectionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SectionType::Normal => write!(f, "SectionType::Normal"),
+            SectionType::Appendix => write!(f, "SectionType::Appendix"),
+            SectionType::Discrete => write!(f, "SectionType::Discrete"),
+        }
+    }
+}
+
+/// Represents an assigned section number.
+///
+/// Section numbers aren't assigned by default, but can be enabled using the
+/// `sectnums` and `sectnumlevels` attributes as described in [Section Numbers].
+///
+/// [Section Numbers]: https://docs.asciidoctor.org/asciidoc/latest/sections/numbers/
+#[derive(Clone, Default, Eq, Hash, PartialEq)]
+pub struct SectionNumber {
+    pub(crate) section_type: SectionType,
+    pub(crate) components: Vec<usize>,
+
+    // The letter (or, more generally, counter value) assigned to the appendix
+    // this number belongs to, resolved from the `appendix-number` counter
+    // (e.g. `"A"`, or `"β"` when the document sets `:appendix-number: α`).
+    // Replaces the first component when the number is displayed. `None` for
+    // normal section numbers.
+    pub(crate) appendix_letter: Option<String>,
+}
+
+impl SectionNumber {
+    /// Generate the next section number for the specified level, based on this
+    /// section number.
+    ///
+    /// `level` should be between 1 and 5, though this is not enforced.
+    pub(crate) fn assign_next_number(&mut self, level: usize) {
+        // Drop any ID components beyond the desired level.
+        self.components.truncate(level);
+
+        if self.components.len() < level {
+            self.components.resize(level, 1);
+        } else if level > 0
+            && let Some(component) = self.components.get_mut(level - 1)
+        {
+            *component += 1;
+        }
+    }
+
+    /// Iterate over the components of the section number.
+    pub fn components(&self) -> &[usize] {
+        &self.components
+    }
+
+    /// Return the letter (or, more generally, `appendix-number` counter value)
+    /// assigned to the appendix this number belongs to (e.g. `"A"`, or `"β"`
+    /// when the document sets `:appendix-number: α`).
+    ///
+    /// Returns `None` for normal section numbers.
+    pub fn appendix_letter(&self) -> Option<&str> {
+        self.appendix_letter.as_deref()
+    }
+}
+
+impl fmt::Display for SectionNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(
+            &self
+                .components
+                .iter()
+                .enumerate()
+                .map(|(index, x)| {
+                    if index == 0 && self.section_type == SectionType::Appendix {
+                        // A parsed appendix number always carries its letter;
+                        // the A, B, … derivation covers directly-constructed
+                        // values that don't.
+                        if let Some(letter) = &self.appendix_letter {
+                            letter.clone()
+                        } else {
+                            char::from_u32(b'A' as u32 + (x - 1) as u32)
+                                .unwrap_or('?')
+                                .to_string()
+                        }
+                    } else {
+                        x.to_string()
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("."),
+        )
+    }
+}
+
+impl fmt::Debug for SectionNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SectionNumber")
+            .field("section_type", &self.section_type)
+            .field("components", &DebugSliceReference(&self.components))
+            .field("appendix_letter", &self.appendix_letter)
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::panic)]
+    #![allow(clippy::unwrap_used)]
+
+    use crate::{
+        blocks::{metadata::BlockMetadata, section::SectionType},
+        tests::prelude::*,
+    };
+
+    #[test]
+    fn impl_clone() {
+        // Silly test to mark the #[derive(...)] line as covered.
+        let mut parser = Parser::default();
+        let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+        let b1 = crate::blocks::SectionBlock::parse(
+            &BlockMetadata::new("== Section Title"),
+            &mut parser,
+            &mut warnings,
+        )
+        .unwrap();
+
+        let b2 = b1.item.clone();
+        assert_eq!(b1.item, b2);
+    }
+
+    #[test]
+    fn err_empty_source() {
+        let mut parser = Parser::default();
+        let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+        assert!(
+            crate::blocks::SectionBlock::parse(&BlockMetadata::new(""), &mut parser, &mut warnings)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn err_only_spaces() {
+        let mut parser = Parser::default();
+        let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+        assert!(
+            crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("    "),
+                &mut parser,
+                &mut warnings
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn err_not_section() {
+        let mut parser = Parser::default();
+        let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+        assert!(
+            crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("blah blah"),
+                &mut parser,
+                &mut warnings
+            )
+            .is_none()
+        );
+    }
+
+    mod asciidoc_style_headers {
+        use std::ops::Deref;
+
+        use crate::{
+            blocks::{ContentModel, MediaType, metadata::BlockMetadata, section::SectionType},
+            tests::prelude::*,
+        };
+
+        #[test]
+        fn err_missing_space_before_title() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            assert!(
+                crate::blocks::SectionBlock::parse(
+                    &BlockMetadata::new("=blah blah"),
+                    &mut parser,
+                    &mut warnings
+                )
+                .is_none()
+            );
+        }
+
+        #[test]
+        fn simplest_section_block() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("== Section Title"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[],
+                    source: Span {
+                        data: "== Section Title",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 1,
+                    col: 17,
+                    offset: 16
+                }
+            );
+        }
+
+        #[test]
+        fn has_child_block() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("== Section Title\n\nabc"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Simple(SimpleBlock {
+                        content: Content {
+                            original: Span {
+                                data: "abc",
+                                line: 3,
+                                col: 1,
+                                offset: 18,
+                            },
+                            rendered: "abc",
+                        },
+                        source: Span {
+                            data: "abc",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },
+                        style: SimpleBlockStyle::Paragraph,
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "== Section Title\n\nabc",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 3,
+                    col: 4,
+                    offset: 21
+                }
+            );
+        }
+
+        #[test]
+        fn has_macro_block_with_extra_blank_line() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new(
+                    "== Section Title\n\nimage::bar[alt=Sunset,width=300,height=400]\n\n",
+                ),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Media(MediaBlock {
+                        type_: MediaType::Image,
+                        target: Span {
+                            data: "bar",
+                            line: 3,
+                            col: 8,
+                            offset: 25,
+                        },
+                        macro_attrlist: Attrlist {
+                            attributes: &[
+                                ElementAttribute {
+                                    name: Some("alt"),
+                                    shorthand_items: &[],
+                                    value: "Sunset"
+                                },
+                                ElementAttribute {
+                                    name: Some("width"),
+                                    shorthand_items: &[],
+                                    value: "300"
+                                },
+                                ElementAttribute {
+                                    name: Some("height"),
+                                    shorthand_items: &[],
+                                    value: "400"
+                                }
+                            ],
+                            anchor: None,
+                            source: Span {
+                                data: "alt=Sunset,width=300,height=400",
+                                line: 3,
+                                col: 12,
+                                offset: 29,
+                            }
+                        },
+                        source: Span {
+                            data: "image::bar[alt=Sunset,width=300,height=400]",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "== Section Title\n\nimage::bar[alt=Sunset,width=300,height=400]",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 5,
+                    col: 1,
+                    offset: 63
+                }
+            );
+        }
+
+        #[test]
+        fn has_child_block_with_errors() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new(
+                    "== Section Title\n\nimage::bar[alt=Sunset,width=300,,height=400]",
+                ),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Media(MediaBlock {
+                        type_: MediaType::Image,
+                        target: Span {
+                            data: "bar",
+                            line: 3,
+                            col: 8,
+                            offset: 25,
+                        },
+                        macro_attrlist: Attrlist {
+                            attributes: &[
+                                ElementAttribute {
+                                    name: Some("alt"),
+                                    shorthand_items: &[],
+                                    value: "Sunset"
+                                },
+                                ElementAttribute {
+                                    name: Some("width"),
+                                    shorthand_items: &[],
+                                    value: "300"
+                                },
+                                ElementAttribute {
+                                    name: Some("height"),
+                                    shorthand_items: &[],
+                                    value: "400"
+                                }
+                            ],
+                            anchor: None,
+                            source: Span {
+                                data: "alt=Sunset,width=300,,height=400",
+                                line: 3,
+                                col: 12,
+                                offset: 29,
+                            }
+                        },
+                        source: Span {
+                            data: "image::bar[alt=Sunset,width=300,,height=400]",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "== Section Title\n\nimage::bar[alt=Sunset,width=300,,height=400]",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 3,
+                    col: 45,
+                    offset: 62
+                }
+            );
+
+            assert_eq!(
+                warnings,
+                vec![Warning {
+                    source: Span {
+                        data: "alt=Sunset,width=300,,height=400",
+                        line: 3,
+                        col: 12,
+                        offset: 29,
+                    },
+                    warning: WarningType::EmptyAttributeValue,
+                }]
+            );
+        }
+
+        #[test]
+        fn dont_stop_at_child_section() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("== Section Title\n\nabc\n\n=== Section 2\n\ndef"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[
+                        Block::Simple(SimpleBlock {
+                            content: Content {
+                                original: Span {
+                                    data: "abc",
+                                    line: 3,
+                                    col: 1,
+                                    offset: 18,
+                                },
+                                rendered: "abc",
+                            },
+                            source: Span {
+                                data: "abc",
+                                line: 3,
+                                col: 1,
+                                offset: 18,
+                            },
+                            style: SimpleBlockStyle::Paragraph,
+                            title_source: None,
+                            title: None,
+                            caption: None,
+                            number: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                        }),
+                        Block::Section(SectionBlock {
+                            level: 2,
+                            section_title: Content {
+                                original: Span {
+                                    data: "Section 2",
+                                    line: 5,
+                                    col: 5,
+                                    offset: 27,
+                                },
+                                rendered: "Section 2",
+                            },
+                            blocks: &[Block::Simple(SimpleBlock {
+                                content: Content {
+                                    original: Span {
+                                        data: "def",
+                                        line: 7,
+                                        col: 1,
+                                        offset: 38,
+                                    },
+                                    rendered: "def",
+                                },
+                                source: Span {
+                                    data: "def",
+                                    line: 7,
+                                    col: 1,
+                                    offset: 38,
+                                },
+                                style: SimpleBlockStyle::Paragraph,
+                                title_source: None,
+                                title: None,
+                                caption: None,
+                                number: None,
+                                anchor: None,
+                                anchor_reftext: None,
+                                attrlist: None,
+                            })],
+                            source: Span {
+                                data: "=== Section 2\n\ndef",
+                                line: 5,
+                                col: 1,
+                                offset: 23,
+                            },
+                            title_source: None,
+                            title: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                            section_type: SectionType::Normal,
+                            section_id: Some("_section_2"),
+                            caption: None,
+                            section_number: None,
+                        })
+                    ],
+                    source: Span {
+                        data: "== Section Title\n\nabc\n\n=== Section 2\n\ndef",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 7,
+                    col: 4,
+                    offset: 41
+                }
+            );
+        }
+
+        #[test]
+        fn stop_at_peer_section() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("== Section Title\n\nabc\n\n== Section 2\n\ndef"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Simple(SimpleBlock {
+                        content: Content {
+                            original: Span {
+                                data: "abc",
+                                line: 3,
+                                col: 1,
+                                offset: 18,
+                            },
+                            rendered: "abc",
+                        },
+                        source: Span {
+                            data: "abc",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },
+                        style: SimpleBlockStyle::Paragraph,
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "== Section Title\n\nabc",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "== Section 2\n\ndef",
+                    line: 5,
+                    col: 1,
+                    offset: 23
+                }
+            );
+        }
+
+        #[test]
+        fn stop_at_ancestor_section() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("=== Section Title\n\nabc\n\n== Section 2\n\ndef"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 2,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 5,
+                            offset: 4,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Simple(SimpleBlock {
+                        content: Content {
+                            original: Span {
+                                data: "abc",
+                                line: 3,
+                                col: 1,
+                                offset: 19,
+                            },
+                            rendered: "abc",
+                        },
+                        source: Span {
+                            data: "abc",
+                            line: 3,
+                            col: 1,
+                            offset: 19,
+                        },
+                        style: SimpleBlockStyle::Paragraph,
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "=== Section Title\n\nabc",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "== Section 2\n\ndef",
+                    line: 5,
+                    col: 1,
+                    offset: 24
+                }
+            );
+        }
+
+        #[test]
+        fn comment_transfer_boundary_respects_leveloffset() {
+            // Under `:leveloffset: +2`, `== Parent` is level 3 and a bare
+            // `= Child` is level 2 — an ancestor that must end Parent. The
+            // `[[x]]` anchor and the `// comment` before `= Child` transfer to
+            // it, and the section-boundary look-ahead must apply the active
+            // `leveloffset` (rather than a default offset of zero) so `= Child`
+            // is recognized as the boundary and lands as a sibling of Parent,
+            // not nested inside it. Regression test for the boundary check
+            // reading the offset from its throwaway parser.
+            let doc = Parser::default().parse(
+                "= Doc\n:leveloffset: +2\n\n== Parent\n\npara\n\n[[x]]\n// comment\n= Child\n\nbody",
+            );
+
+            let top: Vec<_> = doc.child_blocks().collect();
+            assert_eq!(top.len(), 2, "Child must be a sibling of Parent");
+
+            let parent = top.first().unwrap();
+            let child = top.last().unwrap();
+            assert_eq!(parent.id(), Some("_parent"));
+
+            // The transferred anchor gives Child its id, and Child owns the
+            // following paragraph as a child rather than sitting under Parent.
+            assert_eq!(child.id(), Some("x"));
+            assert!(
+                parent
+                    .child_blocks()
+                    .all(|b| b.raw_context().as_ref() != "section")
+            );
+        }
+
+        #[test]
+        fn section_title_with_markup() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("== Section with *bold* text"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(
+                mi.item.section_title_source(),
+                Span {
+                    data: "Section with *bold* text",
+                    line: 1,
+                    col: 4,
+                    offset: 3,
+                }
+            );
+
+            assert_eq!(
+                mi.item.section_title(),
+                "Section with <strong>bold</strong> text"
+            );
+
+            assert_eq!(mi.item.section_type(), SectionType::Normal);
+            assert_eq!(mi.item.id().unwrap(), "_section_with_bold_text");
+        }
+
+        #[test]
+        fn section_title_with_special_chars() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("== Section with <brackets> & ampersands"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(
+                mi.item.section_title_source(),
+                Span {
+                    data: "Section with <brackets> & ampersands",
+                    line: 1,
+                    col: 4,
+                    offset: 3,
+                }
+            );
+
+            assert_eq!(
+                mi.item.section_title(),
+                "Section with &lt;brackets&gt; &amp; ampersands"
+            );
+
+            assert_eq!(mi.item.id().unwrap(), "_section_with_ampersands");
+        }
+
+        #[test]
+        fn level_0_section_heading_models_sect0() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            // A bare `=` in the body is modeled as a level-0 section
+            // (Asciidoctor's `sect0`), not declined. Under the
+            // default (article) doctype it also raises the level-0
+            // warning.
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("= Document Title"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 0);
+            assert_eq!(mi.item.section_title(), "Document Title");
+
+            assert_eq!(
+                warnings,
+                vec![Warning {
+                    source: Span {
+                        data: "= Document Title",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    warning: WarningType::Level0SectionHeadingNotSupported,
+                }]
+            );
+        }
+
+        #[test]
+        fn err_section_heading_level_exceeds_maximum() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let result = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("======= Level 6 Section"),
+                &mut parser,
+                &mut warnings,
+            );
+
+            assert!(result.is_none());
+
+            assert_eq!(
+                warnings,
+                vec![Warning {
+                    source: Span {
+                        data: "======= Level 6 Section",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    warning: WarningType::SectionHeadingLevelExceedsMaximum(6),
+                }]
+            );
+        }
+
+        #[test]
+        fn valid_maximum_level_5_section() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("====== Level 5 Section"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert!(warnings.is_empty());
+
+            assert_eq!(mi.item.level(), 5);
+            assert_eq!(mi.item.section_title(), "Level 5 Section");
+            assert_eq!(mi.item.section_type(), SectionType::Normal);
+            assert_eq!(mi.item.id().unwrap(), "_level_5_section");
+        }
+
+        #[test]
+        fn warn_section_level_skipped() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("== Level 1\n\n==== Level 3 (skipped level 2)"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 1);
+            assert_eq!(mi.item.section_title(), "Level 1");
+            assert_eq!(mi.item.section_type(), SectionType::Normal);
+            assert_eq!(mi.item.child_blocks().count(), 1);
+            assert_eq!(mi.item.id().unwrap(), "_level_1");
+
+            assert_eq!(
+                warnings,
+                vec![Warning {
+                    source: Span {
+                        data: "==== Level 3 (skipped level 2)",
+                        line: 3,
+                        col: 1,
+                        offset: 12,
+                    },
+                    warning: WarningType::SectionHeadingLevelSkipped(1, 3),
+                }]
+            );
+        }
+    }
+
+    mod markdown_style_headings {
+        use std::ops::Deref;
+
+        use crate::{
+            blocks::{ContentModel, MediaType, metadata::BlockMetadata, section::SectionType},
+            tests::prelude::*,
+        };
+
+        #[test]
+        fn err_missing_space_before_title() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            assert!(
+                crate::blocks::SectionBlock::parse(
+                    &BlockMetadata::new("#blah blah"),
+                    &mut parser,
+                    &mut warnings
+                )
+                .is_none()
+            );
+        }
+
+        #[test]
+        fn simplest_section_block() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("## Section Title"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[],
+                    source: Span {
+                        data: "## Section Title",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 1,
+                    col: 17,
+                    offset: 16
+                }
+            );
+        }
+
+        #[test]
+        fn has_child_block() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("## Section Title\n\nabc"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Simple(SimpleBlock {
+                        content: Content {
+                            original: Span {
+                                data: "abc",
+                                line: 3,
+                                col: 1,
+                                offset: 18,
+                            },
+                            rendered: "abc",
+                        },
+                        source: Span {
+                            data: "abc",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },
+                        style: SimpleBlockStyle::Paragraph,
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "## Section Title\n\nabc",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 3,
+                    col: 4,
+                    offset: 21
+                }
+            );
+        }
+
+        #[test]
+        fn has_macro_block_with_extra_blank_line() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new(
+                    "## Section Title\n\nimage::bar[alt=Sunset,width=300,height=400]\n\n",
+                ),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Media(MediaBlock {
+                        type_: MediaType::Image,
+                        target: Span {
+                            data: "bar",
+                            line: 3,
+                            col: 8,
+                            offset: 25,
+                        },
+                        macro_attrlist: Attrlist {
+                            attributes: &[
+                                ElementAttribute {
+                                    name: Some("alt"),
+                                    shorthand_items: &[],
+                                    value: "Sunset"
+                                },
+                                ElementAttribute {
+                                    name: Some("width"),
+                                    shorthand_items: &[],
+                                    value: "300"
+                                },
+                                ElementAttribute {
+                                    name: Some("height"),
+                                    shorthand_items: &[],
+                                    value: "400"
+                                }
+                            ],
+                            anchor: None,
+                            source: Span {
+                                data: "alt=Sunset,width=300,height=400",
+                                line: 3,
+                                col: 12,
+                                offset: 29,
+                            }
+                        },
+                        source: Span {
+                            data: "image::bar[alt=Sunset,width=300,height=400]",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "## Section Title\n\nimage::bar[alt=Sunset,width=300,height=400]",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 5,
+                    col: 1,
+                    offset: 63
+                }
+            );
+        }
+
+        #[test]
+        fn has_child_block_with_errors() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new(
+                    "## Section Title\n\nimage::bar[alt=Sunset,width=300,,height=400]",
+                ),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Media(MediaBlock {
+                        type_: MediaType::Image,
+                        target: Span {
+                            data: "bar",
+                            line: 3,
+                            col: 8,
+                            offset: 25,
+                        },
+                        macro_attrlist: Attrlist {
+                            attributes: &[
+                                ElementAttribute {
+                                    name: Some("alt"),
+                                    shorthand_items: &[],
+                                    value: "Sunset"
+                                },
+                                ElementAttribute {
+                                    name: Some("width"),
+                                    shorthand_items: &[],
+                                    value: "300"
+                                },
+                                ElementAttribute {
+                                    name: Some("height"),
+                                    shorthand_items: &[],
+                                    value: "400"
+                                }
+                            ],
+                            anchor: None,
+                            source: Span {
+                                data: "alt=Sunset,width=300,,height=400",
+                                line: 3,
+                                col: 12,
+                                offset: 29,
+                            }
+                        },
+                        source: Span {
+                            data: "image::bar[alt=Sunset,width=300,,height=400]",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "## Section Title\n\nimage::bar[alt=Sunset,width=300,,height=400]",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 3,
+                    col: 45,
+                    offset: 62
+                }
+            );
+
+            assert_eq!(
+                warnings,
+                vec![Warning {
+                    source: Span {
+                        data: "alt=Sunset,width=300,,height=400",
+                        line: 3,
+                        col: 12,
+                        offset: 29,
+                    },
+                    warning: WarningType::EmptyAttributeValue,
+                }]
+            );
+        }
+
+        #[test]
+        fn dont_stop_at_child_section() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("## Section Title\n\nabc\n\n### Section 2\n\ndef"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[
+                        Block::Simple(SimpleBlock {
+                            content: Content {
+                                original: Span {
+                                    data: "abc",
+                                    line: 3,
+                                    col: 1,
+                                    offset: 18,
+                                },
+                                rendered: "abc",
+                            },
+                            source: Span {
+                                data: "abc",
+                                line: 3,
+                                col: 1,
+                                offset: 18,
+                            },
+                            style: SimpleBlockStyle::Paragraph,
+                            title_source: None,
+                            title: None,
+                            caption: None,
+                            number: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                        }),
+                        Block::Section(SectionBlock {
+                            level: 2,
+                            section_title: Content {
+                                original: Span {
+                                    data: "Section 2",
+                                    line: 5,
+                                    col: 5,
+                                    offset: 27,
+                                },
+                                rendered: "Section 2",
+                            },
+                            blocks: &[Block::Simple(SimpleBlock {
+                                content: Content {
+                                    original: Span {
+                                        data: "def",
+                                        line: 7,
+                                        col: 1,
+                                        offset: 38,
+                                    },
+                                    rendered: "def",
+                                },
+                                source: Span {
+                                    data: "def",
+                                    line: 7,
+                                    col: 1,
+                                    offset: 38,
+                                },
+                                style: SimpleBlockStyle::Paragraph,
+                                title_source: None,
+                                title: None,
+                                caption: None,
+                                number: None,
+                                anchor: None,
+                                anchor_reftext: None,
+                                attrlist: None,
+                            })],
+                            source: Span {
+                                data: "### Section 2\n\ndef",
+                                line: 5,
+                                col: 1,
+                                offset: 23,
+                            },
+                            title_source: None,
+                            title: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                            section_type: SectionType::Normal,
+                            section_id: Some("_section_2"),
+                            caption: None,
+                            section_number: None,
+                        })
+                    ],
+                    source: Span {
+                        data: "## Section Title\n\nabc\n\n### Section 2\n\ndef",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 7,
+                    col: 4,
+                    offset: 41
+                }
+            );
+        }
+
+        #[test]
+        fn stop_at_peer_section() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("## Section Title\n\nabc\n\n## Section 2\n\ndef"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 1,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 4,
+                            offset: 3,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Simple(SimpleBlock {
+                        content: Content {
+                            original: Span {
+                                data: "abc",
+                                line: 3,
+                                col: 1,
+                                offset: 18,
+                            },
+                            rendered: "abc",
+                        },
+                        source: Span {
+                            data: "abc",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },
+                        style: SimpleBlockStyle::Paragraph,
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "## Section Title\n\nabc",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "## Section 2\n\ndef",
+                    line: 5,
+                    col: 1,
+                    offset: 23
+                }
+            );
+        }
+
+        #[test]
+        fn stop_at_ancestor_section() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("### Section Title\n\nabc\n\n## Section 2\n\ndef"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "section");
+            assert_eq!(mi.item.resolved_context().deref(), "section");
+            assert!(mi.item.declared_style().is_none());
+            assert_eq!(mi.item.id().unwrap(), "_section_title");
+            assert!(mi.item.roles().is_empty());
+            assert!(mi.item.options().is_empty());
+            assert!(mi.item.title_source().is_none());
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.anchor_reftext().is_none());
+            assert!(mi.item.attrlist().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+            assert_eq!(
+                mi.item,
+                SectionBlock {
+                    level: 2,
+                    section_title: Content {
+                        original: Span {
+                            data: "Section Title",
+                            line: 1,
+                            col: 5,
+                            offset: 4,
+                        },
+                        rendered: "Section Title",
+                    },
+                    blocks: &[Block::Simple(SimpleBlock {
+                        content: Content {
+                            original: Span {
+                                data: "abc",
+                                line: 3,
+                                col: 1,
+                                offset: 19,
+                            },
+                            rendered: "abc",
+                        },
+                        source: Span {
+                            data: "abc",
+                            line: 3,
+                            col: 1,
+                            offset: 19,
+                        },
+                        style: SimpleBlockStyle::Paragraph,
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    })],
+                    source: Span {
+                        data: "### Section Title\n\nabc",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    title_source: None,
+                    title: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                    section_type: SectionType::Normal,
+                    section_id: Some("_section_title"),
+                    caption: None,
+                    section_number: None,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "## Section 2\n\ndef",
+                    line: 5,
+                    col: 1,
+                    offset: 24
+                }
+            );
+        }
+
+        #[test]
+        fn section_title_with_markup() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("## Section with *bold* text"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(
+                mi.item.section_title_source(),
+                Span {
+                    data: "Section with *bold* text",
+                    line: 1,
+                    col: 4,
+                    offset: 3,
+                }
+            );
+
+            assert_eq!(
+                mi.item.section_title(),
+                "Section with <strong>bold</strong> text"
+            );
+
+            assert_eq!(mi.item.section_type(), SectionType::Normal);
+            assert_eq!(mi.item.id().unwrap(), "_section_with_bold_text");
+        }
+
+        #[test]
+        fn section_title_with_special_chars() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("## Section with <brackets> & ampersands"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(
+                mi.item.section_title_source(),
+                Span {
+                    data: "Section with <brackets> & ampersands",
+                    line: 1,
+                    col: 4,
+                    offset: 3,
+                }
+            );
+
+            assert_eq!(
+                mi.item.section_title(),
+                "Section with &lt;brackets&gt; &amp; ampersands"
+            );
+
+            assert_eq!(mi.item.section_type(), SectionType::Normal);
+        }
+
+        #[test]
+        fn level_0_section_heading_models_sect0() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            // A bare `#` (the Markdown-style level-0 marker) in the body is
+            // modeled as a level-0 section (Asciidoctor's `sect0`), not
+            // declined. Under the default (article) doctype it also
+            // raises the level-0 warning.
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("# Document Title"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 0);
+            assert_eq!(mi.item.section_title(), "Document Title");
+
+            assert_eq!(
+                warnings,
+                vec![Warning {
+                    source: Span {
+                        data: "# Document Title",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    warning: WarningType::Level0SectionHeadingNotSupported,
+                }]
+            );
+        }
+
+        #[test]
+        fn err_section_heading_level_exceeds_maximum() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let result = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("####### Level 6 Section"),
+                &mut parser,
+                &mut warnings,
+            );
+
+            assert!(result.is_none());
+
+            assert_eq!(
+                warnings,
+                vec![Warning {
+                    source: Span {
+                        data: "####### Level 6 Section",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    warning: WarningType::SectionHeadingLevelExceedsMaximum(6),
+                }]
+            );
+        }
+
+        #[test]
+        fn valid_maximum_level_5_section() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("###### Level 5 Section"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert!(warnings.is_empty());
+
+            assert_eq!(mi.item.level(), 5);
+            assert_eq!(mi.item.section_title(), "Level 5 Section");
+            assert_eq!(mi.item.section_type(), SectionType::Normal);
+            assert_eq!(mi.item.id().unwrap(), "_level_5_section");
+        }
+
+        #[test]
+        fn warn_section_level_skipped() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("## Level 1\n\n#### Level 3 (skipped level 2)"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 1);
+            assert_eq!(mi.item.section_title(), "Level 1");
+            assert_eq!(mi.item.section_type(), SectionType::Normal);
+            assert_eq!(mi.item.child_blocks().count(), 1);
+            assert_eq!(mi.item.id().unwrap(), "_level_1");
+
+            assert_eq!(
+                warnings,
+                vec![Warning {
+                    source: Span {
+                        data: "#### Level 3 (skipped level 2)",
+                        line: 3,
+                        col: 1,
+                        offset: 12,
+                    },
+                    warning: WarningType::SectionHeadingLevelSkipped(1, 3),
+                }]
+            );
+        }
+    }
+
+    #[test]
+    fn warn_multiple_section_levels_skipped() {
+        let mut parser = Parser::default();
+        let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+        let mi = crate::blocks::SectionBlock::parse(
+            &BlockMetadata::new("== Level 1\n\n===== Level 4 (skipped levels 2 and 3)"),
+            &mut parser,
+            &mut warnings,
+        )
+        .unwrap();
+
+        assert_eq!(mi.item.level(), 1);
+        assert_eq!(mi.item.section_title(), "Level 1");
+        assert_eq!(mi.item.section_type(), SectionType::Normal);
+        assert_eq!(mi.item.child_blocks().count(), 1);
+        assert_eq!(mi.item.id().unwrap(), "_level_1");
+
+        assert_eq!(
+            warnings,
+            vec![Warning {
+                source: Span {
+                    data: "===== Level 4 (skipped levels 2 and 3)",
+                    line: 3,
+                    col: 1,
+                    offset: 12,
+                },
+                warning: WarningType::SectionHeadingLevelSkipped(1, 4),
+            }]
+        );
+    }
+
+    #[test]
+    fn no_warning_for_consecutive_section_levels() {
+        let mut parser = Parser::default();
+        let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+        let mi = crate::blocks::SectionBlock::parse(
+            &BlockMetadata::new("== Level 1\n\n=== Level 2 (no skip)"),
+            &mut parser,
+            &mut warnings,
+        )
+        .unwrap();
+
+        assert_eq!(mi.item.level(), 1);
+        assert_eq!(mi.item.section_title(), "Level 1");
+        assert_eq!(mi.item.section_type(), SectionType::Normal);
+        assert_eq!(mi.item.child_blocks().count(), 1);
+        assert_eq!(mi.item.id().unwrap(), "_level_1");
+
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn section_id_generation_basic() {
+        let input = "== Section One";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("_section_one"));
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn section_id_generation_with_special_characters() {
+        let input = "== We're back! & Company";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("_were_back_company"));
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn section_id_generation_with_entities() {
+        let input = "== Ben &amp; Jerry &#34;Ice Cream&#34;";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("_ben_jerry_ice_cream"));
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn section_id_generation_disabled_when_sectids_unset() {
+        let input = ":!sectids:\n\n== Section One";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), None);
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn section_id_generation_with_custom_prefix() {
+        let input = ":idprefix: id_\n\n== Section One";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("id_section_one"));
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn section_id_generation_with_custom_separator() {
+        let input = ":idseparator: -\n\n== Section One";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("_section-one"));
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn section_id_generation_with_empty_prefix() {
+        let input = ":idprefix:\n\n== Section One";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("section_one"));
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn section_id_generation_removes_trailing_separator() {
+        let input = ":idseparator: -\n\n== Section Title-";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("_section-title"));
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn section_id_generation_removes_leading_separator_when_prefix_empty() {
+        let input = ":idprefix:\n:idseparator: -\n\n== -Section Title";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("section-title"));
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn section_id_generation_handles_multiple_trailing_separators() {
+        let input = ":idseparator: _\n\n== Title with Multiple Dots...";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("_title_with_multiple_dots"));
+        } else {
+            panic!("Expected section block");
+        }
+    }
+
+    #[test]
+    fn warn_duplicate_manual_section_id() {
+        let input = "[#my_id]\n== First Section\n\n[#my_id]\n== Second Section";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        let mut warnings = document.warnings();
+
+        assert_eq!(
+            warnings.next().unwrap(),
+            Warning {
+                source: Span {
+                    data: "[#my_id]\n== Second Section",
+                    line: 4,
+                    col: 1,
+                    offset: 27,
+                },
+                warning: WarningType::DuplicateId("my_id".to_owned()),
+            }
+        );
+
+        assert!(warnings.next().is_none());
+    }
+
+    #[test]
+    fn section_with_custom_reftext_attribute() {
+        let input = "[reftext=\"Custom Reference Text\"]\n== Section Title";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("_section_title"));
+        } else {
+            panic!("Expected section block");
+        }
+
+        let catalog = document.catalog();
+        let entry = catalog.get_ref("_section_title");
+        assert!(entry.is_some());
+        assert_eq!(
+            entry.unwrap().reftext,
+            Some("Custom Reference Text".to_string())
+        );
+    }
+
+    #[test]
+    fn section_without_reftext_uses_title() {
+        let input = "== Section Title";
+        let mut parser = Parser::default();
+        let document = parser.parse(input);
+
+        if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+            assert_eq!(section.id(), Some("_section_title"));
+        } else {
+            panic!("Expected section block");
+        }
+
+        let catalog = document.catalog();
+        let entry = catalog.get_ref("_section_title");
+        assert!(entry.is_some());
+        assert_eq!(entry.unwrap().reftext, Some("Section Title".to_string()));
+    }
+
+    mod section_numbering {
+        use crate::{blocks::Block, tests::prelude::*};
+
+        #[test]
+        fn single_section_with_sectnums() {
+            let input = ":sectnums:\n\n== First Section";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            if let Some(Block::Section(section)) = document.child_blocks().next() {
+                let section_number = section.section_number();
+                assert!(section_number.is_some());
+                assert_eq!(section_number.unwrap().to_string(), "1");
+                assert_eq!(section_number.unwrap().components(), [1]);
+            } else {
+                panic!("Expected section block");
+            }
+        }
+
+        #[test]
+        fn multiple_level_1_sections() {
+            let input = ":sectnums:\n\n== First Section\n\n== Second Section\n\n== Third Section";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            let mut sections = document.child_blocks().filter_map(|block| {
+                if let Block::Section(section) = block {
+                    Some(section)
+                } else {
+                    None
+                }
+            });
+
+            let first = sections.next().unwrap();
+            assert_eq!(first.section_number().unwrap().to_string(), "1");
+
+            let second = sections.next().unwrap();
+            assert_eq!(second.section_number().unwrap().to_string(), "2");
+
+            let third = sections.next().unwrap();
+            assert_eq!(third.section_number().unwrap().to_string(), "3");
+        }
+
+        #[test]
+        fn nested_sections() {
+            let input = ":sectnums:\n\n== Level 1\n\n=== Level 2\n\n==== Level 3";
+            let document = Parser::default().parse(input);
+
+            if let Some(Block::Section(level1)) = document.child_blocks().next() {
+                assert_eq!(level1.section_number().unwrap().to_string(), "1");
+
+                if let Some(Block::Section(level2)) = level1.child_blocks().next() {
+                    assert_eq!(level2.section_number().unwrap().to_string(), "1.1");
+
+                    if let Some(Block::Section(level3)) = level2.child_blocks().next() {
+                        assert_eq!(level3.section_number().unwrap().to_string(), "1.1.1");
+                    } else {
+                        panic!("Expected level 3 section");
+                    }
+                } else {
+                    panic!("Expected level 2 section");
+                }
+            } else {
+                panic!("Expected level 1 section");
+            }
+        }
+
+        #[test]
+        fn mixed_section_levels() {
+            let input = ":sectnums:\n\n== First\n\n=== First.One\n\n=== First.Two\n\n== Second\n\n=== Second.One";
+            let document = Parser::default().parse(input);
+
+            let mut sections = document.child_blocks().filter_map(|block| {
+                if let Block::Section(section) = block {
+                    Some(section)
+                } else {
+                    None
+                }
+            });
+
+            let first = sections.next().unwrap();
+            assert_eq!(first.section_number().unwrap().to_string(), "1");
+
+            let first_one = first
+                .child_blocks()
+                .filter_map(|block| {
+                    if let Block::Section(section) = block {
+                        Some(section)
+                    } else {
+                        None
+                    }
+                })
+                .next()
+                .unwrap();
+            assert_eq!(first_one.section_number().unwrap().to_string(), "1.1");
+
+            let first_two = first
+                .child_blocks()
+                .filter_map(|block| {
+                    if let Block::Section(section) = block {
+                        Some(section)
+                    } else {
+                        None
+                    }
+                })
+                .nth(1)
+                .unwrap();
+            assert_eq!(first_two.section_number().unwrap().to_string(), "1.2");
+
+            let second = sections.next().unwrap();
+            assert_eq!(second.section_number().unwrap().to_string(), "2");
+
+            let second_one = second
+                .child_blocks()
+                .filter_map(|block| {
+                    if let Block::Section(section) = block {
+                        Some(section)
+                    } else {
+                        None
+                    }
+                })
+                .next()
+                .unwrap();
+            assert_eq!(second_one.section_number().unwrap().to_string(), "2.1");
+        }
+
+        #[test]
+        fn sectnums_disabled() {
+            let input = "== First Section\n\n== Second Section";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            for block in document.child_blocks() {
+                if let Block::Section(section) = block {
+                    assert!(section.section_number().is_none());
+                }
+            }
+        }
+
+        #[test]
+        fn sectnums_explicitly_unset() {
+            let input = ":!sectnums:\n\n== First Section\n\n== Second Section";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            for block in document.child_blocks() {
+                if let Block::Section(section) = block {
+                    assert!(section.section_number().is_none());
+                }
+            }
+        }
+
+        #[test]
+        fn numbered_alias_enables_numbering() {
+            // `numbered` is a legacy alias for `sectnums`: setting it numbers
+            // sections just as `sectnums` would, and `is_attribute_set` reports
+            // the primary name, mirroring Asciidoctor.
+            let input = ":numbered:\n\n== First Section\n\n== Second Section";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            assert!(parser.is_attribute_set("sectnums"));
+
+            let mut sections = document.child_blocks().filter_map(|block| {
+                if let Block::Section(section) = block {
+                    Some(section)
+                } else {
+                    None
+                }
+            });
+
+            assert_eq!(
+                sections
+                    .next()
+                    .unwrap()
+                    .section_number()
+                    .unwrap()
+                    .to_string(),
+                "1"
+            );
+            assert_eq!(
+                sections
+                    .next()
+                    .unwrap()
+                    .section_number()
+                    .unwrap()
+                    .to_string(),
+                "2"
+            );
+        }
+
+        #[test]
+        fn numbered_alias_can_be_toggled_off_within_document() {
+            // `numbered!` unsets the alias mid-document; sections after the
+            // toggle are not numbered.
+            let input =
+                ":numbered:\n\n== Numbered\n\n:numbered!:\n\n== Unnumbered\n\n== Also Unnumbered";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            let mut sections = document.child_blocks().filter_map(|block| {
+                if let Block::Section(section) = block {
+                    Some(section)
+                } else {
+                    None
+                }
+            });
+
+            assert_eq!(
+                sections
+                    .next()
+                    .unwrap()
+                    .section_number()
+                    .unwrap()
+                    .to_string(),
+                "1"
+            );
+            assert!(sections.next().unwrap().section_number().is_none());
+            assert!(sections.next().unwrap().section_number().is_none());
+        }
+
+        #[test]
+        fn deep_nesting() {
+            let input = ":sectnums:\n:sectnumlevels: 5\n\n== Level 1\n\n=== Level 2\n\n==== Level 3\n\n===== Level 4\n\n====== Level 5";
+            let document = Parser::default().parse(input);
+
+            if let Some(Block::Section(l1)) = document.child_blocks().next() {
+                assert_eq!(l1.section_number().unwrap().to_string(), "1");
+
+                if let Some(Block::Section(l2)) = l1.child_blocks().next() {
+                    assert_eq!(l2.section_number().unwrap().to_string(), "1.1");
+
+                    if let Some(Block::Section(l3)) = l2.child_blocks().next() {
+                        assert_eq!(l3.section_number().unwrap().to_string(), "1.1.1");
+
+                        if let Some(Block::Section(l4)) = l3.child_blocks().next() {
+                            assert_eq!(l4.section_number().unwrap().to_string(), "1.1.1.1");
+
+                            if let Some(Block::Section(l5)) = l4.child_blocks().next() {
+                                assert_eq!(l5.section_number().unwrap().to_string(), "1.1.1.1.1");
+                            } else {
+                                panic!("Expected level 5 section");
+                            }
+                        } else {
+                            panic!("Expected level 4 section");
+                        }
+                    } else {
+                        panic!("Expected level 3 section");
+                    }
+                } else {
+                    panic!("Expected level 2 section");
+                }
+            } else {
+                panic!("Expected level 1 section");
+            }
+        }
+    }
+
+    #[test]
+    fn impl_debug() {
+        let mut parser = Parser::default();
+        let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+        let section = crate::blocks::SectionBlock::parse(
+            &BlockMetadata::new("== Section Title"),
+            &mut parser,
+            &mut warnings,
+        )
+        .unwrap()
+        .item;
+
+        assert_eq!(
+            format!("{section:#?}"),
+            r#"SectionBlock {
+    level: 1,
+    section_title: Content {
+        original: Span {
+            data: "Section Title",
+            line: 1,
+            col: 4,
+            offset: 3,
+        },
+        rendered: "Section Title",
+    },
+    blocks: &[],
+    source: Span {
+        data: "== Section Title",
+        line: 1,
+        col: 1,
+        offset: 0,
+    },
+    title_source: None,
+    title: None,
+    anchor: None,
+    anchor_reftext: None,
+    attrlist: None,
+    section_type: SectionType::Normal,
+    section_id: Some(
+        "_section_title",
+    ),
+    caption: None,
+    section_number: None,
+}"#
+        );
+    }
+
+    mod section_type {
+        use crate::blocks::section::SectionType;
+
+        #[test]
+        fn impl_debug() {
+            let st = SectionType::Normal;
+            assert_eq!(format!("{st:?}"), "SectionType::Normal");
+
+            let st = SectionType::Appendix;
+            assert_eq!(format!("{st:?}"), "SectionType::Appendix");
+
+            let st = SectionType::Discrete;
+            assert_eq!(format!("{st:?}"), "SectionType::Discrete");
+        }
+    }
+
+    mod section_number {
+        mod assign_next_number {
+            use crate::blocks::section::SectionNumber;
+
+            #[test]
+            fn default() {
+                let sn = SectionNumber::default();
+                assert_eq!(sn.components(), []);
+                assert_eq!(sn.to_string(), "");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Normal, components: &[], appendix_letter: None }"
+                );
+            }
+
+            #[test]
+            fn level_1() {
+                let mut sn = SectionNumber::default();
+                sn.assign_next_number(1);
+                assert_eq!(sn.components(), [1]);
+                assert_eq!(sn.to_string(), "1");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Normal, components: &[1], appendix_letter: None }"
+                );
+            }
+
+            #[test]
+            fn level_3() {
+                let mut sn = SectionNumber::default();
+                sn.assign_next_number(3);
+                assert_eq!(sn.components(), [1, 1, 1]);
+                assert_eq!(sn.to_string(), "1.1.1");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Normal, components: &[1, 1, 1], appendix_letter: None }"
+                );
+            }
+
+            #[test]
+            fn level_3_then_1() {
+                let mut sn = SectionNumber::default();
+                sn.assign_next_number(3);
+                sn.assign_next_number(1);
+                assert_eq!(sn.components(), [2]);
+                assert_eq!(sn.to_string(), "2");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Normal, components: &[2], appendix_letter: None }"
+                );
+            }
+
+            #[test]
+            fn level_3_then_1_then_2() {
+                let mut sn = SectionNumber::default();
+                sn.assign_next_number(3);
+                sn.assign_next_number(1);
+                sn.assign_next_number(2);
+                assert_eq!(sn.components(), [2, 1]);
+                assert_eq!(sn.to_string(), "2.1");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Normal, components: &[2, 1], appendix_letter: None }"
+                );
+            }
+        }
+
+        mod assign_next_number_appendix {
+            use crate::blocks::{SectionType, section::SectionNumber};
+
+            #[test]
+            fn default() {
+                let sn = SectionNumber {
+                    section_type: SectionType::Appendix,
+                    components: vec![],
+                    appendix_letter: None,
+                };
+                assert_eq!(sn.components(), []);
+                assert_eq!(sn.to_string(), "");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Appendix, components: &[], appendix_letter: None }"
+                );
+            }
+
+            #[test]
+            fn level_1() {
+                let mut sn = SectionNumber {
+                    section_type: SectionType::Appendix,
+                    components: vec![],
+                    appendix_letter: None,
+                };
+                sn.assign_next_number(1);
+                assert_eq!(sn.components(), [1]);
+                assert_eq!(sn.to_string(), "A");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Appendix, components: &[1], appendix_letter: None }"
+                );
+            }
+
+            #[test]
+            fn level_3() {
+                let mut sn = SectionNumber {
+                    section_type: SectionType::Appendix,
+                    components: vec![],
+                    appendix_letter: None,
+                };
+                sn.assign_next_number(3);
+                assert_eq!(sn.components(), [1, 1, 1]);
+                assert_eq!(sn.to_string(), "A.1.1");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Appendix, components: &[1, 1, 1], appendix_letter: None }"
+                );
+            }
+
+            #[test]
+            fn level_3_then_1() {
+                let mut sn = SectionNumber {
+                    section_type: SectionType::Appendix,
+                    components: vec![],
+                    appendix_letter: None,
+                };
+                sn.assign_next_number(3);
+                sn.assign_next_number(1);
+                assert_eq!(sn.components(), [2]);
+                assert_eq!(sn.to_string(), "B");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Appendix, components: &[2], appendix_letter: None }"
+                );
+            }
+
+            #[test]
+            fn level_3_then_1_then_2() {
+                let mut sn = SectionNumber {
+                    section_type: SectionType::Appendix,
+                    components: vec![],
+                    appendix_letter: None,
+                };
+                sn.assign_next_number(3);
+                sn.assign_next_number(1);
+                sn.assign_next_number(2);
+                assert_eq!(sn.components(), [2, 1]);
+                assert_eq!(sn.to_string(), "B.1");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Appendix, components: &[2, 1], appendix_letter: None }"
+                );
+            }
+
+            #[test]
+            fn appendix_letter_overrides_first_component() {
+                let mut sn = SectionNumber {
+                    section_type: SectionType::Appendix,
+                    components: vec![],
+                    appendix_letter: Some("\u{3b2}".to_owned()),
+                };
+                sn.assign_next_number(1);
+                sn.assign_next_number(2);
+                assert_eq!(sn.components(), [1, 1]);
+                assert_eq!(sn.appendix_letter(), Some("\u{3b2}"));
+                assert_eq!(sn.to_string(), "\u{3b2}.1");
+                assert_eq!(
+                    format!("{sn:?}"),
+                    "SectionNumber { section_type: SectionType::Appendix, components: &[1, 1], appendix_letter: Some(\"\u{3b2}\") }"
+                );
+            }
+        }
+    }
+
+    mod appendix_number_attribute {
+        use crate::{blocks::Block, tests::prelude::*};
+
+        // The `appendix-number` attribute is resolved as a counter (mirroring
+        // Ruby Asciidoctor), so its value is the letter *before* the first
+        // appendix and each appendix advances it.
+
+        #[test]
+        fn seeds_lettering_from_the_attribute() {
+            let doc = Parser::default()
+                .parse(":appendix-number: M\n\n[appendix]\n== One\n\n[appendix]\n== Two\n");
+
+            let caps: Vec<Option<&str>> = all_sections(&doc).iter().map(|s| s.caption()).collect();
+            assert_eq!(caps, vec![Some("Appendix N: "), Some("Appendix O: ")]);
+        }
+
+        #[test]
+        fn increments_a_numeric_value_numerically() {
+            let doc = Parser::default()
+                .parse(":appendix-number: 9\n\n[appendix]\n== One\n\n[appendix]\n== Two\n");
+
+            let caps: Vec<Option<&str>> = all_sections(&doc).iter().map(|s| s.caption()).collect();
+            assert_eq!(caps, vec![Some("Appendix 10: "), Some("Appendix 11: ")]);
+        }
+
+        #[test]
+        fn bare_attribute_resolves_to_default_seed() {
+            // A bare `:appendix-number:` takes the built-in default `@`, the
+            // character before `A`, so lettering still starts at `A`.
+            let doc = Parser::default()
+                .parse(":appendix-number:\n\n[appendix]\n== One\n\n[appendix]\n== Two\n");
+
+            let caps: Vec<Option<&str>> = all_sections(&doc).iter().map(|s| s.caption()).collect();
+            assert_eq!(caps, vec![Some("Appendix A: "), Some("Appendix B: ")]);
+        }
+
+        #[test]
+        fn letters_section_numbers_of_appendix_and_subsections() {
+            let doc = Parser::default()
+                .parse(":sectnums:\n:appendix-number: \u{3b1}\n\n[appendix]\n== One\n\n=== Sub\n");
+
+            let nums: Vec<Option<String>> = all_sections(&doc)
+                .iter()
+                .map(|s| s.section_number().map(|n| n.to_string()))
+                .collect();
+            assert_eq!(
+                nums,
+                vec![Some("\u{3b2}".to_owned()), Some("\u{3b2}.1".to_owned())]
+            );
+        }
+
+        #[test]
+        fn attribute_reads_back_as_the_current_letter() {
+            // Advancing the counter stores the new value back into the
+            // attribute, so a reference inside the appendix sees its letter.
+            let doc = Parser::default().parse("[appendix]\n== One\n\nLetter {appendix-number}.\n");
+
+            let section = first_section(&doc);
+            let Some(Block::Simple(paragraph)) = section.child_blocks().next() else {
+                panic!("expected a simple block");
+            };
+            assert_eq!(paragraph.content().rendered_html(), "Letter A.");
+        }
+    }
+
+    mod discrete_headings {
+        use std::ops::Deref;
+
+        use crate::{
+            blocks::{ContentModel, metadata::BlockMetadata, section::SectionType},
+            tests::prelude::*,
+        };
+
+        #[test]
+        fn basic_case() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("[discrete]\n== Discrete Heading"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.content_model(), ContentModel::Compound);
+            assert_eq!(mi.item.raw_context().deref(), "floating_title");
+            assert_eq!(mi.item.resolved_context().deref(), "floating_title");
+            assert_eq!(mi.item.level(), 1);
+            assert_eq!(mi.item.section_title(), "Discrete Heading");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+            assert!(mi.item.child_blocks().next().is_none());
+            assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+            assert!(mi.item.title().is_none());
+            assert!(mi.item.anchor().is_none());
+            assert!(mi.item.attrlist().is_some());
+            assert_eq!(mi.item.section_number(), None);
+            assert!(warnings.is_empty());
+
+            assert_eq!(
+                mi.item.section_title_source(),
+                Span {
+                    data: "Discrete Heading",
+                    line: 2,
+                    col: 4,
+                    offset: 14,
+                }
+            );
+
+            assert_eq!(
+                mi.item.span(),
+                Span {
+                    data: "[discrete]\n== Discrete Heading",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                }
+            );
+
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "",
+                    line: 2,
+                    col: 20,
+                    offset: 30,
+                }
+            );
+        }
+
+        #[test]
+        fn float_style() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("[float]\n== Floating Heading"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 1);
+            assert_eq!(mi.item.section_title(), "Floating Heading");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+            assert!(mi.item.child_blocks().next().is_none());
+            assert!(warnings.is_empty());
+        }
+
+        #[test]
+        fn has_no_child_blocks() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("[discrete]\n== Discrete Heading\n\nThis is a paragraph."),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 1);
+            assert_eq!(mi.item.section_title(), "Discrete Heading");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+
+            // Discrete headings should have no nested blocks.
+            assert!(mi.item.child_blocks().next().is_none());
+
+            // The paragraph should be left unparsed.
+            assert_eq!(
+                mi.after,
+                Span {
+                    data: "This is a paragraph.",
+                    line: 4,
+                    col: 1,
+                    offset: 32,
+                }
+            );
+
+            assert!(warnings.is_empty());
+        }
+
+        #[test]
+        fn not_in_section_hierarchy() {
+            let input = "== Section 1\n\n[discrete]\n=== Discrete\n\n=== Section 1.1";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            let mut blocks = document.child_blocks();
+
+            // First should be "Section 1".
+            if let Some(crate::blocks::Block::Section(section)) = blocks.next() {
+                assert_eq!(section.section_title(), "Section 1");
+                assert_eq!(section.level(), 1);
+                assert_eq!(section.section_type(), SectionType::Normal);
+
+                let mut children = section.child_blocks();
+
+                // First child should be the discrete heading.
+                if let Some(crate::blocks::Block::Section(discrete)) = children.next() {
+                    assert_eq!(discrete.section_title(), "Discrete");
+                    assert_eq!(discrete.level(), 2);
+                    assert_eq!(discrete.section_type(), SectionType::Discrete);
+                    assert!(discrete.child_blocks().next().is_none());
+                } else {
+                    panic!("Expected discrete heading block");
+                }
+
+                // Second child should be "Section 1.1".
+                if let Some(crate::blocks::Block::Section(subsection)) = children.next() {
+                    assert_eq!(subsection.section_title(), "Section 1.1");
+                    assert_eq!(subsection.level(), 2);
+                    assert_eq!(subsection.section_type(), SectionType::Normal);
+                } else {
+                    panic!("Expected subsection block");
+                }
+            } else {
+                panic!("Expected section block");
+            }
+        }
+
+        #[test]
+        fn has_auto_id() {
+            let input = "[discrete]\n== Discrete Heading";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+                // Discrete headings should generate auto IDs.
+                assert_eq!(section.id(), Some("_discrete_heading"));
+            } else {
+                panic!("Expected section block");
+            }
+        }
+
+        #[test]
+        fn with_manual_id() {
+            let input = "[discrete#my-id]\n== Discrete Heading";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            if let Some(crate::blocks::Block::Section(section)) = document.child_blocks().next() {
+                // Manual IDs should still work with discrete headings.
+                assert_eq!(section.id(), Some("my-id"));
+            } else {
+                panic!("Expected section block");
+            }
+        }
+
+        #[test]
+        fn no_section_number() {
+            let input = ":sectnums:\n\n== Section 1\n\n[discrete]\n=== Discrete\n\n=== Section 1.1";
+            let mut parser = Parser::default();
+            let document = parser.parse(input);
+
+            let mut blocks = document.child_blocks();
+
+            if let Some(crate::blocks::Block::Section(section)) = blocks.next() {
+                assert_eq!(section.section_title(), "Section 1");
+                assert!(section.section_number().is_some());
+
+                let mut children = section.child_blocks();
+
+                // Discrete heading should not have a section number.
+                if let Some(crate::blocks::Block::Section(discrete)) = children.next() {
+                    assert_eq!(discrete.section_title(), "Discrete");
+                    assert_eq!(discrete.section_number(), None);
+                } else {
+                    panic!("Expected discrete heading block");
+                }
+
+                // Regular subsection should have a section number.
+                if let Some(crate::blocks::Block::Section(subsection)) = children.next() {
+                    assert_eq!(subsection.section_title(), "Section 1.1");
+                    assert!(subsection.section_number().is_some());
+                } else {
+                    panic!("Expected subsection block");
+                }
+            } else {
+                panic!("Expected section block");
+            }
+        }
+
+        #[test]
+        fn title_can_have_markup() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("[discrete]\n== Discrete with *bold* text"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(
+                mi.item.section_title(),
+                "Discrete with <strong>bold</strong> text"
+            );
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+            assert!(warnings.is_empty());
+        }
+
+        #[test]
+        fn level_0() {
+            // A `[discrete]`/`[float]` style makes a level-0 (`=`) heading a
+            // discrete floating title rather than the (rejected) document
+            // title, so it parses to a level-0 discrete section
+            // with no warning.
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("[discrete]\n= Level 0 Discrete"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 0);
+            assert_eq!(mi.item.section_title(), "Level 0 Discrete");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+            assert!(warnings.is_empty());
+        }
+
+        #[test]
+        fn level_2() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("[discrete]\n=== Level 2 Discrete"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 2);
+            assert_eq!(mi.item.section_title(), "Level 2 Discrete");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+            assert!(warnings.is_empty());
+        }
+
+        #[test]
+        fn level_5() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("[discrete]\n====== Level 5 Discrete"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 5);
+            assert_eq!(mi.item.section_title(), "Level 5 Discrete");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+            assert!(warnings.is_empty());
+        }
+
+        #[test]
+        fn markdown_style() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("[discrete]\n## Discrete Heading"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 1);
+            assert_eq!(mi.item.section_title(), "Discrete Heading");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+            assert!(warnings.is_empty());
+        }
+
+        #[test]
+        fn with_block_title() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new(".Block Title\n[discrete]\n== Discrete Heading"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 1);
+            assert_eq!(mi.item.section_title(), "Discrete Heading");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+            assert_eq!(mi.item.title(), Some("Block Title"));
+            assert!(warnings.is_empty());
+        }
+
+        #[test]
+        fn with_anchor() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new("[[my_anchor]]\n[discrete]\n== Discrete Heading"),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 1);
+            assert_eq!(mi.item.section_title(), "Discrete Heading");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+            assert_eq!(mi.item.id(), Some("my_anchor"));
+            assert!(warnings.is_empty());
+        }
+
+        #[test]
+        fn doesnt_include_subsequent_blocks() {
+            let mut parser = Parser::default();
+            let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+            let mi = crate::blocks::SectionBlock::parse(
+                &BlockMetadata::new(
+                    "[discrete]\n== Discrete Heading\n\nparagraph\n\n== Next Section",
+                ),
+                &mut parser,
+                &mut warnings,
+            )
+            .unwrap();
+
+            assert_eq!(mi.item.level(), 1);
+            assert_eq!(mi.item.section_title(), "Discrete Heading");
+            assert_eq!(mi.item.section_type(), SectionType::Discrete);
+
+            // Should have no child blocks.
+            assert!(mi.item.child_blocks().next().is_none());
+
+            // The paragraph and next section should be unparsed.
+            assert!(mi.after.data().contains("paragraph"));
+            assert!(mi.after.data().contains("== Next Section"));
+
+            assert!(warnings.is_empty());
+        }
+    }
+}

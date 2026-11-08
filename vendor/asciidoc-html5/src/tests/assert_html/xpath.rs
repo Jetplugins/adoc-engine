@@ -1,0 +1,779 @@
+//! A minimal XPath-subset evaluator over a [`VirtualNode`] tree.
+//!
+//! This is intentionally *not* a general XPath engine. It implements exactly
+//! the location-path shapes that Asciidoctor's Ruby test suite uses to assert
+//! on HTML output, enough to port those `assert_xpath` calls faithfully:
+//!
+//! - `//tag`, `/tag`, `//*`, `/*` — descendant / child steps and the wildcard
+//! - `a/b`, `a//b` — child and descendant combinators, chained
+//! - `foo/following-sibling::*`, `foo/preceding-sibling::tag` — the sibling
+//!   axes; the `text()` node test addresses a character-data run on those axes
+//!   (`foo/following-sibling::text()`) and on the explicit `child::` axis
+//!   (`foo/child::text()`, equivalent to the default child step)
+//! - `foo/preceding::tag`, `foo/following::tag` — the general document-order
+//!   axes (excluding ancestors / descendants respectively)
+//! - `foo/self::tag` — the self axis: the context node itself, kept only when
+//!   it matches the node test (used to name the type of a positionally-selected
+//!   node, e.g. `((…)[N])/self::div[@class="…"]`)
+//! - predicates `[@id="x"]`, `[@class="x"]`, `[@attr="x"]`, `[@attr]`,
+//!   `[not(@attr)]`, `[text()="x"]`, `[contains(text(), "x")]`,
+//!   `[normalize-space(text()) = "x"]`, `[starts-with(., "x")]`, and the
+//!   positional `[N]` (1-indexed, per context node). Predicates are applied in
+//!   source order, so a positional `[N]` selects the Nth node that the
+//!   predicates to its left left behind (`tag[text()="x"][2]` ≠
+//!   `tag[2][text()="x"]`)
+//! - a leading grouped path `(subpath)[N]…/rest` — the parenthesized subpath is
+//!   evaluated first, then a positional predicate on the *group* selects the
+//!   Nth match in document order across the whole set (not per context, the way
+//!   a bare `//tag[N]` does), optionally followed by filter predicates and a
+//!   trailing relative path
+//!
+//! Anything outside this subset (the `ancestor::`/`descendant::` named axes,
+//! boolean `count(...)` expressions, `last()`, `position()`, …) is
+//! simply not built yet. An unsupported predicate or axis **panics** rather
+//! than being silently ignored — a silently dropped predicate would make a step
+//! match more broadly than intended (a false pass). The next test that needs
+//! one should **extend this engine** (with unit tests) rather than defer the
+//! test — a missing harness feature is never a reason to mark a Ruby test
+//! `non_normative!`. See `crate::tests::asciidoctor_rb`'s README for the
+//! rationale.
+//!
+//! Note: the general axes return matches in document order. XPath orders a
+//! reverse axis (`preceding::`) in reverse document order, which would matter
+//! for a positional predicate *on that axis* (e.g. `preceding::p[1]`); the
+//! suite does not use that combination, so the harness does not model it.
+
+use super::dom::VirtualNode;
+
+/// Evaluates `path` against `root`, returning the matched nodes in document
+/// order with duplicates removed.
+pub(super) fn query<'a>(root: &'a VirtualNode, path: &str) -> Vec<&'a VirtualNode> {
+    let path = path.trim();
+    if path.starts_with('(') {
+        return query_grouped(root, path);
+    }
+
+    let steps = parse_path(path);
+    run_steps(root, vec![root], &steps)
+}
+
+/// Evaluates a grouped path — `(subpath)[N]…/rest` — where the parentheses
+/// force the positional predicate to apply across the whole match set in
+/// document order, not per context node.
+fn query_grouped<'a>(root: &'a VirtualNode, path: &str) -> Vec<&'a VirtualNode> {
+    let close = find_matching_paren(path);
+    let inner = &path[1..close];
+    let mut nodes = query(root, inner);
+
+    // Predicates directly after the `)` apply to the group as a whole: a
+    // numeric one selects the Nth match globally, a filter one keeps the
+    // matches that satisfy it.
+    let mut rest = path[close + 1..].trim_start();
+    while let Some(after_open) = rest.strip_prefix('[') {
+        let end = find_predicate_close(after_open)
+            .unwrap_or_else(|| panic!("unterminated group predicate in XPath `{path}`"));
+        apply_group_predicate(after_open[..end].trim(), &mut nodes);
+        rest = after_open[end + 1..].trim_start();
+    }
+
+    if rest.is_empty() {
+        return nodes;
+    }
+
+    // Whatever follows is a relative path evaluated from the group's result
+    // set.
+    assert!(
+        rest.starts_with('/'),
+        "expected `/` or a predicate after a grouped XPath expression in `{path}`"
+    );
+    let steps = parse_path(rest);
+    run_steps(root, nodes, &steps)
+}
+
+/// Applies one group predicate (the text between `[` and `]`) to `nodes`
+/// in place: a bare integer selects the Nth match globally (1-indexed), any
+/// other predicate filters the set.
+fn apply_group_predicate(body: &str, nodes: &mut Vec<&VirtualNode>) {
+    // A group predicate is one `[…]`, so it parses to a single term: a
+    // positional `[N]` that picks the Nth match across the whole group, or a
+    // value filter that retains the matches.
+    let mut terms = Vec::new();
+    parse_predicate(body, &mut terms);
+    for term in &terms {
+        match term {
+            PredTerm::Index(n) => {
+                let picked = n.checked_sub(1).and_then(|i| nodes.get(i)).copied();
+                nodes.clear();
+                nodes.extend(picked);
+            }
+            PredTerm::Filter(pred) => nodes.retain(|node| pred.matches(node)),
+        }
+    }
+}
+
+/// Finds the index of the `)` that closes the `(` at the start of `s`, ignoring
+/// parentheses inside a `[…]` predicate or inside a quoted string literal.
+///
+/// Quotes are skipped so that a predicate value may itself contain `(`, `)`,
+/// `[`, or `]` (e.g. `(//p[text()="a]b"])[1]`) without throwing off the
+/// bracket/paren counters — matching [`find_predicate_close`].
+fn find_matching_paren(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    let mut depth = 0i32;
+    let mut bracket = 0i32;
+    let mut quote: Option<u8> = None;
+    for (i, &b) in bytes.iter().enumerate() {
+        match quote {
+            Some(q) => {
+                if b == q {
+                    quote = None;
+                }
+            }
+            None => match b {
+                b'\'' | b'"' => quote = Some(b),
+                b'[' => bracket += 1,
+                b']' => bracket -= 1,
+                b'(' if bracket == 0 => depth += 1,
+                b')' if bracket == 0 => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return i;
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+    panic!("unbalanced parentheses in XPath `{s}`");
+}
+
+/// Walks `context` through each of `steps`, returning the final node set in
+/// document order with duplicates removed.
+fn run_steps<'a>(
+    root: &'a VirtualNode,
+    mut context: Vec<&'a VirtualNode>,
+    steps: &[Step],
+) -> Vec<&'a VirtualNode> {
+    for step in steps {
+        let mut next: Vec<&VirtualNode> = Vec::new();
+        for &node in &context {
+            // Collect the nodes on the axis that satisfy only the *node test*
+            // (the name/`text()` test) — not the value predicates yet.
+            let candidates: Vec<&VirtualNode> = match step.axis {
+                // The `self::` axis is the context node itself, kept only when it
+                // satisfies the node test; the predicate loop below applies any
+                // value or positional predicates. The suite uses it to name the
+                // type of a positionally-selected node, e.g.
+                // `((//ol/li)[1]/*)[2]/self::div[@class="ulist"]`.
+                Axis::Itself => {
+                    if step.name_matches(node) {
+                        vec![node]
+                    } else {
+                        vec![]
+                    }
+                }
+                Axis::Child => node
+                    .children
+                    .iter()
+                    .filter(|c| step.name_matches(c))
+                    .collect(),
+                Axis::Descendant => {
+                    let mut acc = Vec::new();
+                    collect_descendants(node, step, &mut acc);
+                    acc
+                }
+                Axis::FollowingSibling => following_siblings(root, node)
+                    .into_iter()
+                    .filter(|c| step.name_matches(c))
+                    .collect(),
+                Axis::PrecedingSibling => preceding_siblings(root, node)
+                    .into_iter()
+                    .filter(|c| step.name_matches(c))
+                    .collect(),
+                Axis::Following => following(root, node)
+                    .into_iter()
+                    .filter(|c| step.name_matches(c))
+                    .collect(),
+                Axis::Preceding => preceding(root, node)
+                    .into_iter()
+                    .filter(|c| step.name_matches(c))
+                    .collect(),
+            };
+
+            // XPath applies the predicates left to right, within this context
+            // node's node-test matches: a value filter keeps the nodes it
+            // matches, and a positional `[N]` keeps the Nth (1-indexed) of
+            // whatever survives so far. Applying them in source order is what
+            // makes `th[text()="B"][2]` differ from `th[2][text()="B"]`.
+            let mut matched = candidates;
+            for term in &step.preds {
+                match term {
+                    PredTerm::Filter(pred) => matched.retain(|m| pred.matches(m)),
+                    PredTerm::Index(n) => {
+                        let picked = n.checked_sub(1).and_then(|i| matched.get(i)).copied();
+                        matched.clear();
+                        matched.extend(picked);
+                    }
+                }
+            }
+
+            for m in matched {
+                push_unique(&mut next, m);
+            }
+        }
+        context = next;
+    }
+
+    context
+}
+
+/// Collects every descendant of `node` (excluding `node` itself) that satisfies
+/// `step`'s node test, in document order. Value predicates and the positional
+/// index are applied by the caller, after this name-only gather.
+fn collect_descendants<'a>(node: &'a VirtualNode, step: &Step, acc: &mut Vec<&'a VirtualNode>) {
+    for child in &node.children {
+        if step.name_matches(child) {
+            acc.push(child);
+        }
+        collect_descendants(child, step, acc);
+    }
+}
+
+/// Returns the siblings that follow `target`, in document order.
+fn following_siblings<'a>(root: &'a VirtualNode, target: &VirtualNode) -> Vec<&'a VirtualNode> {
+    match find_parent(root, target) {
+        Some(parent) => match parent.children.iter().position(|c| std::ptr::eq(c, target)) {
+            Some(i) => parent.children[i + 1..].iter().collect(),
+            None => Vec::new(),
+        },
+        None => Vec::new(),
+    }
+}
+
+/// Returns the siblings that precede `target`, in document order.
+fn preceding_siblings<'a>(root: &'a VirtualNode, target: &VirtualNode) -> Vec<&'a VirtualNode> {
+    match find_parent(root, target) {
+        Some(parent) => match parent.children.iter().position(|c| std::ptr::eq(c, target)) {
+            Some(i) => parent.children[..i].iter().collect(),
+            None => Vec::new(),
+        },
+        None => Vec::new(),
+    }
+}
+
+/// Returns the elements on the `preceding::` axis of `target`: every element
+/// that starts before `target` in document order, excluding `target`'s own
+/// ancestors. Results are in document order (their relative order does not
+/// affect matching or counting, the only things the harness asks of the axis).
+fn preceding<'a>(root: &'a VirtualNode, target: &VirtualNode) -> Vec<&'a VirtualNode> {
+    let ancestors = ancestors(root, target);
+    let mut before = Vec::new();
+    let mut reached = false;
+    collect_preorder_before(root, target, &mut before, &mut reached);
+    before
+        .into_iter()
+        .filter(|n| !ancestors.iter().any(|a| std::ptr::eq(*a, *n)))
+        .collect()
+}
+
+/// Returns the elements on the `following::` axis of `target`: every element
+/// that starts after `target`'s subtree ends in document order (which, by
+/// construction, excludes `target`'s descendants and ancestors).
+fn following<'a>(root: &'a VirtualNode, target: &VirtualNode) -> Vec<&'a VirtualNode> {
+    let mut after = Vec::new();
+    let mut found = false;
+    collect_following(root, target, &mut after, &mut found);
+    after
+}
+
+/// The ancestors of `target`, from its parent up to (and including) `root`.
+fn ancestors<'a>(root: &'a VirtualNode, target: &VirtualNode) -> Vec<&'a VirtualNode> {
+    let mut chain = Vec::new();
+    let mut current: &VirtualNode = target;
+    while let Some(parent) = find_parent(root, current) {
+        chain.push(parent);
+        current = parent;
+    }
+    chain
+}
+
+/// Pre-order walk collecting every element visited before `target`, stopping as
+/// soon as `target` is reached. Ancestors of `target` are collected here (they
+/// precede it in the walk) and filtered out by the caller.
+fn collect_preorder_before<'a>(
+    node: &'a VirtualNode,
+    target: &VirtualNode,
+    out: &mut Vec<&'a VirtualNode>,
+    reached: &mut bool,
+) {
+    for child in &node.children {
+        if *reached {
+            return;
+        }
+        if std::ptr::eq(child, target) {
+            *reached = true;
+            return;
+        }
+        out.push(child);
+        collect_preorder_before(child, target, out, reached);
+    }
+}
+
+/// Pre-order walk collecting every element after `target` in document order.
+/// `target`'s subtree is skipped entirely (its descendants are not
+/// "following"); once `found` flips, every later element — later siblings, and
+/// the later subtrees of ancestors — is collected.
+fn collect_following<'a>(
+    node: &'a VirtualNode,
+    target: &VirtualNode,
+    out: &mut Vec<&'a VirtualNode>,
+    found: &mut bool,
+) {
+    for child in &node.children {
+        if std::ptr::eq(child, target) {
+            *found = true;
+            continue;
+        }
+        if *found {
+            out.push(child);
+        }
+        collect_following(child, target, out, found);
+    }
+}
+
+/// Finds the parent of `target` by walking from `root` and comparing node
+/// identity (the nodes are all borrows into one owned tree).
+fn find_parent<'a>(node: &'a VirtualNode, target: &VirtualNode) -> Option<&'a VirtualNode> {
+    for child in &node.children {
+        if std::ptr::eq(child, target) {
+            return Some(node);
+        }
+        if let Some(parent) = find_parent(child, target) {
+            return Some(parent);
+        }
+    }
+    None
+}
+
+/// Pushes `node` onto `set` unless an identical node (by identity) is present.
+fn push_unique<'a>(set: &mut Vec<&'a VirtualNode>, node: &'a VirtualNode) {
+    if !set.iter().any(|existing| std::ptr::eq(*existing, node)) {
+        set.push(node);
+    }
+}
+
+/// The axis a single location step walks.
+#[derive(Clone, Copy)]
+enum Axis {
+    Itself,
+    Child,
+    Descendant,
+    FollowingSibling,
+    PrecedingSibling,
+    Following,
+    Preceding,
+}
+
+/// A node test: a specific tag name, `*` (any element), or `text()` (any
+/// character-data node).
+enum NameTest {
+    Any,
+    Named(String),
+    Text,
+}
+
+/// A single predicate inside `[...]`.
+enum Pred {
+    Id(String),
+    Class(String),
+    Attr(String, String),
+    AttrExists(String),
+    NotAttrExists(String),
+    Text(String),
+    ContainsText(String),
+    NormalizeSpaceText(String),
+    StartsWithText(String),
+}
+
+impl Pred {
+    fn matches(&self, node: &VirtualNode) -> bool {
+        match self {
+            Pred::Id(v) => node.id.as_deref() == Some(v.as_str()),
+            // XPath `@class="v"` is exact string equality on the class
+            // attribute, not CSS token containment: `[@class="paragraph"]` must
+            // not match `class="paragraph lead"` (that is what CSS `.paragraph`,
+            // via `assert_css`, is for). The projection split the attribute on
+            // whitespace, so rejoin with a single space to compare — faithful
+            // for the renderer's single-space-separated class lists.
+            Pred::Class(v) => node.classes.join(" ") == *v,
+            Pred::Attr(k, v) => node.attributes.get(k).map(String::as_str) == Some(v.as_str()),
+            Pred::AttrExists(k) => attr_exists(node, k),
+            // `not(@attr)`: the element lacks the attribute entirely — e.g.
+            // `//h1[not(@id)]` for an idless heading.
+            Pred::NotAttrExists(k) => !attr_exists(node, k),
+            Pred::Text(v) => node.text.as_deref() == Some(v.as_str()),
+            // `contains(text(), "v")`: the element's direct text contains `v`.
+            Pred::ContainsText(v) => node.text.as_deref().is_some_and(|t| t.contains(v.as_str())),
+            // `normalize-space(text()) = "v"`: the element's direct text, with
+            // leading/trailing whitespace trimmed and internal runs collapsed to
+            // a single space, equals `v`.
+            Pred::NormalizeSpaceText(v) => node
+                .text
+                .as_deref()
+                .is_some_and(|t| normalize_space(t) == *v),
+            // `starts-with(., "v")`: the context node's string value (for a
+            // `#text` node, its character data) begins with `v`.
+            Pred::StartsWithText(v) => node.text.as_deref().is_some_and(|t| t.starts_with(v)),
+        }
+    }
+}
+
+/// One bracketed predicate, in the order it was written: either a value
+/// [`Filter`](PredTerm::Filter) or a positional [`Index`](PredTerm::Index)
+/// (1-indexed).
+///
+/// XPath evaluates a step's predicates left to right, and a positional
+/// predicate selects the Nth of whatever the predicates to its *left* left
+/// behind. Keeping the terms in source order (rather than a set of filters plus
+/// one detached index) is what makes `th[text()="B"][2]` — "the second `th`
+/// whose text is B" — differ from `th[2][text()="B"]` — "the second `th`, if
+/// its text is B".
+enum PredTerm {
+    Filter(Pred),
+    Index(usize),
+}
+
+/// Collapses each run of whitespace in `s` to a single space and trims the
+/// ends, mirroring XPath's `normalize-space()`.
+fn normalize_space(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Whether `node` carries the attribute `k` at all (the `id` and `class`
+/// attributes are projected onto their own fields, so they are checked there).
+fn attr_exists(node: &VirtualNode, k: &str) -> bool {
+    match k {
+        "id" => node.id.is_some(),
+        "class" => !node.classes.is_empty(),
+        _ => node.attributes.contains_key(k),
+    }
+}
+
+/// One location step: an axis, a node test, and its predicates in source order
+/// (value filters and positional `[N]`s interleaved as written).
+struct Step {
+    axis: Axis,
+    name: NameTest,
+    preds: Vec<PredTerm>,
+}
+
+impl Step {
+    /// Whether `node` satisfies this step's *node test* (name / `text()`)
+    /// alone, ignoring its predicates. Predicates (including positional
+    /// selection) apply to the node-test matches, so the two are kept separate.
+    fn name_matches(&self, node: &VirtualNode) -> bool {
+        // A `#text` node is character data, not an element: only an explicit
+        // `text()` node test addresses it, and `text()` addresses nothing else.
+        // (`#root` is the synthetic top and, like `#text`, never satisfies an
+        // element node test.)
+        match &self.name {
+            NameTest::Any => !node.tag.starts_with('#'),
+            NameTest::Named(tag) => &node.tag == tag,
+            NameTest::Text => node.tag == "#text",
+        }
+    }
+}
+
+/// Whether a step follows a `/` (child) or `//` (descendant) separator.
+#[derive(Clone, Copy)]
+enum Combinator {
+    Child,
+    Descendant,
+}
+
+/// Parses a full location path into its steps.
+fn parse_path(path: &str) -> Vec<Step> {
+    split_steps(path.trim())
+        .into_iter()
+        .map(|(comb, token)| parse_step(comb, token))
+        .collect()
+}
+
+/// Splits a path into `(combinator, token)` pairs, treating `/` inside a
+/// `[...]` predicate as literal. A leading `//` (or a bare relative path)
+/// starts as a descendant step; a leading `/` starts as a child step.
+fn split_steps(s: &str) -> Vec<(Combinator, &str)> {
+    let mut out = Vec::new();
+
+    let (mut comb, mut start) = if let Some(rest) = s.strip_prefix("//") {
+        (Combinator::Descendant, s.len() - rest.len())
+    } else if let Some(rest) = s.strip_prefix('/') {
+        (Combinator::Child, s.len() - rest.len())
+    } else {
+        (Combinator::Descendant, 0)
+    };
+
+    let bytes = s.as_bytes();
+    let mut depth = 0i32;
+    let mut i = start;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'[' => depth += 1,
+            b']' => depth -= 1,
+            b'/' if depth == 0 => {
+                out.push((comb, s[start..i].trim()));
+                if s[i..].starts_with("//") {
+                    comb = Combinator::Descendant;
+                    i += 2;
+                } else {
+                    comb = Combinator::Child;
+                    i += 1;
+                }
+                start = i;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    out.push((comb, s[start..].trim()));
+    out
+}
+
+/// Parses one step token, honoring an explicit sibling axis prefix; otherwise
+/// the axis comes from the preceding combinator.
+fn parse_step(comb: Combinator, token: &str) -> Step {
+    let (axis, node_test) = if let Some(rest) = token.strip_prefix("self::") {
+        // The `self::` axis keeps the context node itself when it matches; the
+        // suite writes it to name the type of a positionally-selected node
+        // (`((…)[N])/self::div[@class="…"]`).
+        (Axis::Itself, rest)
+    } else if let Some(rest) = token.strip_prefix("child::") {
+        // The explicit `child::` axis is the same as the default child step;
+        // the suite writes it only to reach the `text()` node test
+        // (`a/child::text()`).
+        (Axis::Child, rest)
+    } else if let Some(rest) = token.strip_prefix("following-sibling::") {
+        (Axis::FollowingSibling, rest)
+    } else if let Some(rest) = token.strip_prefix("preceding-sibling::") {
+        (Axis::PrecedingSibling, rest)
+    } else if let Some(rest) = token.strip_prefix("following::") {
+        (Axis::Following, rest)
+    } else if let Some(rest) = token.strip_prefix("preceding::") {
+        (Axis::Preceding, rest)
+    } else {
+        // A `::` still in the node-test name (before any predicate) is an axis
+        // the engine does not implement. Fail loudly rather than treating, say,
+        // `ancestor::div` as a tag literally named "ancestor::div" — which
+        // would silently match nothing and could make a "count 0"
+        // assertion pass.
+        let name = token.split('[').next().unwrap_or(token);
+        assert!(
+            !name.contains("::"),
+            "unsupported XPath axis in `{token}`: this axis is not implemented in \
+             assert_html. Extend `xpath.rs` (with a unit test) — see \
+             html5/src/tests/asciidoctor_rb/README.md."
+        );
+
+        let axis = match comb {
+            Combinator::Child => Axis::Child,
+            Combinator::Descendant => Axis::Descendant,
+        };
+        (axis, token)
+    };
+
+    let (name, preds) = parse_node_test(node_test);
+    Step { axis, name, preds }
+}
+
+/// Parses a node test of the form `tag`, `*`, or `tag[pred][pred]…`.
+///
+/// # Panics
+///
+/// Panics on a malformed node test — a name containing predicate punctuation
+/// (e.g. a stray `]` as in `p]`), an unterminated `[`, or any leftover text
+/// after the predicates. Silently accepting these would evaluate a different
+/// selector than written (a false pass); see [`parse_predicate`].
+fn parse_node_test(s: &str) -> (NameTest, Vec<PredTerm>) {
+    let (base, mut rest) = match s.find('[') {
+        Some(i) => (&s[..i], &s[i..]),
+        None => (s, ""),
+    };
+
+    // The name is a bare tag or `*`; predicate punctuation here (most often an
+    // unmatched `]`) means the path is malformed.
+    assert!(
+        !base.contains([']', '@']),
+        "malformed XPath node test `{s}`: unexpected `{base}` as an element name. \
+         See html5/src/tests/asciidoctor_rb/README.md."
+    );
+
+    let name = if base.is_empty() || base == "*" {
+        NameTest::Any
+    } else if base == "text()" {
+        NameTest::Text
+    } else {
+        NameTest::Named(base.to_string())
+    };
+
+    let mut preds = Vec::new();
+    while !rest.is_empty() {
+        // Every remaining chunk must be a `[…]` predicate. Anything else —
+        // trailing junk after the last predicate, or a stray `]` — is a
+        // malformed path, and dropping it would silently evaluate the step
+        // without the intended filter (a false pass).
+        let Some(after_open) = rest.strip_prefix('[') else {
+            panic!(
+                "malformed XPath node test `{s}`: unexpected `{rest}` where a \
+                 `[predicate]` was expected. \
+                 See html5/src/tests/asciidoctor_rb/README.md."
+            );
+        };
+        let Some(rel_close) = find_predicate_close(after_open) else {
+            panic!(
+                "unterminated XPath predicate in `{s}`: `[` without a closing `]`. \
+                 Fix the expression — see html5/src/tests/asciidoctor_rb/README.md."
+            );
+        };
+        parse_predicate(after_open[..rel_close].trim(), &mut preds);
+        rest = after_open[rel_close + 1..].trim_start();
+    }
+
+    (name, preds)
+}
+
+/// Parses a single predicate body (the text between `[` and `]`).
+///
+/// # Panics
+///
+/// Panics on any predicate the engine does not implement. A silently ignored
+/// predicate would make the step match more broadly than the test intends — a
+/// false pass — so an unsupported construct must fail loudly. Per the harness
+/// rule (`asciidoctor_rb/README.md`), the fix is to extend this parser (with
+/// unit tests), never to work around the panic.
+fn parse_predicate(inner: &str, terms: &mut Vec<PredTerm>) {
+    if let Ok(n) = inner.parse::<usize>() {
+        terms.push(PredTerm::Index(n));
+        return;
+    }
+
+    let mut filter = |pred| terms.push(PredTerm::Filter(pred));
+
+    // `not(@attr)` — the element lacks the named attribute. Only the
+    // attribute-presence form is used by the suite.
+    if let Some(rest) = inner.strip_prefix("not(") {
+        let arg = rest
+            .strip_suffix(')')
+            .unwrap_or_else(|| panic!("malformed `not(…)` predicate `[{inner}]`"));
+        if let Some(attr) = arg.trim().strip_prefix('@') {
+            filter(Pred::NotAttrExists(attr.trim().to_string()));
+            return;
+        }
+        panic!("assert_html `not(…)` supports only `not(@attr)` (got `[{inner}]`)");
+    }
+
+    if let Some(attr) = inner.strip_prefix('@') {
+        if let Some((name, value)) = attr.split_once('=') {
+            let name = name.trim();
+            let value = unquote(value.trim());
+            match name {
+                "id" => filter(Pred::Id(value)),
+                "class" => filter(Pred::Class(value)),
+                _ => filter(Pred::Attr(name.to_string(), value)),
+            }
+        } else {
+            filter(Pred::AttrExists(attr.trim().to_string()));
+        }
+        return;
+    }
+
+    if let Some(after) = inner.strip_prefix("text()") {
+        if let Some(value) = after.trim_start().strip_prefix('=') {
+            filter(Pred::Text(unquote(value.trim())));
+            return;
+        }
+    }
+
+    if let Some(args) = inner.strip_prefix("contains(") {
+        let args = args
+            .strip_suffix(')')
+            .unwrap_or_else(|| panic!("malformed `contains(…)` predicate `[{inner}]`"));
+        let (target, value) = args
+            .split_once(',')
+            .unwrap_or_else(|| panic!("`contains(…)` needs two arguments in `[{inner}]`"));
+        assert!(
+            target.trim() == "text()",
+            "assert_html `contains()` supports only `text()` as its first argument (got `[{inner}]`)"
+        );
+        filter(Pred::ContainsText(unquote(value.trim())));
+        return;
+    }
+
+    if let Some(after) = inner.strip_prefix("normalize-space(text())") {
+        if let Some(value) = after.trim_start().strip_prefix('=') {
+            filter(Pred::NormalizeSpaceText(unquote(value.trim())));
+            return;
+        }
+    }
+
+    if let Some(args) = inner.strip_prefix("starts-with(") {
+        let args = args
+            .strip_suffix(')')
+            .unwrap_or_else(|| panic!("malformed `starts-with(…)` predicate `[{inner}]`"));
+        let (target, value) = args
+            .split_once(',')
+            .unwrap_or_else(|| panic!("`starts-with(…)` needs two arguments in `[{inner}]`"));
+        // The suite tests the string value of the context node itself, written
+        // either as `.` or `text()`; both mean "this node's character data".
+        assert!(
+            matches!(target.trim(), "." | "text()"),
+            "assert_html `starts-with()` supports only `.` or `text()` as its first \
+             argument (got `[{inner}]`)"
+        );
+        filter(Pred::StartsWithText(unquote(value.trim())));
+        return;
+    }
+
+    panic!(
+        "unsupported XPath predicate `[{inner}]` in assert_html: this construct is \
+         not implemented. Extend `xpath.rs` (with a unit test) rather than avoiding \
+         it — see html5/src/tests/asciidoctor_rb/README.md."
+    );
+}
+
+/// Finds the index within `s` of the `]` that closes a predicate, skipping any
+/// `]` that sits inside a single- or double-quoted string literal. An XPath
+/// value may legitimately contain brackets (e.g. `text()="image::foo[]"`), so a
+/// naive search for the first `]` would cut the predicate short.
+fn find_predicate_close(s: &str) -> Option<usize> {
+    let mut quote: Option<u8> = None;
+    for (i, &b) in s.as_bytes().iter().enumerate() {
+        match quote {
+            Some(q) => {
+                if b == q {
+                    quote = None;
+                }
+            }
+            None => match b {
+                b'\'' | b'"' => quote = Some(b),
+                b']' => return Some(i),
+                _ => {}
+            },
+        }
+    }
+    None
+}
+
+/// Strips one layer of matching single or double quotes from an XPath string
+/// literal.
+fn unquote(s: &str) -> String {
+    let bytes = s.as_bytes();
+    if bytes.len() >= 2
+        && (bytes[0] == b'"' || bytes[0] == b'\'')
+        && bytes[bytes.len() - 1] == bytes[0]
+    {
+        s[1..s.len() - 1].to_string()
+    } else {
+        s.to_string()
+    }
+}

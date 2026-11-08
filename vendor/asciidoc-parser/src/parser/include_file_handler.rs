@@ -1,0 +1,307 @@
+use std::{fmt::Debug, rc::Rc};
+
+use crate::{Parser, attributes::Attrlist};
+
+/// An `IncludeFileHandler` is responsible for providing the text content for an
+/// `include::` directive when encountered.
+///
+/// A client of [`Parser`] may provide an `IncludeFileHandler` to customize how
+/// include file resolution is handled.
+///
+/// [`Parser`]: crate::Parser
+pub trait IncludeFileHandler: Debug {
+    /// Provide the file content for an `include::` directive, if available.
+    ///
+    /// # Parameters
+    /// - `source`: The path to the document that is including the file. A root
+    ///   document may be signaled via `None` depending on how the parser was
+    ///   invoked. This path should be considered when resolving relative paths.
+    /// - `target`: The path to the document that was provided in the
+    ///   `include::` directive.
+    /// - `attrlist`: Any attributes specified on the include directive.
+    /// - `parser`: An implementation may read document attribute values from
+    ///   the [`Parser`] state.
+    ///
+    /// Return the outcome as an [`IncludeResolution`]:
+    ///
+    /// - [`IncludeResolution::Found`] carries the content of the include file
+    ///   (wrapped in [`IncludeContent`]).
+    /// - [`IncludeResolution::NotFound`] signals that no such file exists; the
+    ///   parser records a [`WarningType::IncludeFileNotFound`] warning.
+    /// - [`IncludeResolution::NotReadable`] signals that the file exists but
+    ///   could not be read (for example a permission or other IO error); the
+    ///   parser records a [`WarningType::IncludeFileNotReadable`] warning.
+    /// - [`IncludeResolution::NotDecodable`] signals that the file exists and
+    ///   was read but is not valid UTF-8 and the handler could not transcode it
+    ///   (see the `# Encoding` section); the parser records a
+    ///   [`WarningType::IncludeFileNotDecodable`] warning.
+    ///
+    /// The rendered replacement (`Unresolved directive …`) is identical for the
+    /// three failure reasons; only the warning differs, mirroring Asciidoctor's
+    /// separate `include file not found`, `include file not readable`, and
+    /// `invalid byte sequence in UTF-8` messages.
+    ///
+    /// [`WarningType::IncludeFileNotFound`]: crate::warnings::WarningType::IncludeFileNotFound
+    /// [`WarningType::IncludeFileNotReadable`]: crate::warnings::WarningType::IncludeFileNotReadable
+    /// [`WarningType::IncludeFileNotDecodable`]: crate::warnings::WarningType::IncludeFileNotDecodable
+    ///
+    /// # Options
+    /// With the exception of `encoding` (see below), the implementation should
+    /// not attempt to interpret any of the built-in attributes (i.e.
+    /// `leveloffset`, `lines`, `tags`, or `indent`). Correct handling of these
+    /// attributes will be provided by the parser itself.
+    ///
+    /// # Encoding
+    /// The content returned in [`IncludeContent`] is a typical Rust [`String`]
+    /// and therefore must be encoded as UTF-8.
+    ///
+    /// If the implementation is capable of transcoding from other formats, it
+    /// may use the `encoding` attribute as a hint of the source format. When it
+    /// transcodes the content to UTF-8, it should return the result via
+    /// [`IncludeContent::transcoded`] so that the parser knows the requested
+    /// encoding was honored and suppresses the non-UTF-8 include-encoding
+    /// warning.
+    ///
+    /// An implementation that only deals in UTF-8 should return its content via
+    /// [`IncludeContent::new`] (or the [`From`] conversions). If the directive
+    /// requested a non-UTF-8 `encoding`, the parser will emit a non-UTF-8
+    /// include-encoding warning in that case.
+    ///
+    /// If the implementation finds a file that is not encoded in UTF-8 and is
+    /// incapable of transcoding it (no `encoding` attribute, or one it does not
+    /// support), it should return [`IncludeResolution::NotDecodable`] so the
+    /// parser can name the real cause. Asciidoctor treats this condition as
+    /// fatal (`invalid byte sequence in UTF-8`); this crate favors recoverable
+    /// warnings, so it instead drops the include and records a
+    /// [`WarningType::IncludeFileNotDecodable`] warning.
+    ///
+    /// [`WarningType::IncludeFileNotDecodable`]: crate::warnings::WarningType::IncludeFileNotDecodable
+    fn resolve_target<'src>(
+        &self,
+        source: Option<&str>,
+        target: &str,
+        attrlist: &Attrlist<'src>,
+        parser: &Parser,
+    ) -> IncludeResolution;
+}
+
+/// An `Rc<T>` wrapping any `IncludeFileHandler` (including an unsized
+/// `Rc<dyn IncludeFileHandler>`) is itself an `IncludeFileHandler`, delegating
+/// to the wrapped handler.
+///
+/// This lets a caller who already holds a handler behind an `Rc` — for example
+/// to share one handler across several [`Parser`]s, or to store it as a trait
+/// object alongside other state — hand that `Rc` straight to
+/// [`Parser::with_include_file_handler`] without writing a delegating newtype
+/// first, since [`Parser::with_include_file_handler`] requires a `Sized`
+/// argument and there is otherwise no way to satisfy that bound with a trait
+/// object.
+///
+/// [`Parser::with_include_file_handler`]: crate::Parser::with_include_file_handler
+impl<T: IncludeFileHandler + ?Sized> IncludeFileHandler for Rc<T> {
+    fn resolve_target<'src>(
+        &self,
+        source: Option<&str>,
+        target: &str,
+        attrlist: &Attrlist<'src>,
+        parser: &Parser,
+    ) -> IncludeResolution {
+        (**self).resolve_target(source, target, attrlist, parser)
+    }
+}
+
+/// The outcome of an [`IncludeFileHandler::resolve_target`] call: either the
+/// resolved content, or the reason resolution failed.
+///
+/// The failure reasons map to distinct warnings — mirroring Asciidoctor, which
+/// distinguishes a missing include file (`include file not found`) from one
+/// that is present but unreadable (`include file not readable`) or present but
+/// not valid UTF-8 (`invalid byte sequence in UTF-8`).
+///
+/// This enum is `non_exhaustive`: future resolution reasons may be recognized
+/// as the parser grows, so a host matching on it needs a catch-all arm. New
+/// variants can still be returned by an [`IncludeFileHandler`] implementation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum IncludeResolution {
+    /// The include file was resolved; its content is carried here.
+    Found(IncludeContent),
+
+    /// No file could be found for the directive's target. The parser records a
+    /// [`WarningType::IncludeFileNotFound`] warning.
+    ///
+    /// [`WarningType::IncludeFileNotFound`]: crate::warnings::WarningType::IncludeFileNotFound
+    NotFound,
+
+    /// A file was found for the directive's target but could not be read (for
+    /// example a permission or other IO error). The parser records a
+    /// [`WarningType::IncludeFileNotReadable`] warning.
+    ///
+    /// [`WarningType::IncludeFileNotReadable`]: crate::warnings::WarningType::IncludeFileNotReadable
+    NotReadable,
+
+    /// A file was found and read for the directive's target but is not valid
+    /// UTF-8, and the handler was unable to transcode it (no `encoding`
+    /// attribute, or one it does not support). The parser records a
+    /// [`WarningType::IncludeFileNotDecodable`] warning.
+    ///
+    /// See the `# Encoding` section of [`IncludeFileHandler::resolve_target`]
+    /// for how a handler that *can* transcode should instead return
+    /// [`IncludeContent::transcoded`].
+    ///
+    /// [`WarningType::IncludeFileNotDecodable`]: crate::warnings::WarningType::IncludeFileNotDecodable
+    NotDecodable,
+}
+
+impl From<IncludeContent> for IncludeResolution {
+    fn from(content: IncludeContent) -> Self {
+        IncludeResolution::Found(content)
+    }
+}
+
+/// The content returned by an [`IncludeFileHandler`] for an `include::`
+/// directive, together with the metadata the parser needs to finish processing
+/// the include.
+///
+/// Construct one via [`IncludeContent::new`] for UTF-8 content that was read
+/// without interpreting the `encoding` attribute, or via
+/// [`IncludeContent::transcoded`] for content the handler transcoded to UTF-8
+/// while honoring a requested `encoding`. See the `# Encoding` section of
+/// [`IncludeFileHandler::resolve_target`] for details.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IncludeContent {
+    content: String,
+    encoding_handled: bool,
+}
+
+impl IncludeContent {
+    /// UTF-8 content that was read **without** interpreting the `encoding`
+    /// attribute.
+    ///
+    /// If the `include::` directive requested a non-UTF-8 `encoding`, the
+    /// parser will emit a non-UTF-8 include-encoding warning. This is the
+    /// appropriate constructor for a handler that only deals in UTF-8.
+    pub fn new(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            encoding_handled: false,
+        }
+    }
+
+    /// Content that the handler transcoded to UTF-8 while honoring the
+    /// requested `encoding` attribute.
+    ///
+    /// The parser will **not** emit a non-UTF-8 include-encoding warning for
+    /// content returned this way, since the handler has already reencoded it.
+    pub fn transcoded(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            encoding_handled: true,
+        }
+    }
+
+    /// Returns the UTF-8 content of the include.
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Returns `true` if the handler honored the requested `encoding` attribute
+    /// (i.e. the content was created via [`IncludeContent::transcoded`]).
+    pub fn encoding_handled(&self) -> bool {
+        self.encoding_handled
+    }
+
+    /// Consumes the `IncludeContent`, returning the owned UTF-8 content.
+    pub fn into_content(self) -> String {
+        self.content
+    }
+}
+
+impl From<String> for IncludeContent {
+    fn from(content: String) -> Self {
+        Self::new(content)
+    }
+}
+
+impl From<&str> for IncludeContent {
+    fn from(content: &str) -> Self {
+        Self::new(content)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use super::{IncludeContent, IncludeFileHandler, IncludeResolution};
+    use crate::{Parser, SafeMode, attributes::Attrlist, tests::prelude::rendered_paragraphs};
+
+    #[test]
+    fn resolution_from_include_content_is_found() {
+        let content = IncludeContent::new("Content.");
+        let resolution: IncludeResolution = content.clone().into();
+        assert_eq!(resolution, IncludeResolution::Found(content));
+    }
+
+    #[test]
+    fn new_does_not_mark_encoding_handled() {
+        let content = IncludeContent::new("Content.");
+        assert_eq!(content.content(), "Content.");
+        assert!(!content.encoding_handled());
+        assert_eq!(content.into_content(), "Content.".to_owned());
+    }
+
+    #[test]
+    fn transcoded_marks_encoding_handled() {
+        let content = IncludeContent::transcoded("Résumé.");
+        assert_eq!(content.content(), "Résumé.");
+        assert!(content.encoding_handled());
+        assert_eq!(content.into_content(), "Résumé.".to_owned());
+    }
+
+    #[test]
+    fn from_string_and_str_do_not_mark_encoding_handled() {
+        let from_string = IncludeContent::from("Content.".to_owned());
+        assert_eq!(from_string, IncludeContent::new("Content."));
+        assert!(!from_string.encoding_handled());
+
+        let from_str: IncludeContent = "Content.".into();
+        assert_eq!(from_str, IncludeContent::new("Content."));
+        assert!(!from_str.encoding_handled());
+    }
+
+    // The blanket `impl<T: IncludeFileHandler + ?Sized> IncludeFileHandler for
+    // Rc<T>` above lets `Rc<dyn IncludeFileHandler>` be handed straight to
+    // `Parser::with_include_file_handler` -- no delegating newtype required.
+    #[test]
+    fn rc_dyn_include_file_handler_resolves_through_the_parser() {
+        #[derive(Debug)]
+        struct Fixed;
+
+        impl IncludeFileHandler for Fixed {
+            fn resolve_target<'src>(
+                &self,
+                _source: Option<&str>,
+                _target: &str,
+                _attrlist: &Attrlist<'src>,
+                _parser: &Parser,
+            ) -> IncludeResolution {
+                IncludeResolution::Found(IncludeContent::new(
+                    "Included via an Rc-wrapped trait object.",
+                ))
+            }
+        }
+
+        let handler: Rc<dyn IncludeFileHandler> = Rc::new(Fixed);
+
+        let doc = Parser::default()
+            .with_safe_mode(SafeMode::Unsafe)
+            .with_include_file_handler(handler)
+            .parse("include::anything.adoc[]");
+
+        assert_eq!(
+            rendered_paragraphs(&doc),
+            vec!["Included via an Rc-wrapped trait object.".to_string()]
+        );
+    }
+}

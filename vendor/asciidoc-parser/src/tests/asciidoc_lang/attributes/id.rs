@@ -1,0 +1,1998 @@
+use crate::tests::prelude::*;
+
+track_file!("ref/asciidoc-lang/docs/modules/attributes/pages/id.adoc");
+
+non_normative!(
+    r#"
+= ID Attribute
+:page-aliases: ids.adoc
+
+You can assign an identifier (i.e., unique name) to a block or inline element using the `id` attribute.
+The `id` attribute is a xref:positional-and-named-attributes.adoc#named[named attribute].
+Its purpose is to identify the element when linking, scripting, or styling.
+Thus, the identifier can only be used once in a document.
+
+An ID:
+
+. provides an internal link or cross reference anchor for an element
+. can be used for adding additional styling to specific elements (e.g., via a CSS ID selector)
+
+You can assign an ID to blocks using the shorthand hash (`+#+`) syntax, longhand (`id=`) syntax, or the anchor (`[[]]`) syntax.
+You can assign an ID to inline elements using the shorthand hash (`+#+`) syntax or by adding an anchor adjacent to the inline element using the anchor (`[[]]`) syntax.
+You can assign an ID to a table cell by using an anchor (`[[]]`) at the start of the cell.
+Likewise, you can assign an ID to a list item by using an anchor (`[[]]`) at the start of the principal text.
+
+"#
+);
+
+mod valid_id_characters {
+    use crate::tests::prelude::*;
+
+    non_normative!(
+        r#"
+== Valid ID characters
+
+AsciiDoc does not restrict the set of characters that can be used for an ID when the ID is defined using the named `id` attribute.
+"#
+    );
+
+    #[test]
+    fn value_non_empty() {
+        verifies!(
+            r#"
+All the language requires in this case is that the value be non-empty.
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let maw = crate::blocks::Block::parse(
+            crate::Span::new("[[]]\nThis paragraph gets a lot of attention.\n"),
+            &mut parser,
+        );
+
+        assert_eq!(
+            maw.warnings,
+            vec![Warning {
+                source: Span {
+                    data: "",
+                    line: 1,
+                    col: 3,
+                    offset: 2,
+                },
+                warning: WarningType::EmptyBlockAnchorName,
+            },]
+        );
+
+        let mi = maw.item.unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::Simple(SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "This paragraph gets a lot of attention.",
+                        line: 2,
+                        col: 1,
+                        offset: 5,
+                    },
+                    rendered: "This paragraph gets a lot of attention.",
+                },
+                source: Span {
+                    data: "[[]]\nThis paragraph gets a lot of attention.",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            })
+        );
+    }
+
+    non_normative!(
+        r#"
+When the ID is defined using the shorthand hash syntax or the anchor syntax, the acceptable characters is more limited (for example, spaces are not permitted).
+Regardless, it's not advisable to exploit the ability to use any characters the AsciiDoc syntax allows.
+The reason to be cautious is because the ID is passed through to the output, and not all output formats afford the same latitude.
+For example, XML is far more restrictive about which characters are permitted in an ID value.
+
+"#
+    );
+
+    #[test]
+    fn check_valid_xml_name() {
+        verifies!(
+            r#"
+To ensure portability of your IDs, it's best to conform to a universal standard.
+The standard we recommend following is a https://www.w3.org/TR/REC-xml/#NT-Name[Name] value as defined by the XML specification.
+At a high level, the first character of a Name must be a letter, colon, or underscore and the optional following characters must be a letter, colon, underscore, hyphen, period, or digit.
+You should not use any space characters in an ID.
+Starting the ID with a digit is less likely to be problematic, but still best to avoid.
+It's best to use lowercase letters whenever possible as this solves portability problem when using case-insensitive platforms.
+
+When the AsciiDoc processor auto-generates IDs for section titles and discrete headings, it adheres to this standard.
+
+Here are examples of valid IDs (according to the recommendations above):
+
+[listing]
+----
+install
+data-structures
+error-handling
+subject-and-body
+unset_an_attribute
+----
+
+Here are examples of invalid IDs:
+
+[listing]
+----
+install the gem
+3 blind mice
+-about-the-author
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let maw = crate::blocks::Block::parse(
+            crate::Span::new("[[3 blind mice]]\nThis paragraph gets a lot of attention.\n"),
+            &mut parser,
+        );
+
+        assert_eq!(
+            maw.warnings,
+            vec![Warning {
+                source: Span {
+                    data: "3 blind mice",
+                    line: 1,
+                    col: 3,
+                    offset: 2,
+                },
+                warning: WarningType::InvalidBlockAnchorName,
+            },]
+        );
+
+        let mi = maw.item.unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::Simple(SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "[[3 blind mice]]\nThis paragraph gets a lot of attention.",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    rendered: "[[3 blind mice]]\nThis paragraph gets a lot of attention.",
+                },
+                source: Span {
+                    data: "[[3 blind mice]]\nThis paragraph gets a lot of attention.",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            })
+        );
+    }
+
+    non_normative!(
+        r#"
+////
+BlockId
+
+NOTE: Section pending
+////
+
+"#
+    );
+}
+
+mod block_assignment {
+    use crate::{blocks::ListType, tests::prelude::*};
+
+    non_normative!(
+        r#"
+== Block assignment
+
+// tag::bl[]
+You can assign an ID to a block using the shorthand syntax, the longhand syntax, or a block anchor.
+
+"#
+    );
+
+    #[test]
+    fn shorthand_syntax() {
+        verifies!(
+            r#"
+In the shorthand syntax, you prefix the name with a hash (`#`) in the first position attribute.
+
+[source]
+----
+[#goals]
+* Goal 1
+* Goal 2
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("[#goals]\n* Goal 1\n* Goal 2"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::List(ListBlock {
+                type_: ListType::Unordered,
+                items: &[
+                    Block::ListItem(ListItem {
+                        marker: ListItemMarker::Asterisks(Span {
+                            data: "*",
+                            line: 2,
+                            col: 1,
+                            offset: 9,
+                        },),
+                        blocks: &[Block::Simple(SimpleBlock {
+                            content: Content {
+                                original: Span {
+                                    data: "Goal 1",
+                                    line: 2,
+                                    col: 3,
+                                    offset: 11,
+                                },
+                                rendered: "Goal 1",
+                            },
+                            source: Span {
+                                data: "Goal 1",
+                                line: 2,
+                                col: 3,
+                                offset: 11,
+                            },
+                            style: SimpleBlockStyle::Paragraph,
+                            title_source: None,
+                            title: None,
+                            caption: None,
+                            number: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                        },),],
+                        source: Span {
+                            data: "* Goal 1",
+                            line: 2,
+                            col: 1,
+                            offset: 9,
+                        },
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    },),
+                    Block::ListItem(ListItem {
+                        marker: ListItemMarker::Asterisks(Span {
+                            data: "*",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },),
+                        blocks: &[Block::Simple(SimpleBlock {
+                            content: Content {
+                                original: Span {
+                                    data: "Goal 2",
+                                    line: 3,
+                                    col: 3,
+                                    offset: 20,
+                                },
+                                rendered: "Goal 2",
+                            },
+                            source: Span {
+                                data: "Goal 2",
+                                line: 3,
+                                col: 3,
+                                offset: 20,
+                            },
+                            style: SimpleBlockStyle::Paragraph,
+                            title_source: None,
+                            title: None,
+                            caption: None,
+                            number: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                        },),],
+                        source: Span {
+                            data: "* Goal 2",
+                            line: 3,
+                            col: 1,
+                            offset: 18,
+                        },
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    },),
+                ],
+                source: Span {
+                    data: "[#goals]\n* Goal 1\n* Goal 2",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: Some(Attrlist {
+                    attributes: &[ElementAttribute {
+                        name: None,
+                        value: "#goals",
+                        shorthand_items: &["#goals"],
+                    },],
+                    anchor: None,
+                    source: Span {
+                        data: "#goals",
+                        line: 1,
+                        col: 2,
+                        offset: 1,
+                    },
+                },),
+            },)
+        );
+    }
+
+    #[test]
+    fn longhand_syntax() {
+        verifies!(
+            r#"
+In the longhand syntax, you use a standard named attribute.
+
+[source]
+----
+[id=goals]
+* Goal 1
+* Goal 2
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("[id=goals]\n* Goal 1\n* Goal 2"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::List(ListBlock {
+                type_: ListType::Unordered,
+                items: &[
+                    Block::ListItem(ListItem {
+                        marker: ListItemMarker::Asterisks(Span {
+                            data: "*",
+                            line: 2,
+                            col: 1,
+                            offset: 11,
+                        },),
+                        blocks: &[Block::Simple(SimpleBlock {
+                            content: Content {
+                                original: Span {
+                                    data: "Goal 1",
+                                    line: 2,
+                                    col: 3,
+                                    offset: 13,
+                                },
+                                rendered: "Goal 1",
+                            },
+                            source: Span {
+                                data: "Goal 1",
+                                line: 2,
+                                col: 3,
+                                offset: 13,
+                            },
+                            style: SimpleBlockStyle::Paragraph,
+                            title_source: None,
+                            title: None,
+                            caption: None,
+                            number: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                        },),],
+                        source: Span {
+                            data: "* Goal 1",
+                            line: 2,
+                            col: 1,
+                            offset: 11,
+                        },
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    },),
+                    Block::ListItem(ListItem {
+                        marker: ListItemMarker::Asterisks(Span {
+                            data: "*",
+                            line: 3,
+                            col: 1,
+                            offset: 20,
+                        },),
+                        blocks: &[Block::Simple(SimpleBlock {
+                            content: Content {
+                                original: Span {
+                                    data: "Goal 2",
+                                    line: 3,
+                                    col: 3,
+                                    offset: 22,
+                                },
+                                rendered: "Goal 2",
+                            },
+                            source: Span {
+                                data: "Goal 2",
+                                line: 3,
+                                col: 3,
+                                offset: 22,
+                            },
+                            style: SimpleBlockStyle::Paragraph,
+                            title_source: None,
+                            title: None,
+                            caption: None,
+                            number: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                        },),],
+                        source: Span {
+                            data: "* Goal 2",
+                            line: 3,
+                            col: 1,
+                            offset: 20,
+                        },
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    },),
+                ],
+                source: Span {
+                    data: "[id=goals]\n* Goal 1\n* Goal 2",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: Some(Attrlist {
+                    attributes: &[ElementAttribute {
+                        name: Some("id",),
+                        value: "goals",
+                        shorthand_items: &[],
+                    },],
+                    anchor: None,
+                    source: Span {
+                        data: "id=goals",
+                        line: 1,
+                        col: 2,
+                        offset: 1,
+                    },
+                },),
+            },)
+        );
+    }
+
+    #[test]
+    fn block_anchor_syntax() {
+        verifies!(
+            r#"
+In the block anchor syntax, you surround the name with double square brackets:
+
+[source]
+----
+[[goals]]
+* Goal 1
+* Goal 2
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("[[goals]]\n* Goal 1\n* Goal 2"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::List(ListBlock {
+                type_: ListType::Unordered,
+                items: &[
+                    Block::ListItem(ListItem {
+                        marker: ListItemMarker::Asterisks(Span {
+                            data: "*",
+                            line: 2,
+                            col: 1,
+                            offset: 10,
+                        },),
+                        blocks: &[Block::Simple(SimpleBlock {
+                            content: Content {
+                                original: Span {
+                                    data: "Goal 1",
+                                    line: 2,
+                                    col: 3,
+                                    offset: 12,
+                                },
+                                rendered: "Goal 1",
+                            },
+                            source: Span {
+                                data: "Goal 1",
+                                line: 2,
+                                col: 3,
+                                offset: 12,
+                            },
+                            style: SimpleBlockStyle::Paragraph,
+                            title_source: None,
+                            title: None,
+                            caption: None,
+                            number: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                        },),],
+                        source: Span {
+                            data: "* Goal 1",
+                            line: 2,
+                            col: 1,
+                            offset: 10,
+                        },
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    },),
+                    Block::ListItem(ListItem {
+                        marker: ListItemMarker::Asterisks(Span {
+                            data: "*",
+                            line: 3,
+                            col: 1,
+                            offset: 19,
+                        },),
+                        blocks: &[Block::Simple(SimpleBlock {
+                            content: Content {
+                                original: Span {
+                                    data: "Goal 2",
+                                    line: 3,
+                                    col: 3,
+                                    offset: 21,
+                                },
+                                rendered: "Goal 2",
+                            },
+                            source: Span {
+                                data: "Goal 2",
+                                line: 3,
+                                col: 3,
+                                offset: 21,
+                            },
+                            style: SimpleBlockStyle::Paragraph,
+                            title_source: None,
+                            title: None,
+                            caption: None,
+                            number: None,
+                            anchor: None,
+                            anchor_reftext: None,
+                            attrlist: None,
+                        },),],
+                        source: Span {
+                            data: "* Goal 2",
+                            line: 3,
+                            col: 1,
+                            offset: 19,
+                        },
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    },),
+                ],
+                source: Span {
+                    data: "[[goals]]\n* Goal 1\n* Goal 2",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: Some(Span {
+                    data: "goals",
+                    line: 1,
+                    col: 3,
+                    offset: 2,
+                },),
+                anchor_reftext: None,
+                attrlist: None,
+            },)
+        );
+    }
+
+    #[test]
+    fn block_style_with_shorthand_syntax() {
+        verifies!(
+            r#"
+Let's say you want to create a blockquote from an open block and assign it an ID and xref:role.adoc[role].
+You add `quote` (the block style) in front of the `#` (the ID) in the first attribute position, as this example shows:
+
+[source]
+----
+[quote.movie#roads,Dr. Emmett Brown]
+____
+Roads? Where we're going, we don't need roads.
+____
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new("[quote.movie#roads,Dr. Emmett Brown]\n____\nRoads? Where we're going, we don't need roads.\n____"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::Quote(QuoteBlock {
+                type_: QuoteType::Quote,
+                content_model: ContentModel::Compound,
+                content: None,
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "Roads? Where we're going, we don't need roads.",
+                            line: 3,
+                            col: 1,
+                            offset: 42,
+                        },
+                        rendered: "Roads? Where we&#8217;re going, we don&#8217;t need roads.",
+                    },
+                    source: Span {
+                        data: "Roads? Where we're going, we don't need roads.",
+                        line: 3,
+                        col: 1,
+                        offset: 42,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                attribution: Some("Dr. Emmett Brown"),
+                citetitle: None,
+                source: Span {
+                    data: "[quote.movie#roads,Dr. Emmett Brown]\n____\nRoads? Where we're going, we don't need roads.\n____",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: Some(Attrlist {
+                    attributes: &[
+                        ElementAttribute {
+                            name: None,
+                            shorthand_items: &["quote", ".movie", "#roads",],
+                            value: "quote.movie#roads"
+                        },
+                        ElementAttribute {
+                            name: None,
+                            shorthand_items: &[],
+                            value: "Dr. Emmett Brown"
+                        },
+                    ],
+                    anchor: None,
+                    source: Span {
+                        data: "quote.movie#roads,Dr. Emmett Brown",
+                        line: 1,
+                        col: 2,
+                        offset: 1,
+                    },
+                },),
+            },)
+        );
+    }
+
+    #[test]
+    fn shorthand_id_role_order_independent() {
+        verifies!(
+            r#"
+TIP: The order of ID and role values in the shorthand syntax does not matter.
+
+"#
+        );
+
+        // The role-then-id ordering from the example above (`.movie#roads`) and
+        // the reverse, id-then-role ordering (`#roads.movie`) assign the same
+        // ID and role: the shorthand is order-independent.
+        let mut parser = Parser::default();
+        let role_then_id = crate::blocks::Block::parse(
+            crate::Span::new("[quote.movie#roads]\n____\nRoads?\n____"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap()
+        .item;
+
+        let mut parser = Parser::default();
+        let id_then_role = crate::blocks::Block::parse(
+            crate::Span::new("[quote#roads.movie]\n____\nRoads?\n____"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap()
+        .item;
+
+        assert_eq!(role_then_id.id(), Some("roads"));
+        assert_eq!(role_then_id.roles(), vec!["movie"]);
+
+        assert_eq!(id_then_role.id(), role_then_id.id());
+        assert_eq!(id_then_role.roles(), role_then_id.roles());
+    }
+
+    #[test]
+    fn block_id_containing_dot() {
+        verifies!(
+            r#"
+CAUTION: If the ID contains a `.`, you must define it using either a longhand assignment (e.g., `id=classname.propertyname`) or the anchor shorthand (e.g., `+[[classname.propertyname]]+`).
+This is necessary since the `.` character in the shorthand syntax is the delimiter for a role, and thus gets misinterpreted as such.
+// end::bl[]
+
+"#
+        );
+
+        let doc = Parser::default()
+            .parse("[id=classname.propertyname1]\nprop1\n\n[[classname.propertyname2]]\nprop2");
+
+        let mut blocks = doc.child_blocks();
+
+        let block1 = blocks.next().unwrap();
+        assert_eq!(block1.id().unwrap(), "classname.propertyname1");
+
+        let block2 = blocks.next().unwrap();
+        assert_eq!(block2.id().unwrap(), "classname.propertyname2");
+
+        assert!(blocks.next().is_none());
+    }
+}
+
+mod inline_assignment {
+    use crate::tests::prelude::*;
+
+    non_normative!(
+        r#"
+== Inline assignment
+
+// tag::in[]
+"#
+    );
+
+    #[test]
+    fn inline_shorthand_syntax() {
+        verifies!(
+            r#"
+// tag::in[]
+The id (`#`) shorthand can be used on inline quoted text.
+
+.Quoted text with ID assignment using shorthand syntax
+----
+[#free_the_world]#free the world#
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[#free_the_world]#free the world#");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "[#free_the_world]#free the world#",
+                            line: 1,
+                            col: 1,
+                            offset: 0,
+                        },
+                        rendered: "<span id=\"free_the_world\">free the world</span>",
+                    },
+                    source: Span {
+                        data: "[#free_the_world]#free the world#",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[#free_the_world]#free the world#",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        "free_the_world",
+                        RefEntry {
+                            id: "free_the_world",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        },
+                    )]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn inline_anchor_syntax() {
+        verifies!(
+            r#"
+.General text with preceding ID assignment using inline anchor syntax
+----
+[[free_the_world]]free the world
+----
+// end::in[]
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[[free_the_world]]free the world");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "[[free_the_world]]free the world",
+                            line: 1,
+                            col: 1,
+                            offset: 0,
+                        },
+                        rendered: "<a id=\"free_the_world\"></a>free the world",
+                    },
+                    source: Span {
+                        data: "[[free_the_world]]free the world",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[[free_the_world]]free the world",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        "free_the_world",
+                        RefEntry {
+                            id: "free_the_world",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        },
+                    )]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+    }
+}
+
+mod anchor {
+    use crate::tests::prelude::*;
+
+    non_normative!(
+        r#"
+[#anchor]
+== Use an ID as an anchor
+
+An anchor (aka ID) can be defined almost anywhere in the document, including on a section title, on a discrete heading, on a paragraph, on an image, on a delimited block, on an inline phrase, and so forth.
+The anchor is declared by enclosing a _valid_ XML Name in double square brackets (e.g., `+[[idname]]+`) or using the shorthand ID syntax (e.g., `[#idname]`) at the start of an attribute list.
+The shorthand form is the preferred syntax.
+
+"#
+    );
+
+    #[test]
+    fn double_square_bracket_rules() {
+        verifies!(
+            r#"
+The double square bracket form requires the ID to start with a letter, an underscore, or a colon, ensuring the ID is portable.
+According to the https://www.w3.org/TR/REC-xml/#NT-Name[XML Name] rules, a portable ID may not begin with a number, even though a number is allowed elsewhere in the name.
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[[start_with_letter]]#free the world#");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "[[start_with_letter]]#free the world#",
+                            line: 1,
+                            col: 1,
+                            offset: 0,
+                        },
+                        rendered: "<a id=\"start_with_letter\"></a><mark>free the world</mark>",
+                    },
+                    source: Span {
+                        data: "[[start_with_letter]]#free the world#",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[[start_with_letter]]#free the world#",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        "start_with_letter",
+                        RefEntry {
+                            id: "start_with_letter",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        },
+                    )]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[[_start_with_underscore]]#free the world#");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "[[_start_with_underscore]]#free the world#",
+                            line: 1,
+                            col: 1,
+                            offset: 0,
+                        },
+                        rendered: "<a id=\"_start_with_underscore\"></a><mark>free the world</mark>",
+                    },
+                    source: Span {
+                        data: "[[_start_with_underscore]]#free the world#",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[[_start_with_underscore]]#free the world#",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        "_start_with_underscore",
+                        RefEntry {
+                            id: "_start_with_underscore",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        },
+                    )]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[[:start_with_colon]]#free the world#");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "[[:start_with_colon]]#free the world#",
+                            line: 1,
+                            col: 1,
+                            offset: 0,
+                        },
+                        rendered: "<a id=\":start_with_colon\"></a><mark>free the world</mark>",
+                    },
+                    source: Span {
+                        data: "[[:start_with_colon]]#free the world#",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[[:start_with_colon]]#free the world#",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        ":start_with_colon",
+                        RefEntry {
+                            id: ":start_with_colon",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        },
+                    )]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[[1start_with_number]]#free the world#");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "[[1start_with_number]]#free the world#",
+                            line: 1,
+                            col: 1,
+                            offset: 0,
+                        },
+                        rendered: "[[1start_with_number]]<mark>free the world</mark>",
+                    },
+                    source: Span {
+                        data: "[[1start_with_number]]#free the world#",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[[1start_with_number]]#free the world#",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog::default(),
+            }
+        );
+    }
+
+    #[test]
+    fn shorthand_form() {
+        verifies!(
+            r#"
+The shorthand form in an attribute list does not impose this restriction.
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[#1start_with_number]#free the world#");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "[#1start_with_number]#free the world#",
+                            line: 1,
+                            col: 1,
+                            offset: 0,
+                        },
+                        rendered: "<span id=\"1start_with_number\">free the world</span>",
+                    },
+                    source: Span {
+                        data: "[#1start_with_number]#free the world#",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[#1start_with_number]#free the world#",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        "1start_with_number",
+                        RefEntry {
+                            id: "1start_with_number",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        },
+                    )]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn block_element_shorthand_syntax() {
+        verifies!(
+            r#"
+=== On block element
+
+To reference a block element, you must assign an ID to that block.
+You can define an ID using the shorthand syntax:
+
+.Assign an ID to a paragraph using shorthand syntax
+[source]
+----
+include::example$id.adoc[tag=block-id-shorthand]
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[#notice]\nThis paragraph gets a lot of attention.");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "This paragraph gets a lot of attention.",
+                            line: 2,
+                            col: 1,
+                            offset: 10,
+                        },
+                        rendered: "This paragraph gets a lot of attention.",
+                    },
+                    source: Span {
+                        data: "[#notice]\nThis paragraph gets a lot of attention.",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: Some(Attrlist {
+                        attributes: &[ElementAttribute {
+                            name: None,
+                            value: "#notice",
+                            shorthand_items: &["#notice"],
+                        },],
+                        anchor: None,
+                        source: Span {
+                            data: "#notice",
+                            line: 1,
+                            col: 2,
+                            offset: 1,
+                        },
+                    },),
+                },),],
+                source: Span {
+                    data: "[#notice]\nThis paragraph gets a lot of attention.",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        "notice",
+                        RefEntry {
+                            id: "notice",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        }
+                    ),]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn block_element_anchor_syntax() {
+        verifies!(
+            r#"
+or you can define it using the block anchor syntax:
+
+.Assign an ID to a paragraph using block anchor syntax
+[source]
+----
+include::example$id.adoc[tag=block-id-brackets]
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[[notice]]\nThis paragraph gets a lot of attention.");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "This paragraph gets a lot of attention.",
+                            line: 2,
+                            col: 1,
+                            offset: 11,
+                        },
+                        rendered: "This paragraph gets a lot of attention.",
+                    },
+                    source: Span {
+                        data: "[[notice]]\nThis paragraph gets a lot of attention.",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: Some(Span {
+                        data: "notice",
+                        line: 1,
+                        col: 3,
+                        offset: 2,
+                    },),
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[[notice]]\nThis paragraph gets a lot of attention.",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        "notice",
+                        RefEntry {
+                            id: "notice",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        }
+                    ),]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn inline_anchor_brackets() {
+        verifies!(
+            r#"
+=== As an inline anchor
+
+You can also define an anchor anywhere in content that receives normal substitutions (specifically the macros substitution).
+You can enclose the ID in double square brackets:
+
+.Define an inline anchor
+[source]
+----
+include::example$id.adoc[tag=anchor-brackets]
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let doc =
+            parser.parse("[[bookmark-a]]Inline anchors make arbitrary content referenceable.");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "[[bookmark-a]]Inline anchors make arbitrary content referenceable.",
+                            line: 1,
+                            col: 1,
+                            offset: 0,
+                        },
+                        rendered: "<a id=\"bookmark-a\"></a>Inline anchors make arbitrary content referenceable.",
+                    },
+                    source: Span {
+                        data: "[[bookmark-a]]Inline anchors make arbitrary content referenceable.",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[[bookmark-a]]Inline anchors make arbitrary content referenceable.",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        "bookmark-a",
+                        RefEntry {
+                            id: "bookmark-a",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        },
+                    )]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn inline_anchor_shorthand() {
+        verifies!(
+            r#"
+or using the shorthand ID syntax.
+
+.Define an inline anchor using shorthand syntax
+[source]
+----
+include::example$id.adoc[tag=anchor-shorthand]
+----
+
+"#
+        );
+
+        let mut parser = Parser::default();
+
+        let doc =
+            parser.parse("[#bookmark-b]#Inline anchors can be applied to a phrase like this one.#");
+
+        assert_eq!(
+            doc,
+            Document {
+                header: Header {
+                    title_source: None,
+                    title: None,
+                    attributes: &[],
+                    author_line: None,
+                    revision_line: None,
+                    comments: &[],
+                    source: Span {
+                        data: "",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "[#bookmark-b]#Inline anchors can be applied to a phrase like this one.#",
+                            line: 1,
+                            col: 1,
+                            offset: 0,
+                        },
+                        rendered: "<span id=\"bookmark-b\">Inline anchors can be applied to a phrase like this one.</span>",
+                    },
+                    source: Span {
+                        data: "[#bookmark-b]#Inline anchors can be applied to a phrase like this one.#",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[#bookmark-b]#Inline anchors can be applied to a phrase like this one.#",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                warnings: &[],
+                source_map: SourceMap(&[]),
+                catalog: Catalog {
+                    refs: HashMap::from([(
+                        "bookmark-b",
+                        RefEntry {
+                            id: "bookmark-b",
+                            reftext: None,
+                            ref_type: crate::document::RefType::Anchor,
+                        },
+                    )]),
+                    reftext_to_id: HashMap::default(),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn invalid_anchor_before_list_item() {
+        verifies!(
+            r#"
+=== On a list item
+
+In addition to being able to define anchors on sections and blocks, anchors can be defined inline wherever you can type normal text (anchors are a macros substitution).
+The anchors in the text get replaced with invisible anchor points in the output.
+
+For example, you would not put an anchor in front of a list item:
+
+.*Invalid* position for an anchor ID in front of a list item
+[source]
+----
+include::example$id.adoc[tag=anchor-wrong]
+----
+
+"#
+        );
+
+        // An anchor in front of a list marker does not produce a list item. The
+        // line is parsed as an ordinary paragraph: the inline anchor is
+        // rendered and registered, and the `*` is left as literal text.
+        let doc = Parser::default().parse("[[anchor-point]]* list item with invalid anchor");
+
+        let block = doc.child_blocks().next().unwrap();
+        assert_eq!(
+            block.rendered_html_content().unwrap(),
+            "<a id=\"anchor-point\"></a>* list item with invalid anchor"
+        );
+
+        assert!(doc.catalog().contains_id("anchor-point"));
+    }
+
+    #[test]
+    fn anchor_on_list_item() {
+        verifies!(
+            r#"
+Instead, you would put it at the start of the text of the list item:
+
+.Define an inline anchor on a list item
+[source]
+----
+include::example$id.adoc[tag=anchor-list-item]
+----
+
+"#
+        );
+
+        // The inline anchor at the start of the principal text is rendered and
+        // registered as the list item's referenceable ID.
+        let doc = Parser::default().parse("* First item\n* [[step2]]Second item\n* Third item");
+
+        assert!(doc.catalog().contains_id("step2"));
+    }
+
+    #[test]
+    fn anchor_on_description_list_item() {
+        verifies!(
+            r#"
+For a description list, the anchor must be placed at the start of the term:
+
+.Define an inline anchor on a description list item
+[source]
+----
+include::example$id.adoc[tag=anchor-dlist-item]
+----
+
+"#
+        );
+
+        // The anchor at the start of each term is registered as the term's
+        // referenceable ID. Its reftext is the explicit value when one is given
+        // (`[[cpu,CPU]]`), otherwise the term text (`Hard drive`).
+        let doc = Parser::default().parse(
+            "[[cpu,CPU]]Central Processing Unit (CPU)::\nThe brain of the computer.\n\n[[hard-drive]]Hard drive::\nPermanent storage for operating system and/or user files.",
+        );
+
+        assert_eq!(
+            doc.catalog().get_ref("cpu").unwrap().reftext.as_deref(),
+            Some("CPU")
+        );
+        assert_eq!(
+            doc.catalog()
+                .get_ref("hard-drive")
+                .unwrap()
+                .reftext
+                .as_deref(),
+            Some("Hard drive")
+        );
+    }
+
+    #[test]
+    fn multiple_anchors_on_list_item() {
+        verifies!(
+            r#"
+You can add multiple anchors to a list item or description list term.
+However, only the first anchor is registered for use as an xref within the document.
+The remaining anchors are auxiliary and are used for making deep links (i.e., accessible from a URL fragment).
+
+"#
+        );
+
+        // Each anchor is rendered as an invisible anchor point and registered
+        // so that it can be the target of a deep link.
+        let doc = Parser::default().parse("* [[a1]][[a2]]Item");
+
+        assert!(doc.catalog().contains_id("a1"));
+        assert!(doc.catalog().contains_id("a2"));
+    }
+
+    #[test]
+    fn anchor_on_table_cell() {
+        verifies!(
+            r#"
+=== On a table cell
+
+You can assign an ID to a table cell by placing an inline anchor at the start of the cell.
+
+.Assigning an ID to a table cell using an inline anchor
+[source]
+----
+|===
+|[[my_cell]]The table cell I want to jump to.
+|===
+----
+
+"#
+        );
+
+        // The inline anchor at the start of the cell is registered as the
+        // cell's referenceable ID.
+        let doc =
+            Parser::default().parse("|===\n|[[my_cell]]The table cell I want to jump to.\n|===");
+
+        assert!(doc.catalog().contains_id("my_cell"));
+    }
+
+    #[test]
+    fn inline_image_adjacent_anchor_shorthand() {
+        verifies!(
+            r#"
+=== On an inline image
+
+You cannot currently define an ID on an inline image.
+Instead you need to place an inline anchor adjacent to it.
+
+.Placing an inline anchor adjacent to an inline image using shorthand
+[source]
+----
+include::example$id.adoc[tag=inline-anchor-brackets]
+----
+
+"#
+        );
+
+        // The anchor adjacent to the inline image is rendered as an anchor
+        // point immediately before the image and registered as a
+        // referenceable ID.
+        let doc = Parser::default().parse("[[tiger-image]]image:tiger.png[Image of a tiger]");
+
+        let block = doc.child_blocks().next().unwrap();
+        assert_eq!(
+            block.rendered_html_content().unwrap(),
+            "<a id=\"tiger-image\"></a><span class=\"image\"><img src=\"tiger.png\" alt=\"Image of a tiger\"></span>"
+        );
+
+        assert!(doc.catalog().contains_id("tiger-image"));
+    }
+
+    #[test]
+    fn inline_image_adjacent_anchor_macro() {
+        verifies!(
+            r#"
+Instead of the shorthand form, you can use the macro `anchor` to achieve the same goal.
+
+.Placing an inline anchor adjacent to an inline image using a macro
+[source]
+----
+include::example$id.adoc[tag=inline-anchor-macro]
+----
+
+"#
+        );
+
+        // The `anchor` macro produces the same anchor point and registration as
+        // the shorthand form.
+        let doc = Parser::default().parse("anchor:tiger-image[]image:tiger.png[Image of a tiger]");
+
+        let block = doc.child_blocks().next().unwrap();
+        assert_eq!(
+            block.rendered_html_content().unwrap(),
+            "<a id=\"tiger-image\"></a><span class=\"image\"><img src=\"tiger.png\" alt=\"Image of a tiger\"></span>"
+        );
+
+        assert!(doc.catalog().contains_id("tiger-image"));
+    }
+}
+
+mod add_additional_anchors_to_a_section {
+    use crate::tests::prelude::*;
+
+    #[test]
+    fn section_extra_anchors() {
+        verifies!(
+            r#"
+== Add additional anchors to a section
+
+To add additional anchors to a section (with or without an autogenerated ID), place the anchors in front of the title (without any spaces).
+
+.Add additional anchors to a section using inline anchors
+[source]
+----
+include::example$id.adoc[tag=anchor-header-extra]
+----
+
+"#
+        );
+
+        // The anchors placed in front of the title are registered as additional
+        // (auxiliary) referenceable IDs alongside the section's own ID.
+        let doc = Parser::default().parse("[#version-4_9]\n=== [[current]][[latest]]Version 4.9");
+
+        assert!(doc.catalog().contains_id("version-4_9"));
+        assert!(doc.catalog().contains_id("current"));
+        assert!(doc.catalog().contains_id("latest"));
+    }
+
+    non_normative!(
+        r#"
+CAUTION: You cannot use inline anchors in a section title to make internal references to that section.
+The processor will flag these as possible invalid references.
+These additional anchors are only intended for making deep links using an alternate ID.
+
+Remember that inline anchors are discovered wherever the macros substitution is applied (e.g., paragraph text).
+If text content doesn't belong somewhere, neither does an inline anchor point.
+
+"#
+    );
+}
+
+mod customize_automatic_xreftext {
+    use crate::tests::prelude::*;
+
+    non_normative!(
+        r#"
+== Customize automatic xreftext
+
+It's possible to customize the text that will be used in the cross reference link (called `xreflabel`).
+If not defined, the AsciiDoc processor does it best to find suitable text (the solution differs from case to case).
+In case of an image, the image caption will be used.
+In case of a section header, the text of the section's title will be used.
+
+To define the `xreflabel`, add it in the anchor definition right after the ID (separated by a comma).
+
+"#
+    );
+
+    #[test]
+    fn anchor_xreflabel() {
+        verifies!(
+            r#"
+.An anchor ID with a defined xreflabel. The caption will not be used as link text.
+[source]
+----
+include::example$id.adoc[tag=anchor-xreflabel]
+----
+"#
+        );
+
+        // The reftext supplied after the ID (the `xreflabel`) is used as the
+        // cross-reference link text in preference to the image caption.
+        let doc = Parser::default().parse(
+            "[[tiger-image,Image of a tiger]]\n.This image represents a Bengal tiger also called the Indian tiger\nimage::tiger.png[]\n\nSee <<tiger-image>>.",
+        );
+
+        assert_eq!(
+            doc.catalog()
+                .get_ref("tiger-image")
+                .unwrap()
+                .reftext
+                .as_deref(),
+            Some("Image of a tiger")
+        );
+
+        let xref_paragraph = doc
+            .child_blocks()
+            .filter_map(|block| block.rendered_html_content())
+            .find(|rendered| rendered.contains("href"))
+            .unwrap();
+
+        assert_eq!(
+            xref_paragraph,
+            "See <a href=\"#tiger-image\">Image of a tiger</a>."
+        );
+    }
+}

@@ -1,0 +1,2750 @@
+use std::borrow::Cow;
+
+use crate::{
+    Parser, Span,
+    attributes::AttrlistContext,
+    content::{Content, SubstitutionGroup},
+    span::MatchedItem,
+    strings::CowStr,
+    warnings::WarningType,
+};
+
+/// This struct represents a single element attribute.
+///
+/// Element attributes define the built-in and user-defined settings and
+/// metadata that can be applied to an individual block element or inline
+/// element in a document (including macros). Although the include directive is
+/// not technically an element, element attributes can also be defined on an
+/// include directive.
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub struct ElementAttribute<'src> {
+    name: Option<CowStr<'src>>,
+    value: CowStr<'src>,
+    shorthand_item_indices: Vec<usize>,
+
+    /// The 1-based position of a *positional* (unnamed) attribute within its
+    /// attribute list, counting every comma-delimited entry — named entries and
+    /// blank slots included — the way Asciidoctor numbers positional keys.
+    /// `None` for a named attribute (or an attribute synthesized without a
+    /// known position). Consumed by [`Attrlist::nth_attribute`] so that
+    /// later positionals keep their index even when earlier entries are
+    /// named or blank.
+    ///
+    /// [`Attrlist::nth_attribute`]: crate::attributes::Attrlist::nth_attribute
+    positional_index: Option<usize>,
+
+    /// `true` when this attribute's `value` came from a genuinely
+    /// quote-delimited string (`"…"` or `'…'` with both delimiters
+    /// present), as opposed to an unquoted value or a lone leading quote.
+    /// This distinguishes an explicit empty quoted positional (`""` / `''`,
+    /// which is a real empty-valued attribute) from a blank slot, and gates
+    /// the quote-unescaping and single-quoted substitution that only apply
+    /// to genuinely quoted values.
+    value_is_quoted: bool,
+
+    /// `true` when the normal substitution group was already applied to `value`
+    /// while parsing this attribute (a single-quoted value in a block attribute
+    /// list). Consumers that would otherwise substitute the value themselves —
+    /// such as deriving a block title from a `title=` attribute — use this to
+    /// avoid substituting it a second time (which would, e.g., double-escape
+    /// special characters).
+    value_is_substituted: bool,
+
+    /// Byte ranges of `value` whose content
+    /// [`into_owned_restoring`](Self::into_owned_restoring) spliced in from a
+    /// masked passthrough or STEM expression, in ascending order; empty for
+    /// every other attribute. A consumer that re-processes the value as a
+    /// *path* — the built-in renderer's `web_path` resolution of a `fallback=`
+    /// or macro-level `imagesdir=` — masks these ranges around that resolution
+    /// and splices them back afterwards, so a STEM body's backslash or a
+    /// passthrough's own bytes never reach that resolution.
+    restored_value_ranges: Vec<std::ops::Range<usize>>,
+}
+
+impl std::fmt::Debug for ElementAttribute<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `value_is_substituted` is an internal parsing detail and is
+        // deliberately omitted so the debug representation stays focused on the
+        // attribute's observable content.
+        f.debug_struct("ElementAttribute")
+            .field("name", &self.name)
+            .field("value", &self.value)
+            .field("shorthand_item_indices", &self.shorthand_item_indices)
+            .finish()
+    }
+}
+
+impl<'src> ElementAttribute<'src> {
+    /// Rebuilds this attribute with every borrowed string copied into an owned
+    /// one, so it can outlive the text it was parsed from.
+    ///
+    /// Nothing here is a [`Span`]: an attribute's name and value are already
+    /// [`CowStr`]s and every other field is plain data, so the conversion is a
+    /// per-string [`CowStr::into_owned`] and nothing more. See
+    /// [`Attrlist::into_owned`](crate::attributes::Attrlist::into_owned) for
+    /// why the crate needs one.
+    pub(crate) fn into_owned<'dst>(self) -> ElementAttribute<'dst> {
+        ElementAttribute {
+            name: self.name.map(CowStr::into_owned),
+            value: self.value.into_owned(),
+            shorthand_item_indices: self.shorthand_item_indices,
+            positional_index: self.positional_index,
+            value_is_quoted: self.value_is_quoted,
+            value_is_substituted: self.value_is_substituted,
+            restored_value_ranges: self.restored_value_ranges,
+        }
+    }
+
+    /// [`into_owned`](Self::into_owned), first substituting each
+    /// [`MASKED_PIECE_PLACEHOLDER`] occurrence in this attribute's name and
+    /// value with the next of `bodies`, in the order `cursor` finds them.
+    ///
+    /// This is the *after the split* half of restoring a masked construct
+    /// inside a parsed attribute list. A caller that parses an attribute list
+    /// whose text still holds a masked passthrough cannot restore the body
+    /// first: [`Attrlist::parse`](crate::attributes::Attrlist::parse) has to
+    /// see the placeholder — an opaque run carrying none of the `,`/`=`/`"`
+    /// bytes the split reads — so a body holding one of those characters must
+    /// not influence how the list divides (`image:x.png[++a,b++]` is one
+    /// positional whose value is `a,b`, not two). Restoring per *parsed
+    /// value*, after the split, is what keeps that true.
+    ///
+    /// [`shorthand_item_indices`](Self::shorthand_item_indices) are byte
+    /// offsets into `value`, so each is **shifted** past every substitution
+    /// that ends at or before it — a placeholder is one opaque character
+    /// holding none of the `#`/`.`/`%` delimiters the shorthand scan keys off,
+    /// so the items it found stay the same items, only further along
+    /// (`image:x.png[++abc++.myrole]` keeps the `myrole` role while its value
+    /// becomes `abc.myrole`). Re-deriving them over the restored text would
+    /// instead find a delimiter *inside* a body, which the placeholder never
+    /// exposes.
+    ///
+    /// `cursor` is shared across every attribute
+    /// [`Attrlist::into_owned_restoring`](crate::attributes::Attrlist::into_owned_restoring)
+    /// restores, in the same left-to-right order
+    /// [`Attrlist::parse`](crate::attributes::Attrlist::parse) found them in,
+    /// so a placeholder's position — not an index carried in the text — says
+    /// which of `bodies` it stands for. A placeholder `cursor`
+    /// finds past the end of `bodies` (more occurrences than the caller
+    /// tokened) is left as written rather than panicking or misattributing a
+    /// later one.
+    ///
+    /// Each splice's resulting byte range in the restored value is recorded
+    /// in [`restored_value_ranges`](Self::restored_value_ranges), so a
+    /// consumer that re-processes the value as a path can keep the restored
+    /// bytes out of that resolution's way (see the field's own doc comment).
+    pub(crate) fn into_owned_restoring<'dst>(
+        self,
+        bodies: &[&str],
+        cursor: &mut usize,
+    ) -> ElementAttribute<'dst> {
+        let mut shorthand_item_indices = self.shorthand_item_indices;
+        let mut restored_value_ranges = Vec::new();
+
+        ElementAttribute {
+            name: self
+                .name
+                .map(|name| restore_into(name, bodies, cursor, &mut [], &mut Vec::new())),
+            value: restore_into(
+                self.value,
+                bodies,
+                cursor,
+                &mut shorthand_item_indices,
+                &mut restored_value_ranges,
+            ),
+            shorthand_item_indices,
+            positional_index: self.positional_index,
+            value_is_quoted: self.value_is_quoted,
+            value_is_substituted: self.value_is_substituted,
+            restored_value_ranges,
+        }
+    }
+
+    pub(crate) fn parse(
+        source_text: &CowStr<'src>,
+        start_index: usize,
+        parser: &Parser,
+        mut parse_shorthand: ParseShorthand,
+        attrlist_context: AttrlistContext,
+    ) -> (Self, usize, Vec<WarningType>) {
+        let mut warnings: Vec<WarningType> = vec![];
+
+        let (name, value, shorthand_item_indices, value_is_quoted, value_is_substituted, offset) = {
+            let mut source = Span::new(source_text.as_ref());
+            source = source.discard(start_index);
+
+            // Skip any leading, non-semantic whitespace before this entry
+            // (Asciidoctor's `skip_blank`). Name detection has to run first, so
+            // without this a name with leading blanks — e.g. `[  first =
+            // value]` or the second/third entries once a comma is
+            // consumed — would fail to be recognized and fall
+            // through to a positional literal.
+            source = source.take_whitespace_with_newline().after;
+
+            let (name, after): (Option<Span<'_>>, Span) = match source.take_attr_name() {
+                Some(name) => {
+                    let space = name.after.take_whitespace_with_newline();
+                    match space.after.take_prefix("=") {
+                        Some(equals) => {
+                            let space = equals.after.take_whitespace_with_newline();
+
+                            // `name=` with nothing (or only a comma) after the
+                            // `=` is a named
+                            // attribute with an empty value, not a
+                            // positional one. The empty value falls out of the
+                            // value scan below (`take_while(c != ',')` yields
+                            // the empty string), so
+                            // the name is all we need to keep.
+                            (Some(name.item), space.after)
+                        }
+                        None => (None, source),
+                    }
+                }
+                None => (None, source),
+            };
+
+            let after = after.take_whitespace_with_newline().after;
+            let first_char = after.data().chars().next();
+
+            // `value_is_quoted` is set only when the value was genuinely
+            // delimited by a matching pair of quotes (`take_quoted_string`
+            // succeeded). A lone leading quote with no terminator is *not*
+            // quoted: Asciidoctor treats it as a literal (its `single_quoted`
+            // flag is set `unless value.start_with? APOS`), so it receives no
+            // unescaping and no substitution.
+            let mut value_is_quoted = false;
+            let value = match first_char {
+                Some('\'') | Some('"') => match after.take_quoted_string() {
+                    Some(v) => {
+                        parse_shorthand = ParseShorthand(false);
+                        value_is_quoted = true;
+                        v
+                    }
+                    None => {
+                        warnings.push(WarningType::AttributeValueMissingTerminatingQuote);
+                        after.take_while(|c| c != ',').trim_item_trailing_spaces()
+                    }
+                },
+                _ => after.take_while(|c| c != ',').trim_item_trailing_spaces(),
+            };
+
+            let after = value.after;
+            let mut value = cowstr_from_source_and_span(source_text, &value.item);
+            let mut value_is_substituted = false;
+
+            if value_is_quoted && let Some(first) = first_char {
+                let escaped_quote = format!("\\{first}");
+                let mut new_value = value.replace(&escaped_quote, &first.to_string());
+
+                if first == '\'' && attrlist_context == AttrlistContext::Block {
+                    // A single-quoted value in a block attribute list has the
+                    // normal substitution group applied at assignment time.
+                    value_is_substituted = true;
+
+                    let span = Span::new(&new_value);
+                    let mut content = Content::from(span);
+                    SubstitutionGroup::Normal.apply(&mut content, parser, None);
+
+                    if content.rendered.as_ref() != new_value {
+                        new_value = content.rendered.to_string();
+                    }
+                }
+
+                if new_value != *value {
+                    value = CowStr::from(new_value);
+                }
+            }
+
+            let shorthand_item_indices = if name.is_none() && parse_shorthand.0 {
+                parse_shorthand_items(&value, &mut warnings)
+            } else {
+                vec![]
+            };
+
+            let name = name.map(|name| cowstr_from_source_and_span(source_text, &name));
+
+            (
+                name,
+                value,
+                shorthand_item_indices,
+                value_is_quoted,
+                value_is_substituted,
+                after.byte_offset(),
+            )
+        };
+
+        (
+            Self {
+                name,
+                value,
+                shorthand_item_indices,
+                positional_index: None,
+                value_is_quoted,
+                value_is_substituted,
+                restored_value_ranges: vec![],
+            },
+            offset,
+            warnings,
+        )
+    }
+
+    /// Synthesize the `source` block-style attribute implied by a
+    /// language-aware fenced code block (`` ```lang ``). This is the first
+    /// positional attribute of the equivalent `[source,<lang>]` attribute list;
+    /// its shorthand items resolve the block style to `source`.
+    pub(crate) fn synthesized_source_style() -> Self {
+        const SOURCE: &str = "source";
+        let (value, shorthand_item_indices) = synthesize_shorthand(Some(SOURCE), None, &[], &[]);
+
+        Self {
+            name: None,
+            value: CowStr::from(value),
+            shorthand_item_indices,
+            positional_index: Some(1),
+            value_is_quoted: false,
+            value_is_substituted: false,
+            restored_value_ranges: vec![],
+        }
+    }
+
+    /// Construct a bare positional attribute whose value is drawn directly from
+    /// `span`, carrying no shorthand items. Used for the language on a
+    /// language-aware fenced code block (the second positional attribute of the
+    /// equivalent `[source,<lang>]` attribute list).
+    pub(crate) fn positional_from_span(span: Span<'src>) -> Self {
+        Self {
+            name: None,
+            value: CowStr::from(span.data()),
+            shorthand_item_indices: vec![],
+            positional_index: Some(2),
+            value_is_quoted: false,
+            value_is_substituted: false,
+            restored_value_ranges: vec![],
+        }
+    }
+
+    /// Return the attribute name, if one was found.
+    pub fn name(&'src self) -> Option<&'src str> {
+        self.name_str()
+    }
+
+    /// Return the attribute name, if one was found.
+    ///
+    /// Unlike [`name`](Self::name), this borrows for the duration of the call
+    /// only, so it can be used on temporary `ElementAttribute` values (for
+    /// example while merging multiple attribute lists).
+    pub(crate) fn name_str(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// Return the shorthand items, if applicable.
+    ///
+    /// Shorthand items are only parsed for certain element attributes. If this
+    /// attribute is not of the appropriate kind, this will return an empty
+    /// list.
+    pub fn shorthand_items(&'src self) -> Vec<&'src str> {
+        self.shorthand_items_internal()
+    }
+
+    /// Same as [`shorthand_items`](Self::shorthand_items), but borrows for the
+    /// duration of the call only so it can be used on temporary values.
+    fn shorthand_items_internal(&self) -> Vec<&str> {
+        let mut result = vec![];
+        let value = self.value.as_ref();
+
+        let mut iter = self.shorthand_item_indices.iter().peekable();
+
+        while let Some(curr) = iter.next() {
+            let mut next_item = if let Some(next) = iter.peek() {
+                &value[*curr..**next]
+            } else {
+                &value[*curr..]
+            };
+
+            // Trim before testing for a bare delimiter: an item such as `#\t`
+            // carries no name (`parse_shorthand_items` reports it as
+            // `WarningType::EmptyShorthandName`) and must be discarded here
+            // just as `#` is, rather than surfacing as an empty ID, role, or
+            // option — and, in the case of an ID, shadowing a real one
+            // declared later in the same attrlist.
+            next_item = next_item.trim_end();
+
+            if next_item == "#" || next_item == "." || next_item == "%" {
+                continue;
+            }
+
+            if !next_item.is_empty() {
+                result.push(next_item);
+            }
+        }
+
+        result
+    }
+
+    /// Return the block style name from shorthand syntax.
+    pub fn block_style(&'src self) -> Option<&'src str> {
+        self.block_style_internal()
+    }
+
+    /// Same as [`block_style`](Self::block_style), but borrows for the duration
+    /// of the call only.
+    fn block_style_internal(&self) -> Option<&str> {
+        self.shorthand_items_internal()
+            .first()
+            .filter(|v| !v.chars().any(is_shorthand_delimiter))
+            .cloned()
+    }
+
+    /// Return the ID attribute from shorthand syntax.
+    ///
+    /// If multiple ID attributes were specified, only the first
+    /// match is returned. (Multiple IDs are not supported.)
+    ///
+    /// You can assign an ID to a block using the shorthand syntax, the longhand
+    /// syntax, or a legacy block anchor.
+    ///
+    /// In the shorthand syntax, you prefix the name with a hash (`#`) in the
+    /// first position attribute:
+    ///
+    /// ```asciidoc
+    /// [#goals]
+    /// * Goal 1
+    /// * Goal 2
+    /// ```
+    ///
+    /// In the longhand syntax, you use a standard named attribute:
+    ///
+    /// ```asciidoc
+    /// [id=goals]
+    /// * Goal 1
+    /// * Goal 2
+    /// ```
+    ///
+    /// In the legacy block anchor syntax, you surround the name with double
+    /// square brackets:
+    ///
+    /// ```asciidoc
+    /// [[goals]]
+    /// * Goal 1
+    /// * Goal 2
+    /// ```
+    pub fn id(&'src self) -> Option<&'src str> {
+        self.id_internal()
+    }
+
+    /// Same as [`id`](Self::id), but borrows for the duration of the call only.
+    fn id_internal(&self) -> Option<&str> {
+        self.shorthand_items_internal()
+            .into_iter()
+            .find(|v| v.starts_with('#'))
+            .map(|v| &v[1..])
+    }
+
+    /// Return any role attributes that were found in shorthand syntax.
+    ///
+    /// You can assign one or more roles to blocks and most inline elements
+    /// using the `role` attribute. The `role` attribute is a [named attribute].
+    /// Even though the attribute name is singular, it may contain multiple
+    /// (space-separated) roles. Roles may also be defined using a shorthand
+    /// (dot-prefixed) syntax.
+    ///
+    /// A role:
+    /// 1. adds additional semantics to an element
+    /// 2. can be used to apply additional styling to a group of elements (e.g.,
+    ///    via a CSS class selector)
+    /// 3. may activate additional behavior if recognized by the converter
+    ///
+    /// **TIP:** The `role` attribute in AsciiDoc always get mapped to the
+    /// `class` attribute in the HTML output. In other words, role names are
+    /// synonymous with HTML class names, thus allowing output elements to be
+    /// identified and styled in CSS using class selectors (e.g.,
+    /// `sidebarblock.role1`).
+    ///
+    /// [named attribute]: https://docs.asciidoctor.org/asciidoc/latest/attributes/positional-and-named-attributes/#named
+    pub fn roles(&'src self) -> Vec<&'src str> {
+        self.roles_internal()
+    }
+
+    /// Same as [`roles`](Self::roles), but borrows for the duration of the call
+    /// only.
+    fn roles_internal(&self) -> Vec<&str> {
+        self.shorthand_items_internal()
+            .into_iter()
+            .filter(|span| span.starts_with('.'))
+            .map(|span| &span[1..])
+            .collect()
+    }
+
+    /// Return any option attributes that were found in shorthand syntax.
+    ///
+    /// The `options` attribute (often abbreviated as `opts`) is a versatile
+    /// [named attribute] that can be assigned one or more values. It can be
+    /// defined globally as document attribute as well as a block attribute on
+    /// an individual block.
+    ///
+    /// There is no strict schema for options. Any options which are not
+    /// recognized are ignored.
+    ///
+    /// You can assign one or more options to a block using the shorthand or
+    /// formal syntax for the options attribute.
+    ///
+    /// # Shorthand options syntax for blocks
+    ///
+    /// To assign an option to a block, prefix the value with a percent sign
+    /// (`%`) in an attribute list. The percent sign implicitly sets the
+    /// `options` attribute.
+    ///
+    /// ## Example 1: Sidebar block with an option assigned using the shorthand dot
+    ///
+    /// ```asciidoc
+    /// [%option]
+    /// ****
+    /// This is a sidebar with an option assigned to it, named option.
+    /// ****
+    /// ```
+    ///
+    /// You can assign multiple options to a block by prest
+    /// fixing each value with
+    /// a percent sign (`%`).
+    ///
+    /// ## Example 2: Sidebar with two options assigned using the shorthand dot
+    /// ```asciidoc
+    /// [%option1%option2]
+    /// ****
+    /// This is a sidebar with two options assigned to it, named option1 and option2.
+    /// ****
+    /// ```
+    ///
+    /// # Formal options syntax for blocks
+    ///
+    /// Explicitly set `options` or `opts`, followed by the equals sign (`=`),
+    /// and then the value in an attribute list.
+    ///
+    /// ## Example 3. Sidebar block with an option assigned using the formal syntax
+    /// ```asciidoc
+    /// [opts=option]
+    /// ****
+    /// This is a sidebar with an option assigned to it, named option.
+    /// ****
+    /// ```
+    ///
+    /// Separate multiple option values with commas (`,`).
+    ///
+    /// ## Example 4. Sidebar with three options assigned using the formal syntax
+    /// ```asciidoc
+    /// [opts="option1,option2"]
+    /// ****
+    /// This is a sidebar with two options assigned to it, option1 and option2.
+    /// ****
+    /// ```
+    ///
+    /// [named attribute]: https://docs.asciidoctor.org/asciidoc/latest/attributes/positional-and-named-attributes/#named
+    pub fn options(&'src self) -> Vec<&'src str> {
+        self.options_internal()
+    }
+
+    /// Same as [`options`](Self::options), but borrows for the duration of the
+    /// call only.
+    fn options_internal(&self) -> Vec<&str> {
+        self.shorthand_items_internal()
+            .into_iter()
+            .filter(|v| v.starts_with('%'))
+            .map(|v| &v[1..])
+            .collect()
+    }
+
+    /// Merge the shorthand of two first-position (block style) attributes drawn
+    /// from separate block attribute lines, following Asciidoctor's semantics:
+    ///
+    /// * the block style and ID are taken from the later line if it specifies
+    ///   them, otherwise retained from the earlier line;
+    /// * roles and options accumulate, with the earlier line's values first.
+    ///
+    /// The result is a freshly synthesized positional attribute whose value
+    /// re-encodes the merged shorthand so that the usual accessors continue to
+    /// work. A component with an empty name — which a run of shorthand
+    /// delimiters produces, and which every accessor discards — is left out of
+    /// that encoding; see [`synthesize_shorthand`].
+    pub(crate) fn merge_block_style_shorthand(earlier: &Self, later: &Self) -> Self {
+        let block_style = later
+            .block_style_internal()
+            .or(earlier.block_style_internal());
+        let id = later.id_internal().or(earlier.id_internal());
+
+        let mut roles = earlier.roles_internal();
+        roles.extend(later.roles_internal());
+
+        let mut options = earlier.options_internal();
+        options.extend(later.options_internal());
+
+        let (value, shorthand_item_indices) =
+            synthesize_shorthand(block_style, id, &roles, &options);
+
+        Self {
+            name: None,
+            value: CowStr::from(value),
+            shorthand_item_indices,
+
+            // The merged shorthand is the first positional of the earlier line,
+            // so it keeps that line's position (1).
+            positional_index: earlier.positional_index,
+            value_is_quoted: false,
+            value_is_substituted: false,
+            restored_value_ranges: vec![],
+        }
+    }
+
+    /// Return a copy of this first-position (block style) attribute with its
+    /// role shorthand (`.role`) items removed, retaining the block style, ID,
+    /// and options. Used while merging block attribute lines, where a formal
+    /// `role=` entry takes ownership of the resolved role list and the
+    /// shorthand must therefore no longer contribute roles of its own.
+    ///
+    /// If the attribute carries no role shorthand, it is returned unchanged.
+    pub(crate) fn without_shorthand_roles(&self) -> Self {
+        if self.roles_internal().is_empty() {
+            return self.clone();
+        }
+
+        let block_style = self.block_style_internal();
+        let id = self.id_internal();
+        let options = self.options_internal();
+
+        let (value, shorthand_item_indices) = synthesize_shorthand(block_style, id, &[], &options);
+
+        Self {
+            name: None,
+            value: CowStr::from(value),
+            shorthand_item_indices,
+            positional_index: self.positional_index,
+            value_is_quoted: false,
+            value_is_substituted: false,
+            restored_value_ranges: vec![],
+        }
+    }
+
+    /// Synthesize a named `role` attribute whose value is the space-separated
+    /// list of resolved roles. Used while merging block attribute lines to
+    /// record the roles resolved under Asciidoctor's running model (a formal
+    /// `role=` replaces, shorthand `.role` appends).
+    pub(crate) fn synthesized_role(value: String) -> Self {
+        Self {
+            name: Some(CowStr::from("role")),
+            value: CowStr::from(value),
+            shorthand_item_indices: vec![],
+            positional_index: None,
+            value_is_quoted: false,
+            value_is_substituted: false,
+            restored_value_ranges: vec![],
+        }
+    }
+
+    /// Return the 1-based positional index of this attribute, if it is a
+    /// positional (unnamed) attribute whose position is known. See the
+    /// [`positional_index`](Self::positional_index) field for the numbering
+    /// rules.
+    pub(crate) fn positional_index(&self) -> Option<usize> {
+        self.positional_index
+    }
+
+    /// Record the 1-based positional index of this attribute. Called by the
+    /// attribute-list parser once it knows the entry's position within the
+    /// list.
+    pub(crate) fn set_positional_index(&mut self, index: usize) {
+        self.positional_index = Some(index);
+    }
+
+    /// Returns `true` when this attribute's value came from a genuinely
+    /// quote-delimited string (both delimiters present). See the
+    /// [`value_is_quoted`](Self::value_is_quoted) field.
+    pub(crate) fn value_is_quoted(&self) -> bool {
+        self.value_is_quoted
+    }
+
+    /// Byte ranges of [`value`](Self::value) restored from a masked
+    /// passthrough or STEM expression. See the
+    /// [`restored_value_ranges`](Self::restored_value_ranges) field.
+    pub(crate) fn restored_value_ranges(&self) -> &[std::ops::Range<usize>] {
+        &self.restored_value_ranges
+    }
+
+    /// Return the attribute's value.
+    ///
+    /// Note that this value will have had special characters and attribute
+    /// value replacements applied to it.
+    pub fn value(&'src self) -> &'src str {
+        self.value.as_ref()
+    }
+
+    /// Return the attribute's value.
+    ///
+    /// Unlike [`value`](Self::value), this borrows for the duration of the call
+    /// only, so it can be used on temporary `ElementAttribute` values (for
+    /// example while an owned attribute list is still being assembled).
+    pub(crate) fn value_str(&self) -> &str {
+        self.value.as_ref()
+    }
+
+    /// Returns `true` when the normal substitution group has already been
+    /// applied to this attribute's [`value`](Self::value) (a single-quoted
+    /// value in a block attribute list). A consumer that would otherwise
+    /// substitute the value itself uses this to avoid substituting it a
+    /// second time.
+    pub(crate) fn value_is_substituted(&self) -> bool {
+        self.value_is_substituted
+    }
+}
+
+/// Build the shorthand encoding of a set of shorthand components that were
+/// already parsed from one or more source lines, returning the synthesized
+/// value together with the start offset of each shorthand item within it.
+///
+/// Components are written in the canonical shorthand order: block style, ID,
+/// roles, then options.
+///
+/// An empty component is elided rather than written out as a delimiter with
+/// nothing following it. A run of delimiters in the source (`[%%%%]`) yields
+/// components with empty names — reported as
+/// [`WarningType::EmptyShorthandName`] when that line was parsed — and every
+/// shorthand accessor already discards a bare `#`, `.`, or `%`, so writing
+/// them back out would re-encode a defect that nothing reads and that
+/// re-parsing the result would warn about a second time.
+///
+/// The offsets are recorded as each component is appended rather than by
+/// re-parsing the finished string. Shorthand items never contain a delimiter
+/// of their own (each was split at one and stripped of it when its source line
+/// was read), so appending them back in this order reproduces exactly the
+/// offsets [`parse_shorthand_items`] would report for the same string —
+/// without re-running it, and so without the warnings a re-parse would raise.
+fn synthesize_shorthand(
+    block_style: Option<&str>,
+    id: Option<&str>,
+    roles: &[&str],
+    options: &[&str],
+) -> (String, Vec<usize>) {
+    let mut value = String::new();
+    let mut shorthand_item_indices: Vec<usize> = vec![];
+
+    if let Some(block_style) = block_style.filter(|bs| !bs.is_empty()) {
+        shorthand_item_indices.push(value.len());
+        value.push_str(block_style);
+    }
+
+    if let Some(id) = id.filter(|id| !id.is_empty()) {
+        shorthand_item_indices.push(value.len());
+        value.push('#');
+        value.push_str(id);
+    }
+
+    for role in roles.iter().filter(|role| !role.is_empty()) {
+        shorthand_item_indices.push(value.len());
+        value.push('.');
+        value.push_str(role);
+    }
+
+    for option in options.iter().filter(|option| !option.is_empty()) {
+        shorthand_item_indices.push(value.len());
+        value.push('%');
+        value.push_str(option);
+    }
+
+    (value, shorthand_item_indices)
+}
+
+fn parse_shorthand_items(source: &str, warnings: &mut Vec<WarningType>) -> Vec<usize> {
+    let mut shorthand_item_indices: Vec<usize> = vec![];
+    let mut span = Span::new(source);
+
+    // Look for block style selector.
+    if let Some(block_style_pr) = span.split_at_match_non_empty(is_shorthand_delimiter) {
+        shorthand_item_indices.push(block_style_pr.item.discard_whitespace().byte_offset());
+
+        span = block_style_pr.after;
+    }
+
+    while !span.is_empty() {
+        // Assumption: First character is a delimiter.
+        let after_delimiter = span.discard(1);
+
+        // The name runs from the delimiter to the next one, or to the end of
+        // the value if this is the last item.
+        let (name, after) = match after_delimiter.position(is_shorthand_delimiter) {
+            None => (after_delimiter, after_delimiter.discard_all()),
+
+            Some(index) => {
+                let mi: MatchedItem<Span> = after_delimiter.into_parse_result(index);
+                (mi.item, mi.after)
+            }
+        };
+
+        shorthand_item_indices.push(span.byte_offset());
+
+        // Emptiness is decided on the trimmed name, matching what the
+        // shorthand accessors read back: a name made only of whitespace
+        // (`[x#\t]`) names nothing, exactly as a missing one (`[x#]`) does.
+        // Deciding it on the raw text instead would let the whitespace-only
+        // name through unreported and then surface it as an empty ID, role, or
+        // option.
+        if name.data().trim().is_empty() {
+            warnings.push(WarningType::EmptyShorthandName);
+        }
+
+        span = after;
+    }
+
+    shorthand_item_indices
+}
+
+fn is_shorthand_delimiter(c: char) -> bool {
+    c == '#' || c == '%' || c == '.'
+}
+
+/// The opaque placeholder `tokened_bracket` (and its sibling `tokened_text`,
+/// both in the macros substitution step) rewrites each masked passthrough,
+/// STEM expression, or other already-recognized construct to inside a macro
+/// bracket's own text, one occurrence per piece, so
+/// [`Attrlist::parse`](crate::attributes::Attrlist::parse) sees an atomic run
+/// carrying none of the `,`/`=`/`"` bytes at that position instead of the
+/// piece's own.
+///
+/// "Tokened"/"tokener" are this crate's own coined vocabulary for that
+/// rewrite, kept deliberately apart from "tokenized"/"tokenizer": this crate
+/// has no lexer stage that splits source into a token stream, and borrowing
+/// that pair of words would wrongly suggest one. A "tokened" text is just a
+/// text in which each masked piece has been replaced by one placeholder
+/// token, recovered later by position rather than by re-parsing.
+///
+/// Carries no index — which piece a given occurrence stands for is recovered
+/// by *position*: the Nth occurrence, scanned left to right, is `bodies[N]`,
+/// never by parsing anything back out of the placeholder's own bytes.
+/// [`restore_into`] is what walks that position order.
+///
+/// Two fixed codepoints, adjacent, rather than one: a single reserved
+/// codepoint alone would have to be reserved *everywhere* the tokener copies
+/// bytes, where a two-codepoint run is cheap to keep unique. Kept as two
+/// separate consts too ([`MASKED_PIECE_PLACEHOLDER_START`],
+/// [`MASKED_PIECE_PLACEHOLDER_END`]) because
+/// [`escape_masked_piece_bytes`] escapes each codepoint on its own — a
+/// document contributing only one half, beside the other half from an
+/// unrelated source, would complete the same pair otherwise.
+///
+/// Which occurrences are genuine is settled **by construction**, not by
+/// likelihood. `tokened_bracket`/`tokened_text` run
+/// [`escape_masked_piece_bytes`] over every non-tokened byte they copy, and
+/// that escape leaves neither codepoint standing anywhere in its output, so
+/// the only `MASKED_PIECE_PLACEHOLDER` occurrences in a tokened text are the
+/// ones the tokener itself wrote. Nothing downstream has to ask whether an
+/// occurrence is real; every consumer of a tokened text runs the matching
+/// [`unescape_masked_piece_bytes`] on the bytes *around* those occurrences on
+/// its way out, so a document's own copy of either codepoint round-trips to
+/// the output unchanged. That replaced an earlier one-way escape at the
+/// attribute-reference splice (`escape_passthrough_sentinels`, retired with
+/// it), which covered only the one road a *spliced* value took and left both
+/// a typed pair and the escape's own output visible in the output.
+///
+/// One road used to remain, and it was the same one that blocked carrying a
+/// byte-offset table through `Attrlist::parse` in the first place:
+/// [`Attrlist::parse`](crate::attributes::Attrlist::parse) re-substitutes
+/// attribute references over the text handed to it, so a `subs=` list naming
+/// `macros` without `attributes` expands a reference *after* the tokener has
+/// escaped its copy — and whatever that reference's value spelled reached
+/// `restore_into`'s walk unescaped and indistinguishable from something the
+/// tokener wrote.
+///
+/// It is closed by escaping at that second point of entry too: the tokened
+/// call sites parse through
+/// [`Attrlist::parse_tokened`](crate::attributes::Attrlist), which runs its
+/// inner substitution under
+/// [`SplicedValueEscaping::MaskedPieceBytes`], so a resolved value is escaped
+/// as it is spliced. That keeps the by-construction property total — every
+/// reserved codepoint standing in a tokened text is one the tokener wrote —
+/// rather than true only of the bytes the tokener itself copied. See
+/// `an_attrlist_level_expansion_cannot_forge_a_bracket_restore`
+/// (`tests/sentinels.rs`).
+pub(crate) const MASKED_PIECE_PLACEHOLDER_START: char = '\u{96}';
+
+/// See [`MASKED_PIECE_PLACEHOLDER`].
+pub(crate) const MASKED_PIECE_PLACEHOLDER_END: char = '\u{97}';
+
+/// See [`MASKED_PIECE_PLACEHOLDER_START`] / [`MASKED_PIECE_PLACEHOLDER_END`].
+/// Must spell the same two codepoints, adjacent and in the same order.
+pub(crate) const MASKED_PIECE_PLACEHOLDER: &str = "\u{96}\u{97}";
+
+/// Introduces an escape [`escape_masked_piece_bytes`] writes over a
+/// document's own copy of a reserved codepoint, and
+/// [`unescape_masked_piece_bytes`] reads back.
+///
+/// A private-use codepoint, so it needs no reservation of its own beyond
+/// being escaped like the two it protects (`ESCAPED_ESCAPE_TAG`).
+pub(crate) const MASKED_PIECE_ESCAPE: char = '\u{E005}';
+
+/// The tag byte that follows [`MASKED_PIECE_ESCAPE`] for an escaped
+/// [`MASKED_PIECE_PLACEHOLDER_START`].
+const ESCAPED_START_TAG: char = 's';
+
+/// The tag byte for an escaped [`MASKED_PIECE_PLACEHOLDER_END`].
+const ESCAPED_END_TAG: char = 'e';
+
+/// The tag byte for an escaped [`MASKED_PIECE_ESCAPE`] — the escape's own
+/// introducer, which has to be escapable or a document that types
+/// `\u{E005}s` would come back holding a
+/// [`MASKED_PIECE_PLACEHOLDER_START`] it never wrote.
+const ESCAPED_ESCAPE_TAG: char = 'g';
+
+/// Whether the attribute-reference substitution rewriting a text has to run
+/// [`escape_masked_piece_bytes`] over each value it splices into it.
+///
+/// The distinction is *provenance*, not syntax: a resolved attribute value is
+/// the only thing that substitution writes which did not come out of the text
+/// it was handed, so it is the only thing that has to be escaped for a
+/// **tokened** text to go on holding no reserved codepoint the tokener did not
+/// write. Threaded from
+/// [`Attrlist::parse_tokened`](crate::attributes::Attrlist) down to the
+/// replacer that performs the splice; ordinary content-level content carries
+/// [`Verbatim`](Self::Verbatim) and is unaffected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SplicedValueEscaping {
+    /// Ordinary, never-tokened text: a resolved value is spliced exactly as
+    /// the document wrote it. This text has no masked-piece invariant to
+    /// protect, and escaping into it would put the escape's own bytes in front
+    /// of a reader that never unescapes.
+    Verbatim,
+
+    /// **Tokened** macro-bracket text — what
+    /// [`Attrlist::parse_tokened`](crate::attributes::Attrlist) is handed — in
+    /// which every byte the tokener copied is already escaped. A resolved
+    /// value reaches this text *after* that escape ran, so it is escaped here
+    /// instead, at the splice, which is the one point where bytes from outside
+    /// the tokener's input enter it.
+    MaskedPieceBytes,
+}
+
+/// Rewrites `text`'s own copies of the three reserved codepoints —
+/// [`MASKED_PIECE_PLACEHOLDER_START`], [`MASKED_PIECE_PLACEHOLDER_END`], and
+/// [`MASKED_PIECE_ESCAPE`] itself — as
+/// [`MASKED_PIECE_ESCAPE`]-plus-tag pairs, so the result holds none of them
+/// in the clear.
+///
+/// This is the *construction-time* half of the masked-piece placeholder's
+/// unambiguity: `tokened_bracket`/`tokened_text` run it over every byte they
+/// copy out of a **non-tokened** piece, and write
+/// [`MASKED_PIECE_PLACEHOLDER`] themselves for each piece they token. Since
+/// neither of the placeholder's codepoints survives this escape, every
+/// occurrence of the pair in a tokened text is one the tokener wrote —
+/// which is what lets [`restore_into`] and the macros step's own
+/// `untranslated_value` / `restored_value_children` recover a piece **by
+/// position** without ever asking whether the occurrence in front of them is
+/// genuine.
+///
+/// The encoding is unambiguous against all three things it has to be: a
+/// genuine placeholder (which holds no [`MASKED_PIECE_ESCAPE`], and whose own
+/// codepoints this escape never emits in the clear), itself (the introducer is
+/// escaped as `\u{E005}g`, so an introducer standing in the output is always
+/// one this function wrote), and ordinary text (which reaches
+/// [`unescape_masked_piece_bytes`] through the same pairing and comes back
+/// byte-for-byte).
+///
+/// Unlike the one-way `escape_passthrough_sentinels` it replaced, this is
+/// **two-way**: every consumer of a tokened text unescapes on the way out
+/// (see [`unescape_masked_piece_bytes`]), so a document that types a reserved
+/// codepoint sees it in the output rather than the escape's own bytes.
+///
+/// Text with none of the three — the overwhelming majority — is borrowed
+/// through unchanged.
+pub(crate) fn escape_masked_piece_bytes(text: &str) -> Cow<'_, str> {
+    if !text.contains([
+        MASKED_PIECE_PLACEHOLDER_START,
+        MASKED_PIECE_PLACEHOLDER_END,
+        MASKED_PIECE_ESCAPE,
+    ]) {
+        return Cow::Borrowed(text);
+    }
+
+    let mut out = String::with_capacity(text.len());
+
+    for c in text.chars() {
+        match c {
+            MASKED_PIECE_PLACEHOLDER_START => {
+                out.push(MASKED_PIECE_ESCAPE);
+                out.push(ESCAPED_START_TAG);
+            }
+
+            MASKED_PIECE_PLACEHOLDER_END => {
+                out.push(MASKED_PIECE_ESCAPE);
+                out.push(ESCAPED_END_TAG);
+            }
+
+            MASKED_PIECE_ESCAPE => {
+                out.push(MASKED_PIECE_ESCAPE);
+                out.push(ESCAPED_ESCAPE_TAG);
+            }
+
+            other => out.push(other),
+        }
+    }
+
+    Cow::Owned(out)
+}
+
+/// The codepoint an escape introduced by [`MASKED_PIECE_ESCAPE`] stands for,
+/// with the length of the tag that named it, or `None` when what follows the
+/// introducer is not a tag this crate wrote.
+///
+/// The `None` case makes the decode half **total** over arbitrary input,
+/// which is what lets every consumer of a tokened text run
+/// [`unescape_masked_piece_bytes`] unconditionally rather than first proving
+/// the text is well-formed. Copying an unrecognized introducer through
+/// verbatim — rather than eating the byte after it as a tag — is what keeps
+/// such a text's own bytes intact. Both points at which bytes enter a tokened
+/// text do escape (see [`MASKED_PIECE_PLACEHOLDER_START`]), so the pipeline
+/// itself no longer produces an unpaired introducer; this arm is the codec's
+/// contract, pinned directly by
+/// `masked_piece_escape_round_trips_every_reserved_codepoint`.
+fn escaped_literal(tail: &str) -> Option<(char, usize)> {
+    match tail.chars().next()? {
+        ESCAPED_START_TAG => Some((MASKED_PIECE_PLACEHOLDER_START, ESCAPED_START_TAG.len_utf8())),
+        ESCAPED_END_TAG => Some((MASKED_PIECE_PLACEHOLDER_END, ESCAPED_END_TAG.len_utf8())),
+        ESCAPED_ESCAPE_TAG => Some((MASKED_PIECE_ESCAPE, ESCAPED_ESCAPE_TAG.len_utf8())),
+        _ => None,
+    }
+}
+
+/// Undoes [`escape_masked_piece_bytes`], putting each escaped codepoint back
+/// as the document wrote it.
+///
+/// Every consumer that reads a tokened text and produces user-visible output
+/// has to run this before that output leaves the pipeline, on the bytes
+/// *between* the genuine [`MASKED_PIECE_PLACEHOLDER`] occurrences rather than
+/// over the restored bodies — a body is the node's own bytes and was never
+/// escaped. [`restore_into`] does both halves in one walk; the macros step's
+/// `untranslated_value` and `computed_value_children` call this directly on
+/// the runs their own positional walk hands them.
+///
+/// Text holding no [`MASKED_PIECE_ESCAPE`] is borrowed through unchanged.
+pub(crate) fn unescape_masked_piece_bytes(text: &str) -> Cow<'_, str> {
+    if !text.contains(MASKED_PIECE_ESCAPE) {
+        return Cow::Borrowed(text);
+    }
+
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+
+    while let Some(at) = rest.find(MASKED_PIECE_ESCAPE) {
+        out.push_str(rest.get(..at).unwrap_or_default());
+
+        let tail = rest
+            .get(at.saturating_add(MASKED_PIECE_ESCAPE.len_utf8())..)
+            .unwrap_or_default();
+
+        match escaped_literal(tail) {
+            Some((literal, tag_len)) => {
+                out.push(literal);
+                rest = tail.get(tag_len..).unwrap_or_default();
+            }
+
+            None => {
+                out.push(MASKED_PIECE_ESCAPE);
+                rest = tail;
+            }
+        }
+    }
+
+    out.push_str(rest);
+
+    Cow::Owned(out)
+}
+
+/// Substitutes each [`MASKED_PIECE_PLACEHOLDER`] occurrence in `text` with the
+/// next of `bodies` `*cursor` finds, shifting every offset in `indices` past
+/// the substitutions that end at or before it.
+///
+/// `cursor` is shared across every call this restore makes (see
+/// [`ElementAttribute::into_owned_restoring`] for why), so it is threaded
+/// through rather than reset here: a placeholder's *position* in the whole
+/// attribute list — not an index carried in its own bytes — says which body
+/// it stands for.
+///
+/// An occurrence `*cursor` finds past the end of `bodies` is copied through
+/// verbatim rather than panicking or misattributing a later one — the same
+/// leniency an unsupplied index used to get, for the same reason: it should
+/// never be reachable in practice (every caller tokens exactly as many
+/// pieces as it supplies bodies for), but a caller that someday doesn't
+/// should fail closed, not corrupt a neighboring restore. Each splice's byte
+/// range in the restored text is appended to `restored_ranges`, in ascending
+/// order. See [`ElementAttribute::into_owned_restoring`] for why the shift is
+/// right where a re-derivation would not be.
+///
+/// The same walk also undoes [`escape_masked_piece_bytes`] over every byte
+/// that is *not* a substituted body: the tokener escaped a document's own
+/// copies of the reserved codepoints on the way in, and this is the way out
+/// for every value a bracket parse produces. Doing it in the one walk rather
+/// than in a second pass is what keeps `indices` and `restored_ranges`
+/// honest — both are byte offsets into the text being built, so an unescape
+/// that shortened it afterwards would move every offset already recorded, and
+/// a second pass would also have to know not to reach inside a restored body
+/// (which is the node's own bytes and was never escaped).
+///
+/// [`restore_tokens`] over a [`CowStr`], keeping the plain
+/// [`into_owned`](CowStr::into_owned) conversion — and with it the inline
+/// representation a short string prefers — for the overwhelmingly common text
+/// that holds neither a placeholder nor an escape.
+pub(super) fn restore_into<'dst>(
+    text: CowStr<'_>,
+    bodies: &[&str],
+    cursor: &mut usize,
+    indices: &mut [usize],
+    restored_ranges: &mut Vec<std::ops::Range<usize>>,
+) -> CowStr<'dst> {
+    // `bodies.is_empty()` is deliberately *not* a reason to skip the walk any
+    // more: a text with no piece to restore may still carry an escape to
+    // undo — `tokened_bracket`/`tokened_text` escape unconditionally, whether
+    // or not the bracket held anything to token.
+    if !text.contains([MASKED_PIECE_PLACEHOLDER_START, MASKED_PIECE_ESCAPE]) {
+        return text.into_owned();
+    }
+
+    CowStr::from(restore_tokens(
+        text.as_ref(),
+        bodies,
+        cursor,
+        indices,
+        restored_ranges,
+    ))
+}
+
+fn restore_tokens(
+    text: &str,
+    bodies: &[&str],
+    cursor: &mut usize,
+    indices: &mut [usize],
+    restored_ranges: &mut Vec<std::ops::Range<usize>>,
+) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut scan_cursor = 0usize;
+
+    // `(offset just past a substituted placeholder or unescaped codepoint,
+    // cumulative delta)`, in the *original* text's coordinates and in
+    // increasing order.
+    let mut shifts: Vec<(usize, isize)> = vec![];
+    let mut delta: isize = 0;
+
+    while let Some(rel) = text
+        .get(scan_cursor..)
+        .and_then(|rest| rest.find([MASKED_PIECE_PLACEHOLDER_START, MASKED_PIECE_ESCAPE]))
+    {
+        let start = scan_cursor.saturating_add(rel);
+
+        // An escape the tokener wrote over a reserved codepoint the
+        // *document* typed. It is tested first because it is the only one of
+        // the two that can begin with `MASKED_PIECE_ESCAPE`, and because the
+        // escape leaves no `MASKED_PIECE_PLACEHOLDER_START` standing: a start
+        // codepoint found here is therefore always a placeholder the tokener
+        // wrote, and its `END` half always follows.
+        if let Some(tail) = text
+            .get(start..)
+            .and_then(|head| head.strip_prefix(MASKED_PIECE_ESCAPE))
+        {
+            let escape_len = MASKED_PIECE_ESCAPE.len_utf8();
+
+            let end = match escaped_literal(tail) {
+                Some((literal, tag_len)) => {
+                    let end = start.saturating_add(escape_len).saturating_add(tag_len);
+
+                    out.push_str(text.get(scan_cursor..start).unwrap_or_default());
+                    out.push(literal);
+
+                    delta = delta
+                        .saturating_add(isize::try_from(literal.len_utf8()).unwrap_or(isize::MAX))
+                        .saturating_sub(
+                            isize::try_from(end.saturating_sub(start)).unwrap_or(isize::MAX),
+                        );
+
+                    shifts.push((end, delta));
+                    end
+                }
+
+                None => {
+                    // An introducer this crate did not write (see
+                    // `escaped_literal`): copy it through and keep scanning,
+                    // so the bytes after it are still read.
+                    let end = start.saturating_add(escape_len);
+                    out.push_str(text.get(scan_cursor..end).unwrap_or_default());
+                    end
+                }
+            };
+
+            scan_cursor = end;
+            continue;
+        }
+
+        let end = start.saturating_add(MASKED_PIECE_PLACEHOLDER.len());
+
+        let Some(body) = bodies.get(*cursor).copied() else {
+            // More occurrences than the caller supplied bodies for: copy this
+            // one through and keep scanning, so a body-bearing occurrence
+            // later in the same text is still found. See this function's own
+            // doc comment for why this should be unreachable in practice.
+            out.push_str(text.get(scan_cursor..end).unwrap_or_default());
+            scan_cursor = end;
+            continue;
+        };
+
+        *cursor += 1;
+
+        out.push_str(text.get(scan_cursor..start).unwrap_or_default());
+        restored_ranges.push(out.len()..out.len() + body.len());
+        out.push_str(body);
+
+        delta = delta
+            .saturating_add(isize::try_from(body.len()).unwrap_or(isize::MAX))
+            .saturating_sub(isize::try_from(end.saturating_sub(start)).unwrap_or(isize::MAX));
+
+        shifts.push((end, delta));
+        scan_cursor = end;
+    }
+
+    out.push_str(text.get(scan_cursor..).unwrap_or_default());
+
+    for index in indices.iter_mut() {
+        // Neither a placeholder nor an escape holds any of the `#`/`.`/`%`
+        // delimiters the shorthand scan keys off — the escape's own tags are
+        // `s`/`e`/`g` — so no offset ever falls *inside* one: each is either
+        // before every substitution or after some, and takes that one's
+        // cumulative delta.
+        if let Some((_, delta)) = shifts.iter().rev().find(|(end, _)| *end <= *index) {
+            *index = index.saturating_add_signed(*delta);
+        }
+    }
+
+    out
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ParseShorthand(pub bool);
+
+fn cowstr_from_source_and_span<'src>(source: &CowStr<'src>, span: &Span<'_>) -> CowStr<'src> {
+    if let CowStr::Borrowed(source) = source {
+        let borrowed: Span<'src> = Span::new(source)
+            .discard(span.byte_offset())
+            .slice_to(..span.len());
+
+        CowStr::Borrowed(borrowed.data())
+    } else {
+        CowStr::from(span.data().to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use crate::{
+        attributes::{AttrlistContext, element_attribute::ParseShorthand},
+        strings::CowStr,
+        tests::prelude::*,
+    };
+
+    #[test]
+    fn impl_clone() {
+        // Silly test to mark the #[derive(...)] line as covered.
+        let p = Parser::default();
+
+        let b1 = crate::attributes::ElementAttribute::parse(
+            &CowStr::from("abc"),
+            0,
+            &p,
+            ParseShorthand(false),
+            AttrlistContext::Inline,
+        )
+        .0;
+
+        let b2 = b1.clone();
+
+        assert_eq!(b1, b2);
+    }
+
+    #[test]
+    fn quoted_values_own_unescape_shortens_a_value_by_one_byte_ahead_of_a_placeholder() {
+        // Direct evidence for the second blocker that ruled out carrying a
+        // byte-offset table through `Attrlist::parse`, checked against this
+        // method's own parsed value
+        // rather than only a full document's final rendered HTML (as
+        // `tests/sentinels.rs`'s
+        // `a_quoted_values_own_unescape_moves_a_placeholder_in_the_parsed_value`
+        // does). `\"` is rewritten to `"` by a plain `String::replace` on the
+        // way to a quoted value — one byte shorter than what it replaces —
+        // and that rewrite is not reported back anywhere a caller could use
+        // to remap a byte offset recorded against the source it parsed.
+        use crate::attributes::element_attribute::MASKED_PIECE_PLACEHOLDER;
+
+        let source = format!(r#"alt="a \" b {MASKED_PIECE_PLACEHOLDER} c""#);
+        let written_offset = source.find(MASKED_PIECE_PLACEHOLDER).unwrap();
+
+        let p = Parser::default();
+        let (attr, _offset, warning_types) = crate::attributes::ElementAttribute::parse(
+            &CowStr::from(source.as_str()),
+            0,
+            &p,
+            ParseShorthand(false),
+            AttrlistContext::Inline,
+        );
+
+        assert!(warning_types.is_empty());
+        assert!(attr.value_is_quoted());
+
+        let parsed_offset = attr.value().find(MASKED_PIECE_PLACEHOLDER).unwrap();
+
+        // `alt="` (5 bytes) is stripped entirely, since the parsed value
+        // holds only the entry's own content; the `\"` -> `"` unescape ahead
+        // of the placeholder accounts for the other byte.
+        assert_eq!(
+            parsed_offset,
+            written_offset - 5 - 1,
+            "the value's own unescape must shorten it by one byte ahead of the placeholder: {:?}",
+            attr.value()
+        );
+    }
+
+    #[test]
+    fn masked_piece_escape_round_trips_every_reserved_codepoint() {
+        use std::borrow::Cow;
+
+        use crate::attributes::element_attribute::{
+            escape_masked_piece_bytes, unescape_masked_piece_bytes,
+        };
+
+        // The three codepoints the escape reserves, plus one of its own tag
+        // characters standing on its own (`s`, which must not be read as a
+        // tag when nothing introduces it).
+        let raw = "a\u{96}b\u{97}c\u{e005}d\u{e005}se";
+        let escaped = escape_masked_piece_bytes(raw);
+
+        assert_eq!(
+            escaped.as_ref(),
+            "a\u{e005}sb\u{e005}ec\u{e005}gd\u{e005}gse"
+        );
+
+        // Neither of the placeholder's own codepoints survives the escape,
+        // which is the whole property `tokened_bracket`/`tokened_text` rest
+        // on: every occurrence of the pair in a tokened text is one the
+        // tokener wrote.
+        assert!(
+            !escaped.contains(super::MASKED_PIECE_PLACEHOLDER_START)
+                && !escaped.contains(super::MASKED_PIECE_PLACEHOLDER_END)
+        );
+
+        assert_eq!(unescape_masked_piece_bytes(&escaped).as_ref(), raw);
+
+        // Text holding none of the three is borrowed through, in both
+        // directions. Compared by discriminant rather than by `matches!`,
+        // whose own non-matching arm would be a region no input reaches.
+        let borrowed = std::mem::discriminant(&Cow::<str>::Borrowed(""));
+
+        assert_eq!(
+            std::mem::discriminant(&escape_masked_piece_bytes("plain text")),
+            borrowed
+        );
+
+        assert_eq!(
+            std::mem::discriminant(&unescape_masked_piece_bytes("plain text")),
+            borrowed
+        );
+
+        // An introducer this crate did not write is copied through with the
+        // bytes after it, rather than eating one as a tag. That holds at the
+        // end of the text too, where there is no byte after it at all.
+        //
+        // Every point at which bytes enter a tokened text escapes them now
+        // (the tokener's own copy, and the splice inside
+        // `Attrlist::parse_tokened`), so this is the codec's contract rather
+        // than a case the pipeline still produces: the decode half is total
+        // over arbitrary input, which is what lets a caller run it
+        // unconditionally.
+        assert_eq!(
+            unescape_masked_piece_bytes("p\u{e005}zq\u{e005}").as_ref(),
+            "p\u{e005}zq\u{e005}"
+        );
+    }
+
+    #[test]
+    fn empty_source() {
+        let p = Parser::default();
+
+        let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+            &CowStr::from(""),
+            0,
+            &p,
+            ParseShorthand(false),
+            AttrlistContext::Inline,
+        );
+
+        assert!(warning_types.is_empty());
+
+        assert_eq!(
+            element_attr,
+            ElementAttribute {
+                name: None,
+                shorthand_items: &[],
+                value: "",
+            }
+        );
+
+        assert!(element_attr.name().is_none());
+        assert!(element_attr.block_style().is_none());
+        assert!(element_attr.id().is_none());
+        assert!(element_attr.roles().is_empty());
+        assert!(element_attr.options().is_empty());
+
+        assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn only_spaces() {
+        let p = Parser::default();
+
+        let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+            &CowStr::from("   "),
+            0,
+            &p,
+            ParseShorthand(false),
+            AttrlistContext::Inline,
+        );
+
+        assert!(warning_types.is_empty());
+
+        assert_eq!(
+            element_attr,
+            ElementAttribute {
+                name: None,
+                shorthand_items: &[],
+                value: "",
+            }
+        );
+
+        assert!(element_attr.name().is_none());
+        assert!(element_attr.block_style().is_none());
+        assert!(element_attr.id().is_none());
+        assert!(element_attr.roles().is_empty());
+        assert!(element_attr.options().is_empty());
+
+        assert_eq!(offset, 3);
+    }
+
+    #[test]
+    fn unquoted_and_unnamed_value() {
+        let p = Parser::default();
+
+        let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+            &CowStr::from("abc"),
+            0,
+            &p,
+            ParseShorthand(false),
+            AttrlistContext::Inline,
+        );
+
+        assert!(warning_types.is_empty());
+
+        assert_eq!(
+            element_attr,
+            ElementAttribute {
+                name: None,
+                shorthand_items: &[],
+                value: "abc",
+            }
+        );
+
+        assert!(element_attr.name().is_none());
+        assert!(element_attr.block_style().is_none());
+        assert!(element_attr.id().is_none());
+        assert!(element_attr.roles().is_empty());
+        assert!(element_attr.options().is_empty());
+
+        assert_eq!(offset, 3);
+    }
+
+    #[test]
+    fn unquoted_stops_at_comma() {
+        let p = Parser::default();
+
+        let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+            &CowStr::from("abc,def"),
+            0,
+            &p,
+            ParseShorthand(false),
+            AttrlistContext::Inline,
+        );
+
+        assert!(warning_types.is_empty());
+
+        assert_eq!(
+            element_attr,
+            ElementAttribute {
+                name: None,
+                shorthand_items: &[],
+                value: "abc",
+            }
+        );
+
+        assert!(element_attr.name().is_none());
+        assert!(element_attr.block_style().is_none());
+        assert!(element_attr.id().is_none());
+        assert!(element_attr.roles().is_empty());
+        assert!(element_attr.options().is_empty());
+
+        assert_eq!(offset, 3);
+    }
+
+    mod quoted_string {
+        use crate::{
+            attributes::{AttrlistContext, element_attribute::ParseShorthand},
+            strings::CowStr,
+            tests::prelude::*,
+        };
+
+        #[test]
+        fn err_unterminated_double_quote() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("\"xyz"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "\"xyz"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 4);
+
+            assert_eq!(
+                warning_types,
+                vec![WarningType::AttributeValueMissingTerminatingQuote]
+            );
+        }
+
+        #[test]
+        fn err_unterminated_double_quote_ends_at_comma() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("\"xyz,abc"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "\"xyz"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 4);
+            assert_eq!(
+                warning_types,
+                vec![WarningType::AttributeValueMissingTerminatingQuote]
+            );
+        }
+
+        #[test]
+        fn double_quoted_string() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("\"abc\"def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "abc"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 5);
+        }
+
+        #[test]
+        fn double_quoted_with_escape() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("\"a\\\"bc\"def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "a\"bc"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 7);
+        }
+
+        #[test]
+        fn double_quoted_with_single_quote() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("\"a'bc\"def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "a'bc"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 6);
+        }
+
+        #[test]
+        fn err_unterminated_single_quote() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("\'xyz"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "\'xyz"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 4);
+
+            assert_eq!(
+                warning_types,
+                vec![WarningType::AttributeValueMissingTerminatingQuote]
+            );
+        }
+
+        #[test]
+        fn err_unterminated_single_quote_ends_at_comma() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("\'xyz,abc"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "\'xyz"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 4);
+            assert_eq!(
+                warning_types,
+                vec![WarningType::AttributeValueMissingTerminatingQuote]
+            );
+        }
+
+        #[test]
+        fn single_quoted_string() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("'abc'def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "abc"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 5);
+        }
+
+        #[test]
+        fn single_quoted_with_escape() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("'a\\'bc'def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "a'bc"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 7);
+        }
+
+        #[test]
+        fn single_quoted_with_double_quote() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("'a\"bc'def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "a\"bc"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 6);
+        }
+
+        #[test]
+        fn single_quoted_gets_substitions() {
+            let p = Parser::default().with_intrinsic_attribute(
+                "foo",
+                "bar",
+                ModificationContext::Anywhere,
+            );
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("'*abc* def {foo}'"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Block,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "<strong>abc</strong> def bar"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 17);
+        }
+    }
+
+    mod named {
+        use crate::{
+            attributes::{AttrlistContext, element_attribute::ParseShorthand},
+            strings::CowStr,
+            tests::prelude::*,
+        };
+
+        #[test]
+        fn simple_named_value() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc=def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: Some("abc"),
+                    shorthand_items: &[],
+                    value: "def"
+                }
+            );
+
+            assert_eq!(element_attr.name().unwrap(), "abc");
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 7);
+        }
+
+        #[test]
+        fn ignores_spaces_around_equals() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc =  def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: Some("abc"),
+                    shorthand_items: &[],
+                    value: "def"
+                }
+            );
+
+            assert_eq!(element_attr.name().unwrap(), "abc");
+
+            assert_eq!(offset, 10);
+        }
+
+        #[test]
+        fn numeric_name() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("94-x =def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: Some("94-x"),
+                    shorthand_items: &[],
+                    value: "def"
+                }
+            );
+
+            assert_eq!(element_attr.name().unwrap(), "94-x");
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 9);
+        }
+
+        #[test]
+        fn quoted_value() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc='def'g"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: Some("abc"),
+                    shorthand_items: &[],
+                    value: "def"
+                }
+            );
+
+            assert_eq!(element_attr.name().unwrap(), "abc");
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 9);
+        }
+
+        #[test]
+        fn named_with_empty_value() {
+            let p = Parser::default();
+
+            // `name=` with nothing after the `=` is a named attribute whose
+            // value is the empty string (e.g. `[caption=]` clears a
+            // label), not a positional attribute with the literal
+            // value "abc=".
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc="),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: Some("abc"),
+                    shorthand_items: &[],
+                    value: ""
+                }
+            );
+
+            assert_eq!(element_attr.name(), Some("abc"));
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 4);
+        }
+
+        #[test]
+        fn named_with_empty_value_before_comma() {
+            let p = Parser::default();
+
+            // `name=` immediately followed by a comma is likewise a named
+            // attribute with an empty value; parsing stops at the comma so the
+            // next attribute can be read separately.
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc=,def"),
+                0,
+                &p,
+                ParseShorthand(false),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: Some("abc"),
+                    shorthand_items: &[],
+                    value: ""
+                }
+            );
+
+            assert_eq!(element_attr.name(), Some("abc"));
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 4);
+        }
+    }
+
+    mod parse_with_shorthand {
+        use crate::{
+            attributes::{AttrlistContext, element_attribute::ParseShorthand},
+            strings::CowStr,
+            tests::prelude::*,
+        };
+
+        #[test]
+        fn block_style_only() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["abc"],
+                    value: "abc"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert_eq!(element_attr.shorthand_items(), vec!["abc"]);
+            assert_eq!(element_attr.block_style().unwrap(), "abc");
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 3);
+        }
+
+        #[test]
+        fn ignore_if_named_attribute() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("name=block_style#id"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: Some("name"),
+                    shorthand_items: &[],
+                    value: "block_style#id"
+                }
+            );
+
+            assert_eq!(element_attr.name().unwrap(), "name");
+            assert!(element_attr.shorthand_items().is_empty());
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 19);
+        }
+
+        #[test]
+        fn error_empty_id() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc#"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["abc"],
+                    value: "abc#"
+                }
+            );
+
+            assert_eq!(offset, 4);
+            assert_eq!(warning_types, vec![WarningType::EmptyShorthandName]);
+        }
+
+        #[test]
+        fn error_duplicate_delimiter() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc##id"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["abc", "#id"],
+                    value: "abc##id"
+                }
+            );
+
+            assert_eq!(offset, 7);
+            assert_eq!(warning_types, vec![WarningType::EmptyShorthandName]);
+        }
+
+        #[test]
+        fn error_whitespace_only_id() {
+            // A name made only of whitespace names nothing, exactly as a
+            // missing name does. It used to be accepted without a warning and
+            // then surface as an empty ID.
+            // See https://github.com/asciidoc-rs/asciidoc-parser/issues/1273.
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc#\t"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["abc"],
+                    value: "abc#\t"
+                }
+            );
+
+            assert_eq!(element_attr.block_style().unwrap(), "abc");
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 5);
+            assert_eq!(warning_types, vec![WarningType::EmptyShorthandName]);
+        }
+
+        #[test]
+        fn error_whitespace_only_id_does_not_shadow_later_id() {
+            // The empty ID that a whitespace-only name used to yield came
+            // first, so it hid the real ID declared after it.
+            // See https://github.com/asciidoc-rs/asciidoc-parser/issues/1273.
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc#\t#realid"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["abc", "#realid"],
+                    value: "abc#\t#realid"
+                }
+            );
+
+            assert_eq!(element_attr.block_style().unwrap(), "abc");
+            assert_eq!(element_attr.id().unwrap(), "realid");
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 12);
+            assert_eq!(warning_types, vec![WarningType::EmptyShorthandName]);
+        }
+
+        #[test]
+        fn error_whitespace_only_role() {
+            // See https://github.com/asciidoc-rs/asciidoc-parser/issues/1273.
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc.\t"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["abc"],
+                    value: "abc.\t"
+                }
+            );
+
+            assert_eq!(element_attr.block_style().unwrap(), "abc");
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 5);
+            assert_eq!(warning_types, vec![WarningType::EmptyShorthandName]);
+        }
+
+        #[test]
+        fn error_whitespace_only_option() {
+            // A non-breaking space is whitespace, too, and (unlike a plain
+            // space) survives the trailing-space trim applied to the attribute
+            // value before the shorthand is parsed.
+            // See https://github.com/asciidoc-rs/asciidoc-parser/issues/1273.
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("abc%\u{a0}"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["abc"],
+                    value: "abc%\u{a0}"
+                }
+            );
+
+            assert_eq!(element_attr.block_style().unwrap(), "abc");
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 6);
+            assert_eq!(warning_types, vec![WarningType::EmptyShorthandName]);
+        }
+
+        #[test]
+        fn id_only() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("#xyz"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["#xyz"],
+                    value: "#xyz"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert_eq!(element_attr.shorthand_items(), vec!["#xyz"]);
+            assert!(element_attr.block_style().is_none());
+            assert_eq!(element_attr.id().unwrap(), "xyz");
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 4);
+        }
+
+        #[test]
+        fn one_role_only() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from(".role1"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[".role1",],
+                    value: ".role1"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert_eq!(element_attr.shorthand_items(), vec![".role1"]);
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert_eq!(element_attr.roles(), vec!("role1"));
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 6);
+        }
+
+        #[test]
+        fn multiple_roles() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from(".role1.role2.role3"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[".role1", ".role2", ".role3"],
+                    value: ".role1.role2.role3"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+
+            assert_eq!(
+                element_attr.shorthand_items(),
+                vec![".role1", ".role2", ".role3"]
+            );
+
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert_eq!(element_attr.roles(), vec!("role1", "role2", "role3",));
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 18);
+        }
+
+        #[test]
+        fn one_option_only() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("%option1"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["%option1"],
+                    value: "%option1"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert_eq!(element_attr.shorthand_items(), vec!["%option1"]);
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert_eq!(element_attr.options(), vec!("option1"));
+
+            assert_eq!(offset, 8);
+        }
+
+        #[test]
+        fn multiple_options() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("%option1%option2%option3"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["%option1", "%option2", "%option3"],
+                    value: "%option1%option2%option3"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+
+            assert_eq!(
+                element_attr.shorthand_items(),
+                vec!["%option1", "%option2", "%option3"]
+            );
+
+            assert!(element_attr.block_style().is_none());
+            assert!(element_attr.id().is_none());
+            assert!(element_attr.roles().is_empty());
+            assert_eq!(
+                element_attr.options(),
+                vec!("option1", "option2", "option3")
+            );
+
+            assert_eq!(offset, 24);
+        }
+
+        #[test]
+        fn block_style_and_id() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("appendix#custom-id"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["appendix", "#custom-id"],
+                    value: "appendix#custom-id"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+            assert_eq!(
+                element_attr.shorthand_items(),
+                vec!["appendix", "#custom-id"]
+            );
+            assert_eq!(element_attr.block_style().unwrap(), "appendix",);
+            assert_eq!(element_attr.id().unwrap(), "custom-id",);
+            assert!(element_attr.roles().is_empty());
+            assert!(element_attr.options().is_empty());
+
+            assert_eq!(offset, 18);
+        }
+
+        #[test]
+        fn id_role_and_option() {
+            let p = Parser::default();
+
+            let (element_attr, offset, warning_types) = crate::attributes::ElementAttribute::parse(
+                &CowStr::from("#rules.prominent%incremental"),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Inline,
+            );
+
+            assert!(warning_types.is_empty());
+
+            assert_eq!(
+                element_attr,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["#rules", ".prominent", "%incremental"],
+                    value: "#rules.prominent%incremental"
+                }
+            );
+
+            assert!(element_attr.name().is_none());
+
+            assert_eq!(
+                element_attr.shorthand_items(),
+                vec!["#rules", ".prominent", "%incremental"]
+            );
+
+            assert!(element_attr.block_style().is_none());
+            assert_eq!(element_attr.id().unwrap(), "rules");
+            assert_eq!(element_attr.roles(), vec!("prominent"));
+            assert_eq!(element_attr.options(), vec!("incremental"));
+
+            assert_eq!(offset, 28);
+        }
+    }
+
+    mod merge_block_style_shorthand {
+        use crate::{
+            attributes::{AttrlistContext, element_attribute::ParseShorthand},
+            strings::CowStr,
+            tests::prelude::*,
+        };
+
+        fn parse(value: &str) -> crate::attributes::ElementAttribute<'_> {
+            let p = Parser::default();
+            crate::attributes::ElementAttribute::parse(
+                &CowStr::from(value),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Block,
+            )
+            .0
+        }
+
+        #[test]
+        fn merges_disjoint_shorthand() {
+            let earlier = parse("#myid");
+            let later = parse(".myrole");
+
+            let merged =
+                crate::attributes::ElementAttribute::merge_block_style_shorthand(&earlier, &later);
+
+            assert!(merged.name().is_none());
+            assert_eq!(merged.id().unwrap(), "myid");
+            assert_eq!(merged.roles(), vec!["myrole"]);
+        }
+
+        #[test]
+        fn empty_shorthand_names_are_elided() {
+            // A run of shorthand delimiters yields components with empty names
+            // (reported as `EmptyShorthandName` when that line was parsed).
+            // They carry nothing the accessors read, so the merged shorthand
+            // leaves them out rather than re-encoding a bare delimiter — which
+            // would make the synthesized value warn if it were parsed again.
+            // See https://github.com/asciidoc-rs/asciidoc-parser/issues/1237.
+            let earlier = parse("%%%%\t\t%%%f");
+            let later = parse("f");
+
+            // The `%\t\t` run names nothing either, so it never becomes an
+            // option to be merged in the first place.
+            // See https://github.com/asciidoc-rs/asciidoc-parser/issues/1273.
+            assert_eq!(earlier.options(), vec!["f"]);
+
+            let merged =
+                crate::attributes::ElementAttribute::merge_block_style_shorthand(&earlier, &later);
+
+            assert_eq!(
+                merged,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["f", "%f"],
+                    value: "f%f",
+                }
+            );
+
+            assert_eq!(merged.block_style().unwrap(), "f");
+            assert!(merged.id().is_none());
+            assert!(merged.roles().is_empty());
+            assert_eq!(merged.options(), vec!["f"]);
+        }
+
+        #[test]
+        fn empty_role_and_id_names_are_elided() {
+            // The same for runs of `.` and `#`: only the named components
+            // survive into the merged shorthand.
+            let earlier = parse("...role");
+            let later = parse("style##myid");
+
+            let merged =
+                crate::attributes::ElementAttribute::merge_block_style_shorthand(&earlier, &later);
+
+            assert_eq!(
+                merged,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &["style", "#myid", ".role"],
+                    value: "style#myid.role",
+                }
+            );
+
+            assert_eq!(merged.block_style().unwrap(), "style");
+            assert_eq!(merged.id().unwrap(), "myid");
+            assert_eq!(merged.roles(), vec!["role"]);
+            assert!(merged.options().is_empty());
+        }
+
+        #[test]
+        fn two_empty_positionals_stay_empty() {
+            // Merging two first positionals that carry nothing produces an
+            // attribute with an empty value and no shorthand items.
+            let earlier = parse("");
+            let later = parse("");
+
+            let merged =
+                crate::attributes::ElementAttribute::merge_block_style_shorthand(&earlier, &later);
+
+            assert_eq!(
+                merged,
+                ElementAttribute {
+                    name: None,
+                    shorthand_items: &[],
+                    value: "",
+                }
+            );
+
+            assert!(merged.name().is_none());
+            assert!(merged.block_style().is_none());
+            assert!(merged.id().is_none());
+            assert!(merged.roles().is_empty());
+            assert!(merged.options().is_empty());
+        }
+    }
+
+    mod without_shorthand_roles {
+        use crate::{
+            attributes::{AttrlistContext, element_attribute::ParseShorthand},
+            strings::CowStr,
+            tests::prelude::*,
+        };
+
+        fn parse(value: &str) -> crate::attributes::ElementAttribute<'_> {
+            let p = Parser::default();
+            crate::attributes::ElementAttribute::parse(
+                &CowStr::from(value),
+                0,
+                &p,
+                ParseShorthand(true),
+                AttrlistContext::Block,
+            )
+            .0
+        }
+
+        #[test]
+        fn drops_roles_keeps_style_id_and_options() {
+            let attr = parse("sidebar#myid.role1.role2%opt1");
+            let stripped = attr.without_shorthand_roles();
+
+            assert_eq!(stripped.block_style().unwrap(), "sidebar");
+            assert_eq!(stripped.id().unwrap(), "myid");
+            assert!(stripped.roles().is_empty());
+            assert_eq!(stripped.options(), vec!["opt1"]);
+        }
+
+        #[test]
+        fn returns_clone_when_no_roles_present() {
+            // With no role shorthand to strip, the attribute is returned as-is.
+            let attr = parse("sidebar#myid%opt1");
+            let stripped = attr.without_shorthand_roles();
+
+            assert_eq!(stripped, attr);
+        }
+
+        #[test]
+        fn roles_only_becomes_empty() {
+            let attr = parse(".role1.role2");
+            let stripped = attr.without_shorthand_roles();
+
+            assert!(stripped.block_style().is_none());
+            assert!(stripped.id().is_none());
+            assert!(stripped.roles().is_empty());
+            assert!(stripped.options().is_empty());
+        }
+    }
+}

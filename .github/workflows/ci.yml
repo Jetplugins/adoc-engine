@@ -12,6 +12,7 @@ jobs:
         with: { python-version: '3.14' }
       - run: cargo test --workspace --locked
       - run: cargo build --locked
+      - run: python3 tests/library_consumer.py
       - run: python3 tests/protocol.py target/debug/adoc-engine
       - run: python3 -m unittest discover -s benchmarks -p 'test_*.py'
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings

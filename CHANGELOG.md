@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Preserve separate titled checklists after nested lists, including the preceding
+  list's ordinary bullet markers.
+- Keep admonitions out of example numbering and honor caption overrides.
+- Correct bibliography/special-section headings, TOC entries, references, and
+  following section counters; preserve explicit `sectnums=all` behavior.
+
+- Keep list items following a continuation-attached admonition as separate
+  items in HTML, EPUB and publication exports, including styled admonition
+  paragraphs, multiline content and returns to an ancestor list.
+
 ## 0.1.0
 
 - Native AsciiDoc library, CLI, persistent worker, and stdio LSP.

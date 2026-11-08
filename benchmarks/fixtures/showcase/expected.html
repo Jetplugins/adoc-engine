@@ -1,0 +1,633 @@
+<h1>Atlas Operations Handbook</h1>
+<div id="toc" class="toc">
+<div id="toctitle">Table of Contents</div>
+<ul class="sectlevel1">
+<li><a href="#typography">1. Typography and navigation</a></li>
+<li><a href="#deployment">2. Deployment and nested lists</a>
+<ul class="sectlevel2">
+<li><a href="#ordered-steps-and-attached-blocks">2.1. Ordered steps and attached blocks</a></li>
+<li><a href="#unordered-lists-and-checklists">2.2. Unordered lists and checklists</a></li>
+<li><a href="#description-lists">2.3. Description lists</a></li>
+</ul>
+</li>
+<li><a href="#capacity">3. Tables and cell styles</a></li>
+<li><a href="#code-callouts-and-literal-text">4. Code, callouts, and literal text</a></li>
+<li><a href="#admonitions-and-compound-blocks">5. Admonitions and compound blocks</a></li>
+<li><a href="#images-and-captions">6. Images and captions</a></li>
+<li><a href="#includes-and-conditional-content">7. Includes and conditional content</a>
+<ul class="sectlevel2">
+<li><a href="#recovery-drill">7.1. Recovery drill</a></li>
+</ul>
+</li>
+<li><a href="#references-and-final-checks">8. References and final checks</a>
+<ul class="sectlevel2">
+<li><a href="#further-reading">Further reading</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<div id="preamble">
+<div class="sectionbody">
+<div class="paragraph lead">
+<p>A practical field guide to <strong>Atlas 2.4</strong>: from first deployment to incident response.
+This single source exercises document structure, inline substitutions, compound blocks, tables, references, images, and includes.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+Each engine receives the same source, attributes, include directory, and safe mode. The HTML is displayed with the same stylesheet.
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="typography">1. Typography and navigation</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Write <strong>strong statements</strong>, <em>careful emphasis</em>, <code>inline_code()</code>, and <strong><em>combined emphasis</em></strong>.
+Use <mark>marked text</mark>, <span class="small">small text</span>, <span class="underline">underlining</span>, <span class="line-through">strikethrough</span>, H<sub>2</sub>O, and x<sup>2</sup>.
+Typographic substitutions include &#169;, &#174;, &#8482;, an ellipsis&#8230;&#8203; and an arrow &#8594;.
+Constrained and unconstrained formatting can appear inside a word: un<strong>break</strong>able.</p>
+</div>
+<div class="paragraph">
+<p>Open <span class="menuseq"><b class="menu">File</b>&#160;<b class="caret">&#8250;</b> <b class="submenu">New</b>&#160;<b class="caret">&#8250;</b> <b class="menuitem">Project</b></span>, press <span class="keyseq"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></span>, then choose <b class="button">Create</b>.
+Visit <a href="https://example.org">the project site</a> or <a href="mailto:ops@example.org">contact operations</a>.
+The deployment procedure is in <a href="#deployment">Deployment and nested lists</a>; <a href="#capacity">our capacity table</a> summarizes resource allocation.
+The test environment is reproducible.<sup class="footnote" id="_footnote_environment">[<a id="_footnoteref_1" class="footnote" href="#_footnotedef_1" title="View footnote.">1</a>]</sup>
+The same environment is used for recovery drills.<sup class="footnoteref">[<a class="footnote" href="#_footnotedef_1" title="View footnote.">1</a>]</sup></p>
+</div>
+<div class="paragraph">
+<div class="title">Preserve line breaks with a hardbreak option</div>
+<p>One control plane.<br>
+Three worker nodes.<br>
+One reproducible release.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="deployment">2. Deployment and nested lists</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="ordered-steps-and-attached-blocks">2.1. Ordered steps and attached blocks</h3>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Validate the target cluster.</p>
+<div class="olist loweralpha">
+<ol class="loweralpha" type="a">
+<li>
+<p>Check available capacity.</p>
+</li>
+<li>
+<p>Confirm that the staging namespace exists.</p>
+</li>
+</ol>
+</div>
+</li>
+<li>
+<p>Deploy the application.</p>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-shell" data-lang="shell">atlas deploy --environment staging --version 2.4
+atlas status --watch</code></pre>
+</div>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Tip</div>
+</td>
+<td class="content">
+Keep the previous release until health checks have completed.
+</td>
+</tr>
+</table>
+</div>
+</li>
+<li>
+<p>Promote the verified release.</p>
+</li>
+</ol>
+</div>
+</div>
+<div class="sect2">
+<h3 id="unordered-lists-and-checklists">2.2. Unordered lists and checklists</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Control plane</p>
+<div class="ulist">
+<ul>
+<li>
+<p>API gateway</p>
+</li>
+<li>
+<p>Scheduler</p>
+<div class="ulist">
+<ul>
+<li>
+<p>Queue monitoring</p>
+</li>
+<li>
+<p>Retry policy</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+</li>
+<li>
+<p>Workers</p>
+<div class="ulist">
+<ul>
+<li>
+<p>Storage adapter</p>
+</li>
+<li>
+<p>Rendering service</p>
+</li>
+</ul>
+</div>
+</li>
+</ul>
+</div>
+<div class="ulist checklist">
+<div class="title">Release checklist</div>
+<ul class="checklist">
+<li>
+<p>&#10003; Build reproducible artifacts</p>
+</li>
+<li>
+<p>&#10003; Verify the source document</p>
+</li>
+<li>
+<p>&#10063; Review the staging deployment</p>
+</li>
+<li>
+<p>&#10063; Promote to production</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="description-lists">2.3. Description lists</h3>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">Control plane</dt>
+<dd>
+<p>Accepts requests and dispatches jobs.</p>
+</dd>
+<dt class="hdlist1">Worker</dt>
+<dd>
+<p>Converts one input into an output artifact.</p>
+</dd>
+<dt class="hdlist1">Artifact</dt>
+<dd>
+<p>A versioned HTML, PDF, EPUB, or SVG result.</p>
+</dd>
+</dl>
+</div>
+<div class="hdlist">
+<table>
+<tr>
+<td class="hdlist1">
+RTO
+</td>
+<td class="hdlist2">
+<p>Recovery time objective: 15 minutes.</p>
+</td>
+</tr>
+<tr>
+<td class="hdlist1">
+RPO
+</td>
+<td class="hdlist2">
+<p>Recovery point objective: 5 minutes.</p>
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="capacity">3. Tables and cell styles</h2>
+<div class="sectionbody">
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 1. Capacity allocation</caption>
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 16.6666%;">
+<col style="width: 16.6666%;">
+<col style="width: 33.3335%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Component</th>
+<th class="tableblock halign-left valign-top">Replicas</th>
+<th class="tableblock halign-left valign-top">CPU</th>
+<th class="tableblock halign-left valign-top">Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Gateway</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Accept and validate requests</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Scheduler</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Distribute work fairly</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Worker</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">4</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Render the document</p></td>
+</tr>
+</tbody>
+<tfoot>
+<tr>
+<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">Total reserved capacity</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">6</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Release 2.4</p></td>
+</tr>
+</tfoot>
+</table>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 2. Mixed content, spanning cells, and vertical alignment</caption>
+<colgroup>
+<col style="width: 25%;">
+<col style="width: 50%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Stage</th>
+<th class="tableblock halign-left valign-top">Verification</th>
+<th class="tableblock halign-left valign-top">Owner</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top" rowspan="2"><p class="tableblock">Build</p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="ulist">
+<ul>
+<li>
+<p>Compile the renderer</p>
+</li>
+<li>
+<p>Package the executable</p>
+</li>
+</ul>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Engineering</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Check checksums and the license.</p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>Release</p>
+</div></div></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Review</p></td>
+<td class="tableblock halign-left valign-top"><div class="content"><div class="paragraph">
+<p>A compound cell can contain <strong>formatting</strong> and a second paragraph.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+Retain the verification logs.
+</td>
+</tr>
+</table>
+</div></div></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Operations</p></td>
+</tr>
+</tbody>
+</table>
+<table class="tableblock frame-all grid-all stretch">
+<caption class="title">Table 3. CSV input</caption>
+<colgroup>
+<col style="width: 50%;">
+<col style="width: 25%;">
+<col style="width: 25%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Region</th>
+<th class="tableblock halign-left valign-top">Nodes</th>
+<th class="tableblock halign-left valign-top">State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Sydney</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ready</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Frankfurt</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Ready</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="sect1">
+<h2 id="code-callouts-and-literal-text">4. Code, callouts, and literal text</h2>
+<div class="sectionbody">
+<div class="listingblock">
+<div class="title">A minimal rendering client</div>
+<div class="content">
+<pre class="highlight"><code class="language-rust" data-lang="rust">fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let source = std::fs::read_to_string("guide.adoc")?; // <b class="conum">(1)</b>
+    let html = render(&amp;source)?; // <b class="conum">(2)</b>
+    std::fs::write("guide.html", html)?; // <b class="conum">(3)</b>
+    Ok(())
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>Read the original UTF-8 source.</p>
+</li>
+<li>
+<p>Convert it with the selected renderer.</p>
+</li>
+<li>
+<p>Save the generated document.</p>
+</li>
+</ol>
+</div>
+<div class="literalblock">
+<div class="title">Literal text preserves spacing and punctuation</div>
+<div class="content">
+<pre>INPUT                 OUTPUT
+guide.adoc     --&gt;    guide.html
+*not bold*            &lt;not an element&gt;</pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">A listing with attribute substitution enabled</div>
+<div class="content">
+<pre>product = Atlas
+release = 2.4</pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="admonitions-and-compound-blocks">5. Admonitions and compound blocks</h2>
+<div class="sectionbody">
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+A note adds context without interrupting the procedure.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Tip</div>
+</td>
+<td class="content">
+Cache immutable assets between builds.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Important</div>
+</td>
+<td class="content">
+Verify the generated document before publishing it.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock caution">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Caution</div>
+</td>
+<td class="content">
+Changing an identifier can break an existing cross-reference.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock warning">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Warning</div>
+</td>
+<td class="content">
+This sample is documentation, not a production deployment script.
+</td>
+</tr>
+</table>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Important</div>
+</td>
+<td class="content">
+<div class="title">Before switching traffic</div>
+<div class="paragraph">
+<p>Run both checks:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Confirm that the new release answers requests.</p>
+</li>
+<li>
+<p>Confirm that rollback artifacts are available.</p>
+</li>
+</ul>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="exampleblock">
+<div class="title">Example 1. An example with a nested block</div>
+<div class="content">
+<div class="paragraph">
+<p>A release is ready when the checks pass.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-json" data-lang="json">{"release":"2.4","verified":true,"targets":["html","pdf","epub","svg"]}</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sidebarblock">
+<div class="content">
+<div class="title">Operator&#8217;s sidebar</div>
+<div class="paragraph">
+<p>Keep deployment notes close to the procedure.</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Record the release identifier.</p>
+</li>
+<li>
+<p>Keep the incident link.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>A document is useful when its reader can act with confidence.</p>
+</div>
+</blockquote>
+<div class="attribution">
+&#8212; The Atlas Team<br>
+<cite>Operations principles</cite>
+</div>
+</div>
+<div class="verseblock">
+<pre class="content">Read the signal,
+check the source,
+leave a clear trail.</pre>
+<div class="attribution">
+&#8212; On-call notebook
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="images-and-captions">6. Images and captions</h2>
+<div class="sectionbody">
+<div id="pipeline" class="imageblock">
+<div class="content">
+<img src="images/pipeline.svg" alt="Source document flowing through a renderer to HTML PDF EPUB and SVG" width="640" height="160">
+</div>
+<div class="title">Figure 1. The document processing pipeline</div>
+</div>
+<div class="paragraph">
+<p>Figure <a href="#pipeline">The document processing pipeline</a> is a local SVG image; no diagram extension or network service is required.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="includes-and-conditional-content">7. Includes and conditional content</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The following section is expanded from a separate file with a tag selector and a level offset.</p>
+</div>
+<div class="sect2">
+<h3 id="recovery-drill">7.1. Recovery drill</h3>
+<div class="paragraph">
+<p>This section comes from <code>includes/recovery.adoc</code>.</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>Restore the most recent verified artifact.</p>
+</li>
+<li>
+<p>Re-run the readiness checks.</p>
+</li>
+<li>
+<p>Record the outcome in the incident log.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Tip</div>
+</td>
+<td class="content">
+<div class="paragraph">
+<p>An include should behave like source written directly in the parent document.
+Its section numbering and references should remain consistent.</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>This sentence is visible because the <code>release</code> attribute is set to <strong>2.4</strong>.</p>
+</div>
+<div class="paragraph">
+<p>This release copy omits draft-only material.</p>
+</div>
+<div class="paragraph">
+<p>The numeric release gate selects the 2.4 documentation.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="references-and-final-checks">8. References and final checks</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The procedure links back to <a href="#deployment">Deployment and nested lists</a> and uses the terms in <a href="#typography">Typography and navigation</a>.
+For background, consult <a href="#atlas-guide">[ATLAS-24]</a>.</p>
+</div>
+<div class="sect2">
+<h3 id="further-reading">Further reading</h3>
+<div class="ulist bibliography">
+<ul class="bibliography">
+<li>
+<p><a id="atlas-guide"></a>[ATLAS-24] The Atlas Team. <em>Atlas Operations Guide</em>. 2026.</p>
+</li>
+</ul>
+</div>
+<hr>
+<div class="paragraph">
+<p><details><summary>Verification note (HTML passthrough)</summary><p>This disclosure is authored as safe, local HTML in the source document.</p></details></p>
+</div>
+<div class="paragraph">
+<p>This is the end of the shared feature showcase.</p>
+</div>
+</div>
+</div>
+</div>
+<div id="footnotes">
+<hr>
+<div class="footnote" id="_footnotedef_1">
+<a href="#_footnoteref_1">1</a>. All examples use a local staging environment with three worker nodes.
+</div>
+</div>

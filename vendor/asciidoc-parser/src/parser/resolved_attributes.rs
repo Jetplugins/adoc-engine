@@ -1,0 +1,883 @@
+use std::{borrow::Cow, sync::Arc};
+
+// See the matching comment in `parser.rs` for why these tables use `ahash`
+// rather than `std`'s `HashMap` — they are the same tables, shared with the
+// parser by `Arc` (see the fields below).
+use ahash::HashMap;
+
+use crate::{
+    SafeMode,
+    document::{InterpretedValue, TocMode},
+    parser::{
+        AllowableValue, AttributeValue, DatetimeContext, DatetimeInputs, ModificationContext,
+        ReferenceTime,
+        built_in_attrs::{
+            built_in_attr, derived_backend_value, max_attribute_value_size_default,
+            synthesized_attr, user_home_default,
+        },
+        is_datetime_attribute,
+        safe_mode::masked_doc_path,
+    },
+};
+
+/// Folds an attribute name to the lowercase form used as its lookup key.
+///
+/// Attribute names are stored lower-cased (both an attribute-entry definition
+/// and an API-supplied attribute fold their name), so a case-insensitive lookup
+/// folds the query name the same way. An all-lowercase ASCII name — the
+/// overwhelmingly common case — is already its own lowercase form, so it is
+/// borrowed unchanged rather than allocating a fresh `String`. Any name that
+/// carries an ASCII uppercase letter or a non-ASCII byte falls back to the full
+/// Unicode [`str::to_lowercase`], preserving the previous behavior exactly.
+pub(crate) fn attribute_lookup_name(name: &str) -> Cow<'_, str> {
+    if name
+        .bytes()
+        .all(|b| b.is_ascii() && !b.is_ascii_uppercase())
+    {
+        Cow::Borrowed(name)
+    } else {
+        Cow::Owned(name.to_lowercase())
+    }
+}
+
+/// A snapshot of a [`Parser`]'s fully-resolved document-attribute state, taken
+/// at the end of parsing so it can be retained on a [`Document`] and queried
+/// without a [`Parser`] in hand.
+///
+/// The attribute tables are shared from the parser by [`Arc`] rather than
+/// copied, so taking a snapshot is cheap (the large built-in attribute table is
+/// never deep-cloned). Only the small set of active counter values is copied.
+///
+/// [`attribute_value`](Self::attribute_value),
+/// [`has_attribute`](Self::has_attribute), and
+/// [`is_attribute_set`](Self::is_attribute_set) mirror the identically-named
+/// [`Parser`] methods exactly, so a lookup here returns the same value the
+/// parser would report after `parse`.
+///
+/// [`Parser`]: crate::Parser
+/// [`Document`]: crate::Document
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ResolvedAttributes {
+    /// Attribute values as of the end of parsing (shared with the parser via
+    /// [`Arc`]).
+    attribute_values: Arc<HashMap<String, AttributeValue>>,
+
+    /// Default values applied to attributes that are "set" with an empty value
+    /// (shared with the parser via [`Arc`]).
+    default_attribute_values: Arc<HashMap<String, String>>,
+
+    /// Current value of each counter as of the end of parsing. A counter value
+    /// supersedes any like-named attribute.
+    ///
+    /// Shared with the parser via [`Arc`], on the same copy-on-write terms as
+    /// the two tables above: every parser-side mutation goes through
+    /// [`Arc::make_mut`], so a snapshot taken here is frozen at the moment it
+    /// was taken and taking one allocates nothing. That matters because a
+    /// snapshot is no longer only an end-of-parse artifact — it is taken often
+    /// enough that a per-snapshot `HashMap` clone would show.
+    counter_values: Arc<HashMap<String, String>>,
+
+    /// The safe mode the parser ran under. It is not stored in any attribute
+    /// table, so the snapshot captures it here to resolve the mode-aware
+    /// intrinsics (`max-attribute-value-size`, `user-home`) and to apply the
+    /// `SafeMode::Server`-and-greater masking of `docdir` / `docfile` (see
+    /// [`masked_doc_path`]) exactly as the parser does. Without it,
+    /// `Document::attribute_value` would leak the unmasked host path that the
+    /// parser hides. Defaults to [`SafeMode::Secure`], matching the parser.
+    safe: SafeMode,
+
+    /// The parser's pinned reference-time configuration, if any, used to
+    /// resolve the time-dependent attributes (`docdate` and its family) on
+    /// demand. This is deterministic parser configuration (not a captured
+    /// instant), so two snapshots taken from equally-configured parsers
+    /// stay equal. It is boxed (and `None` unless a clock was pinned) so it
+    /// costs only a pointer here — this snapshot is embedded in a
+    /// size-sensitive cell enum.
+    datetime_inputs: Option<Box<DatetimeInputs>>,
+
+    /// The instant the *parser* already captured for this parse, when it had
+    /// captured one — see
+    /// [`freeze_datetime`](Self::freeze_datetime) for when this is set and
+    /// why. `None` leaves
+    /// [`resolve_datetime_attribute`](Self::resolve_datetime_attribute) to
+    /// capture on demand, which is what an end-of-parse
+    /// [`Document`](crate::Document) snapshot does.
+    frozen_datetime: Option<DatetimeContext>,
+}
+
+impl std::hash::Hash for ResolvedAttributes {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // `HashMap` is neither `Hash` nor deterministically ordered, so a table
+        // can not feed the hasher directly. Instead fold an order-independent
+        // digest of each table's entries into `state`. This stays consistent
+        // with the derived, content-based `Eq` (equal snapshots hash equally),
+        // while distinguishing snapshots whose tables differ in their keys or
+        // values — not merely in their entry count (hashing the count alone
+        // would collide every cell in a document, since they typically share
+        // one `Arc`-backed, equal-length attribute table).
+        hash_table(self.attribute_values.iter(), state);
+        hash_table(self.default_attribute_values.iter(), state);
+        hash_table(self.counter_values.iter(), state);
+        self.safe.hash(state);
+        self.datetime_inputs.hash(state);
+        self.frozen_datetime.hash(state);
+    }
+}
+
+/// Feeds an order-independent digest of a table's entries into `state`: the
+/// entry count together with the XOR of each entry's `(key, value)` hash.
+///
+/// XOR is commutative, so the digest does not depend on the `HashMap`'s
+/// nondeterministic iteration order, yet it still varies with every key and
+/// value present. Keys of a `HashMap` are unique, so no entry's hash cancels
+/// another's.
+fn hash_table<'a, K, V, H>(entries: impl Iterator<Item = (&'a K, &'a V)>, state: &mut H)
+where
+    K: std::hash::Hash + 'a,
+    V: std::hash::Hash + 'a,
+    H: std::hash::Hasher,
+{
+    use std::hash::{Hash, Hasher};
+
+    let mut count: usize = 0;
+    let mut combined: u64 = 0;
+
+    for (key, value) in entries {
+        let mut entry_hasher = std::hash::DefaultHasher::new();
+        key.hash(&mut entry_hasher);
+        value.hash(&mut entry_hasher);
+        combined ^= entry_hasher.finish();
+        count += 1;
+    }
+
+    count.hash(state);
+    combined.hash(state);
+}
+
+impl ResolvedAttributes {
+    pub(crate) fn new(
+        attribute_values: Arc<HashMap<String, AttributeValue>>,
+        default_attribute_values: Arc<HashMap<String, String>>,
+        counter_values: Arc<HashMap<String, String>>,
+        safe: SafeMode,
+        reference_time: Option<ReferenceTime>,
+        input_mtime: Option<ReferenceTime>,
+    ) -> Self {
+        Self {
+            attribute_values,
+            default_attribute_values,
+            counter_values,
+            safe,
+            datetime_inputs: DatetimeInputs::new(reference_time, input_mtime),
+            frozen_datetime: None,
+        }
+    }
+
+    /// Materializes the derived `toc-position` / `toc-placement` / `toc-class`
+    /// document attributes from a resolved [`TocMode`], so they are queryable
+    /// on this snapshot exactly as Asciidoctor exposes them (see the
+    /// `verify toc attribute matrix` upstream test).
+    ///
+    /// The values are written into *this snapshot's* attribute map (via
+    /// [`Arc::make_mut`], which detaches it from the parser's shared table),
+    /// not into the parser — so a reused parser never carries a document's
+    /// derived TOC state into the next parse, where it would otherwise
+    /// perturb [`TocMode::from_parser`](crate::document::TocMode)'s reading
+    /// of the raw `toc-placement`.
+    ///
+    /// `toc-placement` and `toc-position` are fully derived and overwrite any
+    /// author-supplied value — including clearing `toc-position` for an
+    /// automatic TOC whose author value resolves to no side; `toc-class`
+    /// only *defaults* (to `toc2` for a positional TOC), leaving an
+    /// explicit author value untouched. Nothing is materialized when no TOC
+    /// is generated ([`TocMode::Disabled`], for which every derived value
+    /// is `None`), matching Asciidoctor — and avoiding a map clone for the
+    /// common no-TOC document.
+    pub(crate) fn materialize_toc_attributes(&mut self, mode: TocMode) {
+        let placement = mode.derived_toc_placement();
+        let position = mode.derived_toc_position();
+
+        // A side-column TOC only *defaults* `toc-class` to `toc2`; an explicit
+        // author value wins (Asciidoctor's `attrs['toc-class'] ||= 'toc2'`).
+        let class = mode
+            .derived_toc_class()
+            .filter(|_| !self.is_attribute_set("toc-class"));
+
+        if placement.is_none() && position.is_none() && class.is_none() {
+            return;
+        }
+
+        let derived = |value: &str| AttributeValue {
+            allowable_value: AllowableValue::Any,
+            modification_context: ModificationContext::ApiOnly,
+            silent_when_locked: false,
+            value: InterpretedValue::Value(value.to_string()),
+        };
+
+        let attrs = Arc::make_mut(&mut self.attribute_values);
+        if let Some(placement) = placement {
+            attrs.insert("toc-placement".to_string(), derived(placement));
+        }
+        if let Some(position) = position {
+            attrs.insert("toc-position".to_string(), derived(position));
+        } else {
+            // An enabled automatic (top) TOC clears any author-supplied
+            // `toc-position`: Asciidoctor's normalization falls into its `else`
+            // arm and deletes the attribute, so an unrecognized author value
+            // (e.g. a bogus side) does not leak into the derived state. A
+            // disabled TOC returns early above and leaves the
+            // author value untouched.
+            attrs.remove("toc-position");
+        }
+        if let Some(class) = class {
+            attrs.insert("toc-class".to_string(), derived(class));
+        }
+    }
+
+    /// Freezes this snapshot's time-dependent attributes at `captured`, the
+    /// instant the parser had already taken for its parse.
+    ///
+    /// Set only for a [`RenderContext`](crate::parser::RenderContext), and only
+    /// when the parser had in fact captured — which it has iff something in
+    /// the parse already read a time-dependent attribute. That is exactly the
+    /// case where a fresh capture here could *disagree with output the parse
+    /// has already produced*: a renderer or handler reading `{docdate}` must
+    /// see the same day the content around it was rendered with, whatever the
+    /// wall clock has done since. A `RenderContext` is taken per rendered
+    /// element and outlives nothing, so this is the difference between a
+    /// snapshot and a second reading.
+    ///
+    /// Passing `None` (the parser has captured nothing) deliberately leaves the
+    /// lazy path in place: there is no already-rendered value to be consistent
+    /// with, and forcing a capture here would put a clock read and an
+    /// allocation on every rendered element — defeating the laziness that keeps
+    /// a parse which never mentions one of these attributes free of that cost.
+    ///
+    /// An end-of-parse [`Document`](crate::Document) snapshot does not use
+    /// this; see
+    /// [`resolve_datetime_attribute`](Self::resolve_datetime_attribute)'s
+    /// "Consistency of an unpinned clock" for why a *post*-parse lookup is
+    /// deliberately a fresh reading.
+    pub(crate) fn freeze_datetime(&mut self, captured: Option<DatetimeContext>) {
+        self.frozen_datetime = captured;
+    }
+
+    /// Returns the safe mode the parser ran under, captured with this
+    /// snapshot so a consumer that holds one (a
+    /// [`RenderContext`](crate::parser::RenderContext)) can answer the
+    /// mode-aware questions without a [`Parser`](crate::Parser) in hand.
+    pub(crate) fn safe_mode(&self) -> SafeMode {
+        self.safe
+    }
+
+    /// Returns the resolved interpreted value of the named document attribute.
+    ///
+    /// Mirrors [`Parser::attribute_value`](crate::Parser::attribute_value).
+    pub(crate) fn attribute_value<N: AsRef<str>>(&self, name: N) -> InterpretedValue {
+        let name = name.as_ref();
+
+        // A counter's current value supersedes any earlier value of the
+        // attribute of the same name.
+        if let Some(value) = self.counter_values.get(name) {
+            return InterpretedValue::Value(value.clone());
+        }
+
+        // An unset `relfilesuffix` reads as the *effective* value of
+        // `outfilesuffix` — routed through this same reader so an
+        // `outfilesuffix` counter overlay is honored too (see
+        // [`tracks_outfilesuffix`](Self::tracks_outfilesuffix)).
+        if self.tracks_outfilesuffix(name) {
+            return self.attribute_value("outfilesuffix");
+        }
+
+        // Under `SafeMode::Server` or greater, `docdir` reads as empty and
+        // `docfile` is relativized, exactly as the parser reports it (see
+        // [`masked_doc_path`]).
+        if self.safe >= SafeMode::Server
+            && let Some(masked) = masked_doc_path(name, |n| self.raw_set_value(n))
+        {
+            return masked;
+        }
+
+        // `basebackend` / `filetype` are derived on the fly from the current
+        // `backend` (see [`derived_backend_value`]) rather than stored.
+        if let Some(value) = derived_backend_value(name, &self.attribute_values) {
+            return value;
+        }
+
+        match self.effective_attribute(name) {
+            Some(av) => {
+                if let InterpretedValue::Set = av.value
+                    && let Some(default) = self.default_attribute_values.get(name)
+                {
+                    InterpretedValue::Value(default.clone())
+                } else {
+                    av.value.clone()
+                }
+            }
+
+            // A time-dependent attribute is resolved on demand from the
+            // reference-time configuration rather than stored in a table.
+            None => self
+                .resolve_datetime_attribute(name)
+                .unwrap_or(InterpretedValue::Unset),
+        }
+    }
+
+    /// Resolves a time-dependent document attribute (`docdate` and its family)
+    /// on demand from the snapshot's reference-time configuration, mirroring
+    /// [`Parser::attribute_value`](crate::Parser::attribute_value). Returns
+    /// `None` for any other name.
+    ///
+    /// An explicit value stored during parsing still wins, since the readers
+    /// consult [`effective_attribute`](Self::effective_attribute) first.
+    ///
+    /// # Consistency of an unpinned clock
+    ///
+    /// The reference instant is captured per call (these attributes are read
+    /// rarely from a snapshot) rather than cached; within a single call it is
+    /// consistent. When the clock is *pinned* — a
+    /// [`reference_time`](crate::Parser::with_reference_time), an
+    /// [`input_mtime`](crate::Parser::with_input_mtime), or `SOURCE_DATE_EPOCH`
+    /// — every capture yields the same instant, so a snapshot lookup always
+    /// agrees with the value substituted into content during parsing. This is
+    /// the reproducible-build path and the intended way to consume these
+    /// attributes.
+    ///
+    /// When the clock is *not* pinned, each capture reads the real wall clock
+    /// (or a since-changed `SOURCE_DATE_EPOCH`) afresh, so a post-parse lookup
+    /// can disagree with content the parser already rendered — e.g. `{docdate}`
+    /// substituted just before midnight, then read back just after. The
+    /// snapshot deliberately does *not* freeze the parser's capture here: doing
+    /// so would either make snapshot equality depend on a wall-clock reading or
+    /// require the parser to capture (a clock/environment read plus an
+    /// allocation) on *every* parse, defeating the laziness that keeps a parse
+    /// which never references one of these attributes free of that cost. The
+    /// unpinned clock is inherently non-reproducible, so pin it (or set
+    /// `SOURCE_DATE_EPOCH`) whenever stable, self-consistent output matters.
+    fn resolve_datetime_attribute(&self, name: &str) -> Option<InterpretedValue> {
+        if !is_datetime_attribute(name) {
+            return None;
+        }
+
+        // A snapshot that was handed the parser's own capture resolves from
+        // it, so it cannot disagree with content that parse already rendered.
+        //
+        // Otherwise: absent any pinned clock the inputs box is `None`; capture
+        // from the defaults (SOURCE_DATE_EPOCH, then the real wall clock) in
+        // that case. See the doc comment above on why an unpinned capture is
+        // intentionally taken fresh here rather than frozen from the parse.
+        let context = match (&self.frozen_datetime, &self.datetime_inputs) {
+            (Some(frozen), _) => frozen.clone(),
+            (None, Some(inputs)) => inputs.capture(),
+            (None, None) => DatetimeContext::capture(None, None),
+        };
+
+        context
+            .resolve(name, |sibling| self.stored_datetime_override(sibling))
+            .map(InterpretedValue::Value)
+    }
+
+    /// Returns the *explicitly-set* value of `name` from the stored attribute
+    /// map (a value-less "set" reads as an empty string), or `None`.
+    ///
+    /// Reads only the stored overrides — never the on-the-fly datetime
+    /// resolution — so it can feed the explicit sibling values
+    /// [`resolve_datetime_attribute`](Self::resolve_datetime_attribute) needs
+    /// without recursing.
+    fn stored_datetime_override(&self, name: &str) -> Option<String> {
+        self.attribute_values
+            .get(name)
+            .and_then(|av| match &av.value {
+                InterpretedValue::Value(value) => Some(value.clone()),
+                InterpretedValue::Set => Some(String::new()),
+                InterpretedValue::Unset => None,
+            })
+    }
+
+    /// Returns the raw stored string value of `name` if it currently resolves
+    /// to a plain [`Value`](InterpretedValue::Value), *before* any safe-mode
+    /// masking is applied. Mirrors `Parser::raw_set_value`, so the `docfile`
+    /// relativization is computed from the *original* API-provided `docdir`.
+    fn raw_set_value(&self, name: &str) -> Option<String> {
+        match self.effective_attribute(name)?.value {
+            InterpretedValue::Value(ref v) => Some(v.clone()),
+            _ => None,
+        }
+    }
+
+    /// Returns the effective attribute definition for `name`, falling back to
+    /// the mode-aware intrinsics (`max-attribute-value-size`, `user-home`), the
+    /// shared built-in defaults, and the synthesized derived attributes exactly
+    /// as [`Parser::effective_attribute`] does.
+    ///
+    /// [`Parser::effective_attribute`]: crate::Parser::effective_attribute
+    fn effective_attribute(&self, name: &str) -> Option<&AttributeValue> {
+        if let Some(av) = self.attribute_values.get(name) {
+            return Some(av);
+        }
+
+        // Mirror the parser's mode-aware resolution of the two intrinsics whose
+        // default depends on the safe mode rather than on either attribute
+        // table (see [`Parser::effective_attribute`]). Consulted after the
+        // per-parser map so a caller-supplied value still wins.
+        if name == "max-attribute-value-size" {
+            return Some(max_attribute_value_size_default(
+                self.safe == SafeMode::Secure,
+            ));
+        }
+        if name == "user-home" {
+            return Some(user_home_default(self.safe < SafeMode::Server));
+        }
+        if let Some(av) = built_in_attr(name) {
+            return Some(av);
+        }
+        synthesized_attr(name, &self.attribute_values)
+    }
+
+    /// Reports whether `name` is `relfilesuffix` in its unset state, in which
+    /// case a *read* resolves it to the current value of `outfilesuffix`.
+    /// Mirrors [`Parser::tracks_outfilesuffix`], so a lookup here returns the
+    /// same value the parser would report after `parse`. Callers apply a
+    /// like-named counter overlay first, so a `{counter:relfilesuffix}` still
+    /// wins over the tracked default.
+    ///
+    /// [`Parser::tracks_outfilesuffix`]: crate::Parser::tracks_outfilesuffix
+    fn tracks_outfilesuffix(&self, name: &str) -> bool {
+        name == "relfilesuffix" && !self.attribute_values.contains_key(name)
+    }
+
+    /// Returns `true` if the named document attribute is present (whether or
+    /// not it is set).
+    ///
+    /// Mirrors [`Parser::has_attribute`](crate::Parser::has_attribute).
+    pub(crate) fn has_attribute<N: AsRef<str>>(&self, name: N) -> bool {
+        let name = name.as_ref();
+        if self.counter_values.contains_key(name) {
+            return true;
+        }
+        if self.tracks_outfilesuffix(name) {
+            return self.has_attribute("outfilesuffix");
+        }
+
+        // A derived `basebackend` / `filetype` is present only while `backend`
+        // resolves to a non-empty value (see [`derived_backend_value`]).
+        if derived_backend_value(name, &self.attribute_values).is_some() {
+            return true;
+        }
+        self.effective_attribute(name).is_some() || self.resolve_datetime_attribute(name).is_some()
+    }
+
+    /// Returns `true` if the named document attribute is present and set (i.e.
+    /// not [unset]).
+    ///
+    /// Mirrors [`Parser::is_attribute_set`](crate::Parser::is_attribute_set).
+    ///
+    /// [unset]: https://docs.asciidoctor.org/asciidoc/latest/attributes/unset-attributes/
+    pub(crate) fn is_attribute_set<N: AsRef<str>>(&self, name: N) -> bool {
+        let name = name.as_ref();
+
+        // A counter always holds a concrete (set) value.
+        if self.counter_values.contains_key(name) {
+            return true;
+        }
+
+        if self.tracks_outfilesuffix(name) {
+            return self.is_attribute_set("outfilesuffix");
+        }
+
+        // A derived `basebackend` / `filetype` holds a concrete (set) value
+        // whenever it is present, i.e. while `backend` is non-empty (see
+        // [`derived_backend_value`]).
+        if derived_backend_value(name, &self.attribute_values).is_some() {
+            return true;
+        }
+
+        self.effective_attribute(name)
+            .map(|a| a.value != InterpretedValue::Unset)
+            .unwrap_or_else(|| self.resolve_datetime_attribute(name).is_some())
+    }
+
+    /// Resolves whether a document title should be displayed, from the
+    /// `showtitle`/`notitle` attribute pair (which are complements).
+    ///
+    /// Mirrors [`Parser::resolve_show_title`](crate::Parser::resolve_show_title)
+    /// exactly, so a lookup here returns the same value the parser would report
+    /// after `parse`. See that method's doc comment for the full precedence
+    /// rules. This is the accessor a renderer holding only a [`Document`]
+    /// (e.g. an *embed* consumer with no [`Parser`] in hand) should use to
+    /// decide whether to emit the title, rather than re-deriving the toggle
+    /// from a direct read of `notitle` / `showtitle` -- see issue
+    /// asciidoc-rs/asciidoc-parser#1148, where a downstream re-implementation
+    /// of this logic repeatedly drifted out of sync with the parser's.
+    ///
+    /// [`Document`]: crate::Document
+    /// [`Parser`]: crate::Parser
+    pub(crate) fn resolve_show_title(&self, default_shown: bool) -> bool {
+        if self.is_attribute_set("showtitle") {
+            true
+        } else if self.has_attribute("notitle") {
+            !self.is_attribute_set("notitle")
+        } else if self.has_attribute("showtitle") {
+            false
+        } else {
+            default_shown
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use ahash::{HashMap, HashMapExt};
+
+    use crate::{
+        SafeMode,
+        document::InterpretedValue,
+        parser::{AllowableValue, AttributeValue, ModificationContext, ResolvedAttributes},
+    };
+
+    fn attr(value: InterpretedValue) -> AttributeValue {
+        AttributeValue {
+            allowable_value: AllowableValue::Any,
+            modification_context: ModificationContext::Anywhere,
+            silent_when_locked: false,
+            value,
+        }
+    }
+
+    /// Builds a snapshot exercising each attribute shape — an explicit value, a
+    /// `Set` with a registered default, a `Set` with no default, and an
+    /// explicitly unset attribute — plus a counter that shadows a like-named
+    /// attribute.
+    fn sample() -> ResolvedAttributes {
+        let mut attribute_values: HashMap<String, AttributeValue> = HashMap::new();
+        attribute_values.insert(
+            "value".to_string(),
+            attr(InterpretedValue::Value("v".to_string())),
+        );
+        attribute_values.insert("set-with-default".to_string(), attr(InterpretedValue::Set));
+        attribute_values.insert("set-no-default".to_string(), attr(InterpretedValue::Set));
+        attribute_values.insert("unset".to_string(), attr(InterpretedValue::Unset));
+        attribute_values.insert(
+            "shadowed".to_string(),
+            attr(InterpretedValue::Value("attr".to_string())),
+        );
+
+        let mut default_attribute_values: HashMap<String, String> = HashMap::new();
+        default_attribute_values.insert("set-with-default".to_string(), "d".to_string());
+
+        let mut counter_values: HashMap<String, String> = HashMap::new();
+        counter_values.insert("count".to_string(), "3".to_string());
+        counter_values.insert("shadowed".to_string(), "counter".to_string());
+
+        ResolvedAttributes::new(
+            Arc::new(attribute_values),
+            Arc::new(default_attribute_values),
+            Arc::new(counter_values),
+            SafeMode::Secure,
+            None,
+            None,
+        )
+    }
+
+    #[test]
+    fn a_snapshots_counters_are_frozen_against_the_parser() {
+        // The copy-on-write property the `Arc` exists for, and the reason the
+        // counter table is shared rather than copied: a snapshot must keep
+        // reading the values that were current when it was taken, however the
+        // parser advances afterwards.
+        //
+        // The two attribute tables have always been shared this way; the
+        // counters were copied instead, which was affordable only while a
+        // snapshot was an end-of-parse artifact taken once per document.
+        //
+        // Asserted through `Parser`, not by hand, because the property is a
+        // claim about `Arc::make_mut` at the parser's own mutation sites — a
+        // hand-built `Arc` would hold no matter what those sites did.
+        let parser = crate::Parser::default();
+
+        assert_eq!(parser.counter("chapter", None), "1");
+
+        let snapshot = parser.snapshot_attributes();
+
+        assert_eq!(parser.counter("chapter", None), "2");
+        assert_eq!(parser.counter("figure", None), "1");
+
+        // The snapshot still reads `1`, and has not gained the counter that
+        // was created after it was taken.
+        assert_eq!(
+            snapshot.attribute_value("chapter"),
+            InterpretedValue::Value("1".to_string())
+        );
+
+        assert_eq!(snapshot.attribute_value("figure"), InterpretedValue::Unset);
+
+        // And a snapshot taken now sees the advanced values, so the freeze is
+        // per-snapshot rather than a table that stopped tracking.
+        let later = parser.snapshot_attributes();
+
+        assert_eq!(
+            later.attribute_value("chapter"),
+            InterpretedValue::Value("2".to_string())
+        );
+
+        // That much was already true when the table was copied: a copy is
+        // frozen too. What is new is *how* — the snapshot shares the parser's
+        // table rather than copying it, which is the whole point and the only
+        // part a test can distinguish. `later` was taken with no mutation
+        // since, so it must still be the very same allocation the parser
+        // holds; `snapshot` must not be, the parser having detached from it
+        // through `Arc::make_mut` on the next advance.
+        assert!(Arc::ptr_eq(
+            &later.counter_values,
+            &parser.counter_values.borrow()
+        ));
+
+        assert!(!Arc::ptr_eq(
+            &snapshot.counter_values,
+            &parser.counter_values.borrow()
+        ));
+    }
+
+    #[test]
+    fn attribute_value_resolves_each_shape() {
+        let attrs = sample();
+
+        // Explicit value.
+        assert_eq!(
+            attrs.attribute_value("value"),
+            InterpretedValue::Value("v".to_string())
+        );
+
+        // `Set` with a default resolves to that default.
+        assert_eq!(
+            attrs.attribute_value("set-with-default"),
+            InterpretedValue::Value("d".to_string())
+        );
+
+        // `Set` with no default stays `Set`.
+        assert_eq!(
+            attrs.attribute_value("set-no-default"),
+            InterpretedValue::Set
+        );
+
+        // Explicitly unset resolves to `Unset`.
+        assert_eq!(attrs.attribute_value("unset"), InterpretedValue::Unset);
+
+        // Absent resolves to `Unset`.
+        assert_eq!(attrs.attribute_value("absent"), InterpretedValue::Unset);
+
+        // A counter reads back its current value.
+        assert_eq!(
+            attrs.attribute_value("count"),
+            InterpretedValue::Value("3".to_string())
+        );
+
+        // A counter supersedes a like-named attribute.
+        assert_eq!(
+            attrs.attribute_value("shadowed"),
+            InterpretedValue::Value("counter".to_string())
+        );
+    }
+
+    #[test]
+    fn has_attribute_reports_presence() {
+        let attrs = sample();
+
+        assert!(attrs.has_attribute("value"));
+        assert!(attrs.has_attribute("unset"));
+        assert!(attrs.has_attribute("count"));
+        assert!(!attrs.has_attribute("absent"));
+    }
+
+    #[test]
+    fn is_attribute_set_reports_set_state() {
+        let attrs = sample();
+
+        assert!(attrs.is_attribute_set("value"));
+        assert!(attrs.is_attribute_set("set-no-default"));
+        assert!(!attrs.is_attribute_set("unset"));
+        assert!(!attrs.is_attribute_set("absent"));
+
+        // A counter always holds a concrete (set) value.
+        assert!(attrs.is_attribute_set("count"));
+    }
+
+    #[test]
+    fn masks_docdir_and_docfile_under_server_safe_mode() {
+        // A snapshot taken from a `SafeMode::Server` parser masks `docdir`
+        // (blanked) and `docfile` (relativized) exactly as the parser does, so
+        // `Document::attribute_value` never leaks the host path.
+        let mut attribute_values: HashMap<String, AttributeValue> = HashMap::new();
+        attribute_values.insert(
+            "docdir".to_string(),
+            attr(InterpretedValue::Value("/some/dir".to_string())),
+        );
+        attribute_values.insert(
+            "docfile".to_string(),
+            attr(InterpretedValue::Value("/some/dir/sample.adoc".to_string())),
+        );
+
+        let attrs = ResolvedAttributes::new(
+            Arc::new(attribute_values),
+            Arc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
+            SafeMode::Server,
+            None,
+            None,
+        );
+
+        assert_eq!(
+            attrs.attribute_value("docdir"),
+            InterpretedValue::Value(String::new())
+        );
+        assert_eq!(
+            attrs.attribute_value("docfile"),
+            InterpretedValue::Value("sample.adoc".to_string())
+        );
+
+        // Masking changes only the value; the attributes stay present and set.
+        assert!(attrs.has_attribute("docdir"));
+        assert!(attrs.is_attribute_set("docfile"));
+    }
+
+    #[test]
+    fn absent_docdir_and_docfile_stay_missing_under_server_safe_mode() {
+        // With no `docdir` / `docfile` stored, the masking finds nothing to
+        // mask (`raw_set_value` short-circuits on the absent attribute)
+        // and they stay missing — mirroring the parser.
+        let attrs = ResolvedAttributes::new(
+            Arc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
+            SafeMode::Server,
+            None,
+            None,
+        );
+
+        assert_eq!(attrs.attribute_value("docdir"), InterpretedValue::Unset);
+        assert_eq!(attrs.attribute_value("docfile"), InterpretedValue::Unset);
+        assert!(!attrs.has_attribute("docdir"));
+        assert!(!attrs.has_attribute("docfile"));
+    }
+
+    #[test]
+    fn leaves_non_string_docdir_and_docfile_untouched_under_server_safe_mode() {
+        // A `docdir` / `docfile` present as a value-less `Set` flag carries no
+        // path to relativize, so the masking leaves it untouched (mirroring
+        // `Parser`).
+        let mut attribute_values: HashMap<String, AttributeValue> = HashMap::new();
+        attribute_values.insert("docdir".to_string(), attr(InterpretedValue::Set));
+        attribute_values.insert("docfile".to_string(), attr(InterpretedValue::Set));
+
+        let attrs = ResolvedAttributes::new(
+            Arc::new(attribute_values),
+            Arc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
+            SafeMode::Server,
+            None,
+            None,
+        );
+
+        assert_eq!(attrs.attribute_value("docdir"), InterpretedValue::Set);
+        assert_eq!(attrs.attribute_value("docfile"), InterpretedValue::Set);
+    }
+
+    #[test]
+    fn does_not_mask_docdir_and_docfile_below_server_safe_mode() {
+        let mut attribute_values: HashMap<String, AttributeValue> = HashMap::new();
+        attribute_values.insert(
+            "docdir".to_string(),
+            attr(InterpretedValue::Value("/some/dir".to_string())),
+        );
+
+        let attrs = ResolvedAttributes::new(
+            Arc::new(attribute_values),
+            Arc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
+            SafeMode::Safe,
+            None,
+            None,
+        );
+
+        assert_eq!(
+            attrs.attribute_value("docdir"),
+            InterpretedValue::Value("/some/dir".to_string())
+        );
+    }
+
+    mod resolve_show_title {
+        use std::sync::Arc;
+
+        use ahash::{HashMap, HashMapExt};
+
+        use crate::{
+            SafeMode,
+            document::InterpretedValue,
+            parser::{AllowableValue, AttributeValue, ModificationContext, ResolvedAttributes},
+        };
+
+        fn attrs(entries: &[(&str, InterpretedValue)]) -> ResolvedAttributes {
+            let mut attribute_values: HashMap<String, AttributeValue> = HashMap::new();
+            for (name, value) in entries {
+                attribute_values.insert(
+                    name.to_string(),
+                    AttributeValue {
+                        allowable_value: AllowableValue::Any,
+                        modification_context: ModificationContext::Anywhere,
+                        silent_when_locked: false,
+                        value: value.clone(),
+                    },
+                );
+            }
+
+            ResolvedAttributes::new(
+                Arc::new(attribute_values),
+                Arc::new(HashMap::new()),
+                Arc::new(HashMap::new()),
+                SafeMode::Secure,
+                None,
+                None,
+            )
+        }
+
+        #[test]
+        fn neither_present_uses_default() {
+            let empty = attrs(&[]);
+
+            assert!(empty.resolve_show_title(true));
+            assert!(!empty.resolve_show_title(false));
+        }
+
+        #[test]
+        fn set_showtitle_always_wins() {
+            let showtitle_set = attrs(&[("showtitle", InterpretedValue::Set)]);
+
+            assert!(showtitle_set.resolve_show_title(false));
+        }
+
+        #[test]
+        fn present_notitle_decides_when_showtitle_absent() {
+            let notitle_set = attrs(&[("notitle", InterpretedValue::Set)]);
+            let notitle_unset = attrs(&[("notitle", InterpretedValue::Unset)]);
+
+            assert!(!notitle_set.resolve_show_title(true));
+            assert!(notitle_unset.resolve_show_title(false));
+        }
+
+        #[test]
+        fn present_but_unset_showtitle_hides_when_notitle_absent() {
+            // This shape -- `showtitle` present and unset, with no `notitle`
+            // entry at all -- cannot arise from a normal document/API write
+            // (assigning `showtitle` always plants a `notitle` mirror; see
+            // `apply_title_visibility_linkage`), but a snapshot can still be
+            // constructed directly (as this test does), so the fallback must
+            // resolve it correctly too.
+            let showtitle_unset = attrs(&[("showtitle", InterpretedValue::Unset)]);
+
+            assert!(!showtitle_unset.resolve_show_title(true));
+        }
+    }
+}

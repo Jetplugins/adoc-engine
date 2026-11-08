@@ -1,0 +1,13 @@
+//! Tests that live under `src/tests` so the workspace's `sdd` spec-coverage
+//! tool can discover their spec markers (see `sdd/README.md`).
+//!
+//! Behavioral unit tests for an individual module stay next to that module's
+//! code. This tree holds the tests that are tied to a tracked specification or
+//! documentation file, plus the shared no-op coverage markers in [`sdd`].
+
+mod asciidoc_lang;
+mod asciidoctor;
+mod asciidoctor_rb;
+mod assert_html;
+mod docs;
+mod sdd;

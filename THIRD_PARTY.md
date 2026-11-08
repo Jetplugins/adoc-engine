@@ -6,7 +6,7 @@ FONT_LICENSES contains the upstream typst-assets consolidated font notices and l
 
 - asciidoc-parser / asciidoc-html5: MIT OR Apache-2.0 (asciidoc-rs).
 - adocers-typst / adocers-render-core: MIT OR Apache-2.0 (Alexander Thaller).
-- The vendored publication emitter retains its original copyright/license files;
+- The vendored parser and publication emitter retain their original copyright/license files;
   modifications are described in vendor/PATCHES.md.
 - Typst and its libraries: Apache-2.0; typst-as-lib: MIT OR Apache-2.0.
 - Embedded fonts retain their individual licenses as listed in FONT_LICENSES.

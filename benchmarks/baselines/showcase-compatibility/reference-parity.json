@@ -1,0 +1,1438 @@
+{
+  "binarySha256": "2aed2ba330572a1564f9d1a694e142ee25141124371b4f29f3e4736f2bcecaa8",
+  "cases": 159,
+  "passed": 159,
+  "results": [
+    {
+      "case": "list-0-1-.Release checklist-True",
+      "sourceSha256": "ad1c15e099f9c450202ebc55a5395e17e09966244a35a59c0f0faf1b02dac180",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-1-.Release checklist-False",
+      "sourceSha256": "afcd92aee24465f2c1c6689ea8ab9b089aebefbb67c2470798d7948de5ef7f38",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-1-[title=\"Release checklist\"]-True",
+      "sourceSha256": "dc3397a3d3e580eeee8123dad226da38d71277f766b46bf44cd9279570340f99",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-1-[title=\"Release checklist\"]-False",
+      "sourceSha256": "34ad1ef32e6a83f723ab6cfb655b3cf8ef39c97ddd28c0df1c74a02d501d29a9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-1-[[release]]\n.Release checklist-True",
+      "sourceSha256": "7b67e459853e5553f3b16a42787f5f0fc2e67e5077fb6fe23056ab757b933bf4",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-1-[[release]]\n.Release checklist-False",
+      "sourceSha256": "f7cbce06d099d83d27781f4f6ac9887994f429ce22ca44c18a8f6eabdb3f7d11",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-1-.Release {counter:release-title}-True",
+      "sourceSha256": "dbabcf93b340e7d26c4f2895d6526a01a4fa1f153152d7c7933a4fc3d94f556a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-1-.Release {counter:release-title}-False",
+      "sourceSha256": "6e4066696d22e86cad9baffff8ca143a3aae1901fb56a8fb80c60e2018afe79a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-2-.Release checklist-True",
+      "sourceSha256": "2b31f211bcf4d2eb19026da8b3e0eb878c5cfd0c784c0a71e55b3688f7a7d69e",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-2-.Release checklist-False",
+      "sourceSha256": "d1e25a933433f4bad05af689923ced7398f79e05ec8b4cfdce1fd38f0fb424f2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-2-[title=\"Release checklist\"]-True",
+      "sourceSha256": "855929c1eb483296f0bc9bff0d2fbe558b6c61de0ce8fa1c1af2449681814154",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-2-[title=\"Release checklist\"]-False",
+      "sourceSha256": "90285a8f4ea837bb56caea7dd0d5e46cb963e082f9263528ce217820686606c5",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-2-[[release]]\n.Release checklist-True",
+      "sourceSha256": "37b87586e2a5ec2f2444afa5af02131b9fa4dc8bde46e2e6ceece2fbb124a071",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-2-[[release]]\n.Release checklist-False",
+      "sourceSha256": "57731bcb43cbddf512c795785f2ba0699bc515f311e336a0964b0e2470282e45",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-2-.Release {counter:release-title}-True",
+      "sourceSha256": "f294db40a009274cb6d22fa9f731a85573c8faae9216b57333f66e639db95028",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-0-2-.Release {counter:release-title}-False",
+      "sourceSha256": "79cb1a8d6f28e2631cdda805b347c0b4acdfbc784a4906f4c1b7db8d889dcba6",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-1-.Release checklist-True",
+      "sourceSha256": "da38243eea5e65e981b8bd45b4588655a4b5a5f2470e808a629819b0b0f42694",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-1-.Release checklist-False",
+      "sourceSha256": "bb67fd9a938cd8664cbb2bf0e48182a04a87a194fc75f899f28958b0bd10c168",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-1-[title=\"Release checklist\"]-True",
+      "sourceSha256": "c8d3a47ba6021ba5007c12dac357fb1f71bb5e2fd77e2faae3902934bdc1e721",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-1-[title=\"Release checklist\"]-False",
+      "sourceSha256": "aed8c17c9e6cc163e18307ffb743c7bf2a85a71b6e6b7caaa2fc2a1f68061928",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-1-[[release]]\n.Release checklist-True",
+      "sourceSha256": "03542c8a8c7b05338926742e2ec1980f69c8be6c3edaef960986bbc23b24736a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-1-[[release]]\n.Release checklist-False",
+      "sourceSha256": "edfa7ddc798c0657c6004308f69604ce6d7153b08bc9b6a4488a98aebc2fae80",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-1-.Release {counter:release-title}-True",
+      "sourceSha256": "2228d4d11460b4eca33fef0f7da12349f4a01e0e9275f51ea73d94f6e4535e25",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-1-.Release {counter:release-title}-False",
+      "sourceSha256": "c235e4ff4f3b59927cb5d7791c9168dd06b90327ef86e42c3b63f19745c0d52d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-2-.Release checklist-True",
+      "sourceSha256": "f6d6844e09712bc16ebddb3c6483cbdd93081f9aaccd22889c6af6e73fa8ad04",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-2-.Release checklist-False",
+      "sourceSha256": "223b011c2db22032af827ad227c4e5b92399cb53f1274116ade7fb7096d32ff1",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-2-[title=\"Release checklist\"]-True",
+      "sourceSha256": "3e8790188f36b975d779a034a8009bde024178654f7d0cfbc4c9879f74cef329",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-2-[title=\"Release checklist\"]-False",
+      "sourceSha256": "47abb7284b771e886226dcd891cbf66b409ca55cc85b0589a73ad5f823630f33",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-2-[[release]]\n.Release checklist-True",
+      "sourceSha256": "f81997e1dff8418788e2f86808a52dcb9dd1708ef80dd368f6e3b5cbe817a605",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-2-[[release]]\n.Release checklist-False",
+      "sourceSha256": "627b1f9df1a1a58a14a625dded896ec04416e7426bf57b5bb06b7ec8d741d3c7",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-2-.Release {counter:release-title}-True",
+      "sourceSha256": "d071e5359247146b75ba112970c2c9d49fc315ad5f78f2c9b47a011f71c42ade",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-1-2-.Release {counter:release-title}-False",
+      "sourceSha256": "04055bd3261b1e5e1c9e249d8c5613b3c8ad6700925abf1f355c4f918112267b",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-1-.Release checklist-True",
+      "sourceSha256": "b79cf8bfb3ffce8e0f9db93d74c58e2d8f9d932dfc53eba97fbce20f2241bba5",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-1-.Release checklist-False",
+      "sourceSha256": "aedc17b34c87207710c5c5b255bea98f61c259306f6285f9c8ae2a077f96a7c7",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-1-[title=\"Release checklist\"]-True",
+      "sourceSha256": "5eebfc7256c862edd7b603e84b323569ebbcce7118730819a46f388f5cb74e2d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-1-[title=\"Release checklist\"]-False",
+      "sourceSha256": "da4a3e4867b575a2e5716f6e0a4211da26cc468908086d3ed09e35620b7676e3",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-1-[[release]]\n.Release checklist-True",
+      "sourceSha256": "39b61ad7f9f3c80de3fea84ba14fe11254ad33de32752e1088f6aedc61a4ae35",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-1-[[release]]\n.Release checklist-False",
+      "sourceSha256": "27eea6a2427bfa53894a8189ae1c9cd984c0431d09c0dd94716910254d1f41b2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-1-.Release {counter:release-title}-True",
+      "sourceSha256": "46ce22cb2bde7a1b49f2a7365680484be848306670371655148273a62138a905",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-1-.Release {counter:release-title}-False",
+      "sourceSha256": "a6c4c3f49c5f39fdce8de4fcf56cce4af7dba76d24bb059c5d7b7388345dabd2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-2-.Release checklist-True",
+      "sourceSha256": "ba6c5958a52a73743c71e542f8586a3397b70db0c8390d5b476f799fc41847b9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-2-.Release checklist-False",
+      "sourceSha256": "fa3486b37e7773b62c9bb0290925fd84b2802304a8ea33f3b3e25e99e7fc1e7f",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-2-[title=\"Release checklist\"]-True",
+      "sourceSha256": "2baec14b117ce996088d8cd3cba243e99ac2a9a9eb2aa610719321bf99087fd3",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-2-[title=\"Release checklist\"]-False",
+      "sourceSha256": "46b97a00eb81f6d7bedcfe892c6dd5c44348aa525c5d9397a6567d7074ec82a0",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-2-[[release]]\n.Release checklist-True",
+      "sourceSha256": "a1c6ddbfe24ad2f5172e0bb42911b681f66a0fa783b560832b61dfc85687843e",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-2-[[release]]\n.Release checklist-False",
+      "sourceSha256": "f76c589654aadd729865a0976f373a9050cbc31668daf34c76babe7d46fbc397",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-2-.Release {counter:release-title}-True",
+      "sourceSha256": "3224307cbb730b820daba7e2e79011fb66c12f2ddf13ad9bc10a44bd7d0ea875",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-2-2-.Release {counter:release-title}-False",
+      "sourceSha256": "cc098eb4578275b73730b175e40645bc37e1c3ef32e2e361942d9d1432ed11e2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-1-.Release checklist-True",
+      "sourceSha256": "2f47495fa44576a84c5ae8b8074b2e417b0bab9cbfbeac89f4f9fa809486652b",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-1-.Release checklist-False",
+      "sourceSha256": "6447f62a6cca51600da62cd7d09ee44ee8dbc83fa583b5d5b520d3170f095142",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-1-[title=\"Release checklist\"]-True",
+      "sourceSha256": "608280b69cb164710a79581c5e3e4eb65ac4e1902f9ca39a9f2a7c52c2a6c215",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-1-[title=\"Release checklist\"]-False",
+      "sourceSha256": "96c8b8fd4eb58377bd0a162cdb60fb7aa689ab7b4903ce8ba20b604ea6006372",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-1-[[release]]\n.Release checklist-True",
+      "sourceSha256": "8901a2613d9f597da6d09a4496d908976d8552d585a2fa355e8fec59f702d0d7",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-1-[[release]]\n.Release checklist-False",
+      "sourceSha256": "5b28ea1dfe6bbb8cb3f3df501814efb05f77839ba99f627e9a1c95182b8f0a52",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-1-.Release {counter:release-title}-True",
+      "sourceSha256": "f8b014d58f5af7fad4d0d8d9421c31e6270a80ccb278979c00c6edc15dcbe7f9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-1-.Release {counter:release-title}-False",
+      "sourceSha256": "9cf44baeef78c92fcbdd7e72544c3b1a7fede6c3df203326c3eb687a53576622",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-2-.Release checklist-True",
+      "sourceSha256": "f3a77c09c8d91e5d7d5580e6192a674c16b112eade9bb1f169bcf40ea7967574",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-2-.Release checklist-False",
+      "sourceSha256": "3c9f5abbc66fdcb095507c782d361d7f05c528a9ea4d36cd6a370c9ad9fd1a4b",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-2-[title=\"Release checklist\"]-True",
+      "sourceSha256": "6337ffa7af19e8fdade9eb332038766d0dc685eb000c0077be2ae698cb06b6d1",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-2-[title=\"Release checklist\"]-False",
+      "sourceSha256": "8414010419e4b724dfb44b5e509ef4c242b75359bbf1ef848603bef2013e9807",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-2-[[release]]\n.Release checklist-True",
+      "sourceSha256": "b2a06043633e4caf966ffccb7ae54853cbbeab23b929b143b6745be7d324a2be",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-2-[[release]]\n.Release checklist-False",
+      "sourceSha256": "21b784c1cdd33a83bb413778f11eeed8733f914a36c75025b7d17e8c9be886fd",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-2-.Release {counter:release-title}-True",
+      "sourceSha256": "ac5cce7aa004b663b72873196f697c57f65a0b25ec7300c57d30458ce5bc4c46",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-3-2-.Release {counter:release-title}-False",
+      "sourceSha256": "1d38c1053d11b6b478e0b2a41565ccf110e4c58ed84b77018a811a4a54f4bd6f",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-1-.Release checklist-True",
+      "sourceSha256": "7545a1cd7ed4b00377ef82ebb64e3e5a73c2f36d9dcca39f0349e5e04e609be6",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-1-.Release checklist-False",
+      "sourceSha256": "9186d002ee685d9b877a98108649512279643cd2f94cade49ff8697426730dbc",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-1-[title=\"Release checklist\"]-True",
+      "sourceSha256": "3a83211b126c106f786c913a7dc4d734b90b02524d2f71f130930a7864c97fea",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-1-[title=\"Release checklist\"]-False",
+      "sourceSha256": "3755d15aa216a8b3332a850eab33569e8723ef5e376130aac57b93de19539b40",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-1-[[release]]\n.Release checklist-True",
+      "sourceSha256": "f713b9acbecdf3de1bf7cdbe52dc39fa59197425352a3377025d6e419a7b0e4c",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-1-[[release]]\n.Release checklist-False",
+      "sourceSha256": "39ef213c1d2ed38a584d7f2c7d3b70ea3ada244c88a30e9321710553ff0be34b",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-1-.Release {counter:release-title}-True",
+      "sourceSha256": "e4b00b0fcf2d10d73bd3d83db965007ea12a611fbee592f21740f05027774432",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-1-.Release {counter:release-title}-False",
+      "sourceSha256": "53062f84a7f8c9b07a39637dd161636d8876083c89ef281b86c7febec6aa1e69",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-2-.Release checklist-True",
+      "sourceSha256": "4dfa7478d1bc2ecd2f0d1c6f6c58fd058088759d6363eb716ecefcb89a7ce5bd",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-2-.Release checklist-False",
+      "sourceSha256": "eba308c9b9f21f2e8e930bcb71bcc16e6589cabc2ffd2b3bb21c35e56234f41b",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-2-[title=\"Release checklist\"]-True",
+      "sourceSha256": "f3ea3e30343749cc2cb9ebc2c43a189c0af5ae93c153b34bbe460c46f8678046",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-2-[title=\"Release checklist\"]-False",
+      "sourceSha256": "e6e03f74f396e30fc7ebc7206923b90b43f317ed4791da2f3a40911bfa050fac",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-2-[[release]]\n.Release checklist-True",
+      "sourceSha256": "42fb4d98163aabdd77e93a129aa18e0d23536b31e557e6c5b43321370ef25585",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-2-[[release]]\n.Release checklist-False",
+      "sourceSha256": "c858fce4f99dde9a8084c9a47fd108d0da7112d630d2922c1b61aefb3a9e7d15",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-2-.Release {counter:release-title}-True",
+      "sourceSha256": "801cf47bc8c43996743d13f26551f91ed5ae8f37a29313d7d44d8e3d7499ba7a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-4-2-.Release {counter:release-title}-False",
+      "sourceSha256": "6d7be064d1b5841bc5fd3d1c04cfd05101dc98c870c8f0f383c171bb8e1102d9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-boundary-False",
+      "sourceSha256": "3b46620f9ad5d64984cd66f3228978424fb971554b58df3a2743793848f65b17",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "list-boundary-True",
+      "sourceSha256": "e60875aec7416f332397a7690e7d7fe045c762f03a7ed3fba7c81f8983de9632",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-NOTE-====-",
+      "sourceSha256": "7e38117df35d0cd01f5d6022d0593e9e23806a1dae725eb59aea7460d5317d2c",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-NOTE-====-,caption=\"Notice: \"",
+      "sourceSha256": "9d184bd1e0240abfaca795f040df3142c565de9735232b3d90d7b42e240a74a9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-NOTE----",
+      "sourceSha256": "3c918206edad6ea17790f9a6d28c006a9332c7db2605603551ba107d2d4dc43c",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-NOTE----,caption=\"Notice: \"",
+      "sourceSha256": "a5a543ff4e3b649843d3c9d62e6d7e39616515be7347b964a41245a0d5bd9433",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-NOTE-None-",
+      "sourceSha256": "9ce5bdb63e2d4f0201ef83aaea42f08c3531e6b78daff244a2b847cd0ffab52d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-NOTE-None-,caption=\"Notice: \"",
+      "sourceSha256": "99567e2caa2722fd53d5fa612af45047a0ca9018a1e250852cf19325ea76dc6a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-nested-NOTE",
+      "sourceSha256": "8d06a0f32befa4644079d114da2e28e5a6cd8d0ca241eca410f528f12d9554e5",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-table-NOTE",
+      "sourceSha256": "cb524ddd76c065f91a153c4655f459f5956c8e77b3e311cb329610e05f977fde",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-TIP-====-",
+      "sourceSha256": "7f110c6e541c4c2ab91236615dadae1d2bb2dd305a72e27ca719946f07e3dd30",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-TIP-====-,caption=\"Notice: \"",
+      "sourceSha256": "9987993652b3b0c8b9c77138cb28ddae73c8be0929611c6e0300a1381b7fbc8a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-TIP----",
+      "sourceSha256": "972e2ed393d02ee63b5d848e912268b3833e83cf56efbbb055f88cc471e912cf",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-TIP----,caption=\"Notice: \"",
+      "sourceSha256": "01bbfa35db6ca9b2ea7079ea2c77a03ac4e1456a0e0b67da75323ebaf26a60f4",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-TIP-None-",
+      "sourceSha256": "876d7cfd6c0abf2239e3fddc0b63b1eb354847132317aa9381e8b6d0f9d41bd6",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-TIP-None-,caption=\"Notice: \"",
+      "sourceSha256": "74b47a72837100dc0cbef3cd4b9eed8f86ef4564674bddf8f4a2f0cb9c0fd8f4",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-nested-TIP",
+      "sourceSha256": "e6747344a87619638d9f2ff5bb877c8545144dd545ef5427fe1a51b2f6a3cf57",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-table-TIP",
+      "sourceSha256": "3f247a07e8eab4e219638b996fbe170a521e721ea21d05f7a834cd927b00c077",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-IMPORTANT-====-",
+      "sourceSha256": "a2b50cb7a8e993a5c1d353ced22a579f128afc88b99932d4aabb7be9ebdd6f91",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-IMPORTANT-====-,caption=\"Notice: \"",
+      "sourceSha256": "c9dc4bf6728cee6652ef86515fc588dad42a24cbbbd2dfae7ad0ade4cd48ad47",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-IMPORTANT----",
+      "sourceSha256": "63cb9efead3c12dcc1e0d5939c66114d2b4c6179f6c1c374d007810d5a6c1bfe",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-IMPORTANT----,caption=\"Notice: \"",
+      "sourceSha256": "0e2c4cc1b9036c9190ab4800ed118277775eccddb9a87ef4fc711103152e09fb",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-IMPORTANT-None-",
+      "sourceSha256": "475d8468acafa677c448f179691856341ceef487da1bd3041aaa924a5df37343",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-IMPORTANT-None-,caption=\"Notice: \"",
+      "sourceSha256": "cdd4789a4fc84b54fc727035fbb48dfdea670d2a82ed0b55e47cdbe7ee53aa55",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-nested-IMPORTANT",
+      "sourceSha256": "29ff4b90fcec2ab7a05a298fab10edf689761465f80d43d3622841b2ac8cd09f",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-table-IMPORTANT",
+      "sourceSha256": "451e2e66fee9f9505f70feace87a0849387c64b9e14034b59e0b3e4c5fc694ff",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-CAUTION-====-",
+      "sourceSha256": "2ebf1d8d065cfda18328fb080e1ef4bc67af5debb1304b0fe4e47c2aa9464187",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-CAUTION-====-,caption=\"Notice: \"",
+      "sourceSha256": "f8f84788b9edb65819e403a7d563fbe35bfb91bca420cf15101ded63d15a4f9d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-CAUTION----",
+      "sourceSha256": "dafaba18fb62ae3dcef97373ecf5dc641cba9b858dc31d8d3bb58626b93ec000",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-CAUTION----,caption=\"Notice: \"",
+      "sourceSha256": "caab47eb3409505644541503dad968cf1b0277836b1065ea1c709172f871170c",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-CAUTION-None-",
+      "sourceSha256": "643a7931f48884f1f0c86215d90d84a3802bef4f45a23f01b7a5e4d2b4b10ecd",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-CAUTION-None-,caption=\"Notice: \"",
+      "sourceSha256": "2c0d171180f247943dfcff9aecd6a26764f2f5043f81e4c303a51c02043c48e4",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-nested-CAUTION",
+      "sourceSha256": "8d131fd4c3e65ee180f945f8f2b85e953d3c40c270632b15c41f7cf1feb406ff",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-table-CAUTION",
+      "sourceSha256": "7195019d2c797cacffb0e56e0c5b698c68ccbe26d4dd6a2967cc48f0b041737d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-WARNING-====-",
+      "sourceSha256": "0fb7459c89b1c08424fe193d733d30c12bf563dec9de9e0b2ab166a482765e66",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-WARNING-====-,caption=\"Notice: \"",
+      "sourceSha256": "aab754f177608319ee0bf75c3d1f6b64736bc3f77f48480b44f5013b27cf9086",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-WARNING----",
+      "sourceSha256": "3ff5c6b98538fd6ebfea14b12a69408b9d7e41ecef84c5ed73df82b913357f37",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-WARNING----,caption=\"Notice: \"",
+      "sourceSha256": "5dcb9ac3a3892de83745decd4e60bc07c3c78b730cc09b68adbe8b53d8268675",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-WARNING-None-",
+      "sourceSha256": "e176c364f4320668934d25af328b67565e4b487714e68e703b18d78149931d17",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-WARNING-None-,caption=\"Notice: \"",
+      "sourceSha256": "702d25c8b055ff2032dd50cf02319b631faadd83fa243448647dbee41ef41c83",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-nested-WARNING",
+      "sourceSha256": "52d1bc50d008684c2b9cae2233d0437e63a73ba56a1dab84bb3a66221c2c131f",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "caption-table-WARNING",
+      "sourceSha256": "71b8a1a935e246e8f63e95e546381d59b8441dbd42ff50a62b027cb2f8ae44d0",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-article-1-",
+      "sourceSha256": "4684646c766947023b8c3d5372a5d528b7f6f0d159045b738e6cd6c1cb72f7a8",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-article-1-all",
+      "sourceSha256": "f9605425c6167a023b234b824eacfa82ee3bab1faf22603f2880e74dbb85ed90",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-article-1-None",
+      "sourceSha256": "384a16a145f884d919c1abeb1f91aa0fb7a0a435ae969c1634ff83336b32abcd",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-article-2-",
+      "sourceSha256": "76f8ba7385a30b7ebb9bb645418b4aa3a26333ac93a1ee9ebad702667f4c1c96",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-article-2-all",
+      "sourceSha256": "f0451d03796fd7ab0d2e251448de4f4597ceb1aa6d5dc9205493a7ae5f552308",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-article-2-None",
+      "sourceSha256": "5c3297c36c2c496ce6040693b99d75c6791877dc128a11e3ffc0f99d340071f5",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-article-3-",
+      "sourceSha256": "6954ab10b8ce64888da85027a009017b4b8e95b5e848c58464277949e7837bac",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-article-3-all",
+      "sourceSha256": "e2c0b5bdce939382c81dde5773331828a990804561506fed5fa5990df4bc1d34",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-article-3-None",
+      "sourceSha256": "41cac6dcc365bd28720b302d56b58cfc0a04a09e45de420db99b669a929a1f2a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-book-1-",
+      "sourceSha256": "e5aa1900f512e28691c47a63031425bd34f302856326a73601d92d90c5cd8aac",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-book-1-all",
+      "sourceSha256": "c1d1785fa9ef922ca86b0ac743f860ba3d1b544d27310194bf6f398ecf4aefa1",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-book-1-None",
+      "sourceSha256": "3d1994f3f911e98bad2ec062f08137be37a2029e14f543b13c55e97a030a036a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-book-2-",
+      "sourceSha256": "71c8bcea1963579d72cbd5b13a2e6b81a9bbd99d371a397beca965227e9376b4",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-book-2-all",
+      "sourceSha256": "ef7d6777061c35abe87bd220554962600a07d12365ab916fc0424fec6569fcd1",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-book-2-None",
+      "sourceSha256": "0f43f1321ab8389f680f83f56870fe5e7b109ad8f68640a6e9175e9c5bde4f63",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-book-3-",
+      "sourceSha256": "497085c95aede78c6c6faa4bef1e365fe0aa4b75456a57e2f50485f44f533790",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-book-3-all",
+      "sourceSha256": "c3ce1465974a384f4d7f061b4e846a4b2b7cd3a58dd1b99b08eb3308480874e0",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "bibliography-book-3-None",
+      "sourceSha256": "dd7eb5d80569c4adaaed071d8e3f6f12b5f4cafd9e5f0466e5fdca52450a7657",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-preface-",
+      "sourceSha256": "35754c052937f41e5f56f78cb34fb8875e752056395596874aec1ea59fec7ef5",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-preface-all",
+      "sourceSha256": "f68b4e16d1c6528f651d0a99aab305bec0b2f06ab7f2b9f5e0fd29a22b10d980",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-glossary-",
+      "sourceSha256": "6d4bd3e02a7a39bac64c6035e2e3cb57de38de71786f2fca1db1b53c9c03aa90",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-glossary-all",
+      "sourceSha256": "2a9a379949a17fc1823e7ca357ee92f9de6f69bdc36a42f2fc6f9ace5dab4738",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-index-",
+      "sourceSha256": "32d266dcaec5bb19be8c832c706778d1b67a5fe21af90f2f1b64036e6cd2a66a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-index-all",
+      "sourceSha256": "4003be2258ffa975dcc92ac906e561c03dfdf30bf2f643f4f3975b3746d40d57",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-colophon-",
+      "sourceSha256": "b941427f9b8a9661841bb6975afbaac51a0b558eb8596eb7577cc83e741e7869",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-colophon-all",
+      "sourceSha256": "0008e3fedea98c6e08b3bd6dc1c23eb572f5276b5e508ee5332635e234d78430",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-dedication-",
+      "sourceSha256": "b07243aa3a1f2ce316474421ff30aa3b47ab9be9eca10a3f74f910e2e5d1fd74",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-dedication-all",
+      "sourceSha256": "1a2b3d1ac58b96181995c145e929fea1d09071caf2c06d20c8fb8f966d198001",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-acknowledgments-",
+      "sourceSha256": "dc025d2689a57b9cbccfe9645836cbf14950707c3bed5ebe2492846f2e893016",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-acknowledgments-all",
+      "sourceSha256": "eb0741ccbcc3b5a4c7bbd3158c31cc39285dbb5a6f65bf380dd67980f09ed0d8",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-partintro-",
+      "sourceSha256": "707da4a7840236037ab3271a1bf67c6d38d9bbbaa8f64d01069fbf1414d1df03",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-partintro-all",
+      "sourceSha256": "6e393b91a4149bf9d0e7ba060d05eb6b8b8f10e65d8f7f5ff5210c00804cdca5",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-abstract-",
+      "sourceSha256": "302036fb593d9761fb38ba91999ebdc31829c0fb5e726faedb820a423ba5ac29",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "special-abstract-all",
+      "sourceSha256": "5a677fa677912ecc575dc9cf9dfb4137e9a7663be618d14c95786e04e878166c",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "preface-descendants-",
+      "sourceSha256": "decd52a0d2f406d8e9e1055d73c1d8df35efa300ba4f0b94295696b4697361a0",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "preface-descendants-all",
+      "sourceSha256": "865dd9308ddefa4d7180dce5e1c4dba47fbfa00eeb692ee937ae4cd821fc49b9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "complete-showcase",
+      "sourceSha256": "de647b0646c8c3f923a7d5bc228d26478f23661e90736d0db8a31026086869b2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    }
+  ]
+}

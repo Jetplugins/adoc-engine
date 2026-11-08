@@ -1,0 +1,18 @@
+{
+  "status": "unreleased-working-tree",
+  "binarySha256": "2aed2ba330572a1564f9d1a694e142ee25141124371b4f29f3e4736f2bcecaa8",
+  "sourceSha256": "de647b0646c8c3f923a7d5bc228d26478f23661e90736d0db8a31026086869b2",
+  "referenceCases": 270,
+  "compatibilityCorpora": 23,
+  "editVariants": 20,
+  "rustTests": 29,
+  "protocolTests": 6,
+  "benchmarkHarnessTests": 7,
+  "formatting": "passed",
+  "clippy": "passed",
+  "downstreamLibrary": "passed",
+  "completeShowcaseGolden": "passed",
+  "matchingScreenshotComparisons": 11,
+  "latencySamples": 1130,
+  "peakRssSamples": 3
+}

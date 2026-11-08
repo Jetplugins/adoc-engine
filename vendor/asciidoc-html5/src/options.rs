@@ -1,0 +1,2622 @@
+//! Per-conversion options: externally-supplied document attributes and the
+//! [safe mode].
+//!
+//! [`Options`] carries the settings applied to a conversion from *outside* the
+//! document source: a set of document attributes (the equivalent of
+//! Asciidoctor's `-a name=value` CLI option and the `attributes` API option)
+//! and the [`SafeMode`] under which the document is processed (Asciidoctor's
+//! `safe` API option). It is the parameter accepted by the `_with` conversion
+//! entry points ([`convert_with`] and [`convert_file_with`]).
+//!
+//! # Safe mode
+//!
+//! The safe mode governs security-sensitive rendering. Following Asciidoctor,
+//! it also decides whether the default stylesheet is *linked* or *embedded*:
+//! under [`SafeMode::Secure`] (the default here, matching Asciidoctor's API)
+//! the converter links to `./asciidoctor.css` unless the caller sets `linkcss`
+//! explicitly; under a lower mode it embeds the stylesheet inline. See
+//! [`Options::safe_mode`].
+//!
+//! [safe mode]: SafeMode
+//!
+//! # Override vs. default (soft) precedence
+//!
+//! Each attribute is seeded with one of two precedences, matching Asciidoctor:
+//!
+//! - **Override** (the default here, and Asciidoctor's `-a name=value`): the
+//!   external value wins and the document *cannot* change it — an assignment of
+//!   the same name in the document header or body is ignored.
+//! - **Default** (Asciidoctor's soft-set `-a name=value@`): the external value
+//!   is only a starting point; an assignment of the same name in the document
+//!   header or body overrides it.
+//!
+//! The precedence maps directly onto `asciidoc-parser`'s
+//! [`ModificationContext`]: an override becomes [`ModificationContext::ApiOnly`]
+//! (locked against the document), a default becomes
+//! [`ModificationContext::Anywhere`] (the document may reassign it).
+//!
+//! ```
+//! use asciidoc_html5::{convert_with, Options};
+//!
+//! // Override: the API value wins over the document header. (`webfonts` is a
+//! // standalone-document `<head>` feature, so render standalone here.)
+//! let opts = Options::new()
+//!     .standalone(true)
+//!     .attribute("webfonts", "Ubuntu+Mono:400");
+//! let html = convert_with("= Doc\n:webfonts: ignored\n\nBody.", &opts);
+//! assert!(html.contains("family=Ubuntu+Mono:400"));
+//! ```
+//!
+//! [`convert_with`]: crate::convert_with
+//! [`convert_file_with`]: crate::convert_file_with
+
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use asciidoc_parser::{
+    attributes::Attrlist,
+    parser::{
+        DocinfoFileHandler, IncludeFileHandler, IncludeResolution, ModificationContext,
+        RenderContext, SvgFileHandler,
+    },
+    Parser, ReferenceTime, SafeMode,
+};
+
+use crate::{
+    docinfo_handler::FsDocinfoFileHandler, include_handler::FsIncludeFileHandler,
+    svg_file_handler::FsSvgFileHandler,
+};
+
+/// The Asciidoctor release this crate targets for output parity, reported
+/// through the `asciidoctor-version` intrinsic attribute. It matches the
+/// version pinned in `ref/asciidoctor` and named as the parity oracle in
+/// `CLAUDE.md`; documents that gate Asciidoctor-only markup on
+/// `ifdef::asciidoctor-version[]` then behave as they would under that
+/// Asciidoctor.
+const ASCIIDOCTOR_COMPAT_VERSION: &str = "2.0.26";
+
+/// The options to supply to a conversion from outside the document source: a
+/// set of document attributes and the [safe mode](SafeMode).
+///
+/// `Options` is a builder: start from [`Options::new`] (or
+/// [`Options::default`]) and chain one call per attribute, plus an optional
+/// [`safe_mode`](Self::safe_mode). Each attribute call records a directive; the
+/// directives are applied in order when the options are handed to a `_with`
+/// conversion entry point, so a later call for the same attribute name
+/// supersedes an earlier one.
+///
+/// See the [module documentation](self) for override vs. default precedence and
+/// how the safe mode gates stylesheet embedding.
+///
+/// # Examples
+///
+/// ```
+/// use asciidoc_html5::{convert_with, Options};
+///
+/// let opts = Options::new()
+///     .standalone(true)
+///     .set("linkcss")
+///     .unset("webfonts");
+/// let html = convert_with("= Doc\n\nBody.", &opts);
+/// assert!(html.contains(r#"<link rel="stylesheet" href="./asciidoctor.css">"#));
+/// ```
+#[derive(Clone, Debug, Default)]
+pub struct Options {
+    /// The attribute directives, in the order they were added.
+    attributes: Vec<Directive>,
+
+    /// The safe mode to process the document under. `None` defaults to
+    /// [`SafeMode::Secure`], matching Asciidoctor's API default.
+    safe_mode: Option<SafeMode>,
+
+    /// The CSS to embed when the document selects a custom stylesheet and the
+    /// stylesheet is embedded rather than linked. `None` leaves the library
+    /// with nothing to embed for a custom stylesheet. See
+    /// [`Options::stylesheet_content`].
+    stylesheet_content: Option<String>,
+
+    /// The base directory: the anchor for filesystem-relative resources
+    /// (`include::` targets and docinfo files) and, under a jailed safe mode,
+    /// the boundary reads may not cross. `None` leaves it to be derived from
+    /// the primary file's directory (see [`base_dir`](Self::base_dir)).
+    base_dir: Option<PathBuf>,
+
+    /// The path of the primary document, used to name it for diagnostics, to
+    /// anchor top-level `include::` resolution, and to derive the `docname`
+    /// that names *private* docinfo files. Set by
+    /// [`convert_file_with`](crate::convert_file_with) and by
+    /// [`input_file`](Self::input_file).
+    primary_file: Option<PathBuf>,
+
+    /// Whether to render a standalone document (the full `<!DOCTYPE>`/`<head>`/
+    /// `<body>` shell) or embedded, body-only output. `None` defers to the
+    /// entry point's default — embedded for the string entry points,
+    /// standalone for the file entry points — matching Asciidoctor's
+    /// `:standalone` option. See [`standalone`](Self::standalone) /
+    /// [`embedded`](Self::embedded).
+    standalone: Option<bool>,
+
+    /// The document type (`doctype`) to convert under. `None` pins the
+    /// intrinsic to `article`, the only structural doctype this renderer
+    /// models. The one other value it honors is `inline` — the single-paragraph
+    /// mode used to convert a fragment of inline markup. See
+    /// [`doctype`](Self::doctype).
+    doctype: Option<String>,
+
+    /// A pinned reference time (Asciidoctor's "now") that drives the `local*`
+    /// document attributes and, absent an [`input_mtime`](Self::input_mtime),
+    /// the `doc*` attributes too. `None` leaves the clock to the parser (the
+    /// `SOURCE_DATE_EPOCH` environment variable or the real wall clock). See
+    /// [`reference_time`](Self::reference_time).
+    reference_time: Option<ReferenceTime>,
+
+    /// A pinned source-modification time that drives the `doc*` attributes
+    /// (`docdate`, `doctime`, `docdatetime`, `docyear`). `None` leaves them to
+    /// follow the reference time. See [`input_mtime`](Self::input_mtime).
+    input_mtime: Option<ReferenceTime>,
+
+    /// Whether to catalog referenced images and links — Asciidoctor's
+    /// `catalog_assets` API option. `None` leaves it at the parser's default
+    /// (disabled). See [`catalog_assets`](Self::catalog_assets).
+    catalog_assets: Option<bool>,
+
+    /// Whether to annotate each block's outermost container element with a
+    /// `data-source-line` attribute. `None` defaults to off, keeping output
+    /// parity with Asciidoctor untouched. See
+    /// [`source_locations`](Self::source_locations).
+    source_locations: Option<bool>,
+
+    /// A caller-supplied [`IncludeFileHandler`], taking precedence over the
+    /// filesystem handler [`effective_base_dir`](Self::effective_base_dir)
+    /// would otherwise install. `None` leaves `include::` resolution to the
+    /// filesystem handler (or unresolved, absent a base directory). See
+    /// [`include_file_handler`](Self::include_file_handler).
+    ///
+    /// Stored behind an `Arc` (rather than a cheaper `Rc`) — and bounded by
+    /// `Send + Sync` — so that `Options` itself stays `Send + Sync`: every
+    /// other field is plain data, so without this bound a single trait-object
+    /// field would silently strip those auto traits from the whole type,
+    /// breaking a caller who moves an `Options` into a worker thread (e.g. to
+    /// convert several documents in parallel).
+    include_file_handler: Option<Arc<dyn IncludeFileHandler + Send + Sync>>,
+
+    /// A caller-supplied [`DocinfoFileHandler`], taking precedence over the
+    /// filesystem handler [`effective_base_dir`](Self::effective_base_dir)
+    /// would otherwise install. `None` leaves docinfo resolution to the
+    /// filesystem handler (or unresolved, absent a base directory). See
+    /// [`docinfo_file_handler`](Self::docinfo_file_handler) and the `Arc`/
+    /// `Send + Sync` note on
+    /// [`include_file_handler`](Self::include_file_handler).
+    docinfo_file_handler: Option<Arc<dyn DocinfoFileHandler + Send + Sync>>,
+
+    /// A caller-supplied [`SvgFileHandler`], taking precedence over the
+    /// filesystem handler [`effective_base_dir`](Self::effective_base_dir)
+    /// would otherwise install. `None` leaves inline-SVG resolution to the
+    /// filesystem handler (or undegraded to alt text, absent a base
+    /// directory). See [`svg_file_handler`](Self::svg_file_handler) and the
+    /// `Arc`/`Send + Sync` note on
+    /// [`include_file_handler`](Self::include_file_handler).
+    svg_file_handler: Option<Arc<dyn SvgFileHandler + Send + Sync>>,
+}
+
+/// One recorded attribute directive: a name, what to do with it, and whether
+/// the external value overrides the document or merely defaults it.
+#[derive(Clone, Debug)]
+struct Directive {
+    /// The attribute name (lowercased, as `asciidoc-parser` stores names).
+    name: String,
+
+    /// Whether to assign a value, set the attribute, or unset it.
+    action: Action,
+
+    /// Whether the external value wins over the document (`Override`) or the
+    /// document wins if it assigns the same name (`Default`).
+    precedence: Precedence,
+}
+
+/// What a [`Directive`] does to its attribute.
+#[derive(Clone, Debug)]
+enum Action {
+    /// Assign an explicit string value (`name=value`).
+    Value(String),
+
+    /// Set the attribute with no explicit value (`name`).
+    Set,
+
+    /// Unset the attribute (`name!`).
+    Unset,
+}
+
+/// Whether an externally-supplied attribute overrides the document or only
+/// provides a default the document may override.
+#[derive(Clone, Copy, Debug)]
+enum Precedence {
+    /// The external value wins; the document cannot change it. Maps to
+    /// [`ModificationContext::ApiOnly`].
+    Override,
+
+    /// The external value is a default; a document assignment of the same name
+    /// wins. Maps to [`ModificationContext::Anywhere`].
+    Default,
+}
+
+impl Precedence {
+    /// The `asciidoc-parser` modification context this precedence seeds with.
+    fn modification_context(self) -> ModificationContext {
+        match self {
+            Precedence::Override => ModificationContext::ApiOnly,
+            Precedence::Default => ModificationContext::Anywhere,
+        }
+    }
+}
+
+// `Parser::with_include_file_handler` (and its docinfo/SVG counterparts) are
+// generic over a `Sized` handler type, which it wraps in its own `Rc`.
+// `asciidoc-parser` supplies a blanket `impl<T: Trait + ?Sized> Trait for
+// Rc<T>` (see asciidoc-rs/asciidoc-parser#1391), but not one for `Arc<T>` —
+// and `Options` stores its caller-supplied handlers behind `Arc`, not `Rc`,
+// specifically so `Options` itself stays `Send + Sync` (see the field-level
+// note on `Options::include_file_handler`). Each wrapper below is a local,
+// `Sized` type that holds the `Arc<dyn Trait>` and delegates to it, satisfying
+// `Parser`'s `Sized` bound while keeping the handler behind the one `Arc`
+// `Options` can cheaply clone.
+
+/// Delegates to a caller-supplied [`IncludeFileHandler`] trait object stored in
+/// [`Options`]. See the module note above [`DynIncludeFileHandler`] itself.
+#[derive(Clone, Debug)]
+struct DynIncludeFileHandler(Arc<dyn IncludeFileHandler + Send + Sync>);
+
+impl IncludeFileHandler for DynIncludeFileHandler {
+    fn resolve_target<'src>(
+        &self,
+        source: Option<&str>,
+        target: &str,
+        attrlist: &Attrlist<'src>,
+        parser: &Parser,
+    ) -> IncludeResolution {
+        self.0.resolve_target(source, target, attrlist, parser)
+    }
+}
+
+/// Delegates to a caller-supplied [`DocinfoFileHandler`] trait object stored in
+/// [`Options`]. See the note above [`DynIncludeFileHandler`].
+#[derive(Clone, Debug)]
+struct DynDocinfoFileHandler(Arc<dyn DocinfoFileHandler + Send + Sync>);
+
+impl DocinfoFileHandler for DynDocinfoFileHandler {
+    fn resolve_docinfo(
+        &self,
+        docinfodir: Option<&str>,
+        file_name: &str,
+        parser: &Parser,
+    ) -> Option<String> {
+        self.0.resolve_docinfo(docinfodir, file_name, parser)
+    }
+}
+
+/// Delegates to a caller-supplied [`SvgFileHandler`] trait object stored in
+/// [`Options`]. See the note above [`DynIncludeFileHandler`].
+#[derive(Clone, Debug)]
+struct DynSvgFileHandler(Arc<dyn SvgFileHandler + Send + Sync>);
+
+impl SvgFileHandler for DynSvgFileHandler {
+    fn resolve_svg(&self, target: &str, context: &RenderContext) -> Option<String> {
+        self.0.resolve_svg(target, context)
+    }
+}
+
+impl Options {
+    /// Creates an empty set of options — no attributes supplied and the default
+    /// safe mode. Converting with it is equivalent to calling
+    /// [`convert`](crate::convert).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the [`SafeMode`] the document is processed under.
+    ///
+    /// This is Asciidoctor's `safe` API option. When left unset, conversion
+    /// uses [`SafeMode::Secure`], the most conservative mode and
+    /// Asciidoctor's API default. Following Asciidoctor, `Secure` links the
+    /// default stylesheet (to `./asciidoctor.css`) instead of embedding it,
+    /// unless the caller sets `linkcss` explicitly; lower modes embed it
+    /// inline.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use asciidoc_html5::{convert_with, Options, SafeMode};
+    ///
+    /// // A mode below `Secure` embeds the default stylesheet inline.
+    /// let opts = Options::new().standalone(true).safe_mode(SafeMode::Server);
+    /// let html = convert_with("= Doc\n\nBody.", &opts);
+    /// assert!(html.contains("<style>"));
+    /// ```
+    pub fn safe_mode(mut self, safe: SafeMode) -> Self {
+        self.safe_mode = Some(safe);
+        self
+    }
+
+    /// Selects standalone output (`true`) or embedded, body-only output
+    /// (`false`).
+    ///
+    /// This is Asciidoctor's `:standalone` option. A *standalone* document is
+    /// the complete HTML5 file — the `<!DOCTYPE html>` declaration, `<html>`, a
+    /// `<head>` (with the default stylesheet), and a `<body>` framing the
+    /// header, content, and footer. *Embedded* output is the converted body
+    /// on its own, with no shell, stylesheet, or header/footer frame —
+    /// meant to be dropped into a surrounding template.
+    ///
+    /// When left unset, the output mode follows the entry point, matching
+    /// Asciidoctor: the string entry points ([`convert`](crate::convert),
+    /// [`convert_with`](crate::convert_with)) default to *embedded*, while the
+    /// file entry points ([`convert_file`](crate::convert_file),
+    /// [`convert_file_with`](crate::convert_file_with)) default to
+    /// *standalone*. Setting this explicitly overrides that default for
+    /// either kind of entry point.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use asciidoc_html5::{convert_with, Options};
+    ///
+    /// // The string API is embedded by default; opt in to a full document.
+    /// let opts = Options::new().standalone(true);
+    /// let html = convert_with("= Doc\n\nBody.", &opts);
+    /// assert!(html.starts_with("<!DOCTYPE html>"));
+    /// ```
+    pub fn standalone(mut self, yes: bool) -> Self {
+        self.standalone = Some(yes);
+        self
+    }
+
+    /// Selects the document type — Asciidoctor's `doctype` API option.
+    ///
+    /// This renderer models the `article` doctype structurally, so `article`
+    /// (the default) is the value the document is pinned to and the one the
+    /// full document skeleton is built around. The other value it honors is
+    /// `inline`: a fragment-conversion mode that formats and emits only the
+    /// inline content of the document's *first* block — a paragraph, verbatim,
+    /// or raw block — with no block wrapper and no document shell, matching
+    /// Asciidoctor's inline doctype. (Asciidoctor also defines the `book` and
+    /// `manpage` doctypes, which are out of scope here.)
+    ///
+    /// Supplying a doctype here overrides any `:doctype:` set in the document,
+    /// matching the way the `backend` and `doctype` intrinsics are otherwise
+    /// locked against the document.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use asciidoc_html5::{convert_with, Options};
+    ///
+    /// // The inline doctype converts just the first block's inline markup.
+    /// let opts = Options::new().doctype("inline");
+    /// let html = convert_with("http://example.org[Docs] is _here_.", &opts);
+    /// assert_eq!(
+    ///     html,
+    ///     "<a href=\"http://example.org\">Docs</a> is <em>here</em>.\n"
+    /// );
+    /// ```
+    pub fn doctype<S: Into<String>>(mut self, doctype: S) -> Self {
+        self.doctype = Some(doctype.into());
+        self
+    }
+
+    /// Selects embedded, body-only output (`true`) or standalone output
+    /// (`false`) — the inverse of [`standalone`](Self::standalone).
+    ///
+    /// This is the spelling Asciidoctor's `-e`/`--embedded` CLI flag reaches
+    /// for. `options.embedded(true)` is equivalent to
+    /// `options.standalone(false)`. See [`standalone`](Self::standalone)
+    /// for what each mode emits and how the unset default follows the entry
+    /// point.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use asciidoc_html5::{convert_file_with, Options};
+    ///
+    /// // The file API is standalone by default; opt in to body-only output.
+    /// let opts = Options::new().embedded(true);
+    /// # let _ = &opts;
+    /// ```
+    pub fn embedded(self, yes: bool) -> Self {
+        self.standalone(!yes)
+    }
+
+    /// Supplies the CSS to embed when the document selects a *custom*
+    /// stylesheet — that is, when the `stylesheet` attribute is set to a
+    /// non-empty value other than `DEFAULT`.
+    ///
+    /// The library converts text to text and cannot read an external stylesheet
+    /// file on its own, so a caller that wants a custom stylesheet *embedded*
+    /// (`<style>…</style>`) must hand its contents in through this method. This
+    /// is the string counterpart to Asciidoctor reading the file named by
+    /// `stylesheet`/`stylesdir` from disk.
+    ///
+    /// The content is used only when the stylesheet is embedded. Under
+    /// `linkcss` (including the `Secure` default, which links) the converter
+    /// links to the stylesheet's normalized web path instead and ignores this
+    /// value. It is likewise ignored when the document uses the default
+    /// stylesheet or unsets the stylesheet entirely.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use asciidoc_html5::{convert_with, Options, SafeMode};
+    ///
+    /// let opts = Options::new()
+    ///     .standalone(true)
+    ///     .safe_mode(SafeMode::Unsafe)
+    ///     .attribute("stylesheet", "my-theme.css")
+    ///     .stylesheet_content("body { color: #ff0000; }");
+    /// let html = convert_with("= Doc\n\nBody.", &opts);
+    /// assert!(html.contains("<style>\nbody { color: #ff0000; }\n</style>"));
+    /// ```
+    pub fn stylesheet_content<S: Into<String>>(mut self, css: S) -> Self {
+        self.stylesheet_content = Some(css.into());
+        self
+    }
+
+    /// Sets the base directory that filesystem-relative resources resolve
+    /// against — Asciidoctor's `-B`/`--base-dir` (the `base_dir` API option).
+    ///
+    /// Such resources are `include::` directives and docinfo files. The base
+    /// directory anchors relative include targets and docinfo file lookups and,
+    /// under the `safe` and `server` [safe modes](SafeMode), is the boundary
+    /// those reads may not cross: a target (or a `docinfodir`) that tries to
+    /// climb above it is recovered back inside, matching Asciidoctor. Under
+    /// `unsafe` there is no such restriction, and under `secure` includes are
+    /// turned into links and docinfo is dropped, without any file being read.
+    ///
+    /// When left unset, the base directory is derived from the primary file's
+    /// directory (see [`input_file`](Self::input_file)); with neither a base
+    /// directory nor a primary file, include and docinfo resolution are not
+    /// enabled and `include::` directives and docinfo are left unresolved.
+    ///
+    /// The path should be absolute; relative paths are interpreted against the
+    /// process's current directory when files are read.
+    pub fn base_dir<P: Into<PathBuf>>(mut self, dir: P) -> Self {
+        self.base_dir = Some(dir.into());
+        self
+    }
+
+    /// Sets the path of the primary document.
+    ///
+    /// This names the document in diagnostics, anchors the resolution of its
+    /// top-level `include::` directives (a relative include target resolves
+    /// against this file's directory), and provides the `docname` from which
+    /// *private* docinfo file names are built (`<docname>-docinfo.html`, …).
+    /// When [`base_dir`](Self::base_dir) is unset, this file's directory also
+    /// becomes the base directory.
+    ///
+    /// [`convert_file_with`](crate::convert_file_with) sets this automatically
+    /// from the path it reads; callers that convert already-read source with
+    /// [`convert_with`](crate::convert_with) can set it explicitly so includes
+    /// and docinfo resolve as they would for the file on disk.
+    pub fn input_file<P: Into<PathBuf>>(mut self, path: P) -> Self {
+        self.primary_file = Some(path.into());
+        self
+    }
+
+    /// Pins the reference time ("now") from which the time-dependent document
+    /// attributes are computed.
+    ///
+    /// This drives the `local*` family (`localdate`, `localtime`,
+    /// `localdatetime`, `localyear`) and, unless an
+    /// [`input_mtime`](Self::input_mtime) is also set, the `doc*` family too.
+    /// Pinning it makes the computed attributes — and any output derived from
+    /// them, such as the footer's "Last updated" line — reproducible, mirroring
+    /// Asciidoctor's handling of the `SOURCE_DATE_EPOCH` environment variable.
+    /// See [`ReferenceTime`].
+    pub fn reference_time(mut self, reference_time: ReferenceTime) -> Self {
+        self.reference_time = Some(reference_time);
+        self
+    }
+
+    /// Pins the source-modification time that drives the `doc*` document
+    /// attributes (`docdate`, `doctime`, `docdatetime`, `docyear`).
+    ///
+    /// This is Asciidoctor's `input_mtime` option: the `local*` attributes keep
+    /// following the reference time (the real clock, or a
+    /// [`reference_time`](Self::reference_time)), while the `doc*` attributes
+    /// reflect the given instant — normally the modification time of the source
+    /// file. See [`ReferenceTime`].
+    pub fn input_mtime(mut self, input_mtime: ReferenceTime) -> Self {
+        self.input_mtime = Some(input_mtime);
+        self
+    }
+
+    /// Enables cataloging the images and links referenced in the document —
+    /// Asciidoctor's `catalog_assets` API option.
+    ///
+    /// The document catalog always tracks referenceable elements (anchors,
+    /// section headings, footnotes) regardless of this setting; with
+    /// `catalog_assets(true)`, it additionally records every `image:`/`image::`
+    /// macro target (as an
+    /// [`ImageReference`](asciidoc_parser::document::ImageReference), via
+    /// [`Catalog::images`](asciidoc_parser::document::Catalog::images)) and
+    /// every `link:`/`mailto:` macro target and bare URL/email autolink (via
+    /// [`Catalog::links`](asciidoc_parser::document::Catalog::links)), both in
+    /// document order. Left unset (the default), neither list is populated.
+    ///
+    /// Unlike Asciidoctor — whose lazy, Ruby-runtime conversion model only
+    /// catalogs inline images and links once the document is *converted* — this
+    /// crate performs inline substitution while *parsing*, so both lists are
+    /// already populated on the [`Document`](crate::Document) returned by
+    /// [`load`](crate::load)/[`load_with`](crate::load_with), with no separate
+    /// conversion step required.
+    ///
+    /// This does not mean the option is redundant here: rendering an image or
+    /// link macro already needs its target (and, for images, `imagesdir`)
+    /// regardless of this setting, but recording it *again* into the catalog
+    /// costs an extra clone and push per occurrence. `catalog_assets` gates
+    /// that extra bookkeeping so a caller who never reads
+    /// [`Catalog::images`](asciidoc_parser::document::Catalog::images)/
+    /// [`links`](asciidoc_parser::document::Catalog::links) does not pay for
+    /// it — mirroring Asciidoctor, which documents the same option as an
+    /// opt-in for a reason: "\[it\] does not attempt to store information
+    /// about all assets it comes across while processing the document"
+    /// unless asked to.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use asciidoc_html5::{load_with, Options};
+    ///
+    /// let opts = Options::new().catalog_assets(true);
+    /// let doc = load_with(
+    ///     "image::screenshot.png[]\n\nSee https://example.org for details.",
+    ///     &opts,
+    /// );
+    /// assert_eq!(doc.catalog().images()[0].target, "screenshot.png");
+    /// assert_eq!(doc.catalog().links(), ["https://example.org"]);
+    /// ```
+    pub fn catalog_assets(mut self, yes: bool) -> Self {
+        self.catalog_assets = Some(yes);
+        self
+    }
+
+    /// Enables `data-source-line` annotations on the rendered output.
+    ///
+    /// With this on, every block's outermost container element (a paragraph's
+    /// `<div class="paragraph">`, a section's `<div class="sectN">`, a table's
+    /// `<table>`, and so on) carries a `data-source-line="<n>"` attribute
+    /// naming the line — in the *preprocessed* source, the same numbering
+    /// [`Span::line`](asciidoc_parser::Span::line) reports — where the block's
+    /// content begins. A caller working from the original, unpreprocessed
+    /// source (before `include::` expansion, conditional resolution, and the
+    /// like) translates through
+    /// [`Document::source_map`](asciidoc_parser::Document::source_map) to
+    /// recover the original file and line.
+    ///
+    /// This is off by default, so it never affects output parity with
+    /// Asciidoctor — Asciidoctor's own converters have no such attribute — and
+    /// it is meant for tooling that maps rendered blocks back to source
+    /// locations (for example, a spec-coverage overlay or a "jump to source"
+    /// editor feature), not for the default rendering path.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use asciidoc_html5::{convert_with, Options};
+    ///
+    /// let opts = Options::new().source_locations(true);
+    /// let html = convert_with("= Doc\n\nFirst paragraph.", &opts);
+    /// assert!(html.contains(r#"<div class="paragraph" data-source-line="3">"#));
+    /// ```
+    pub fn source_locations(mut self, yes: bool) -> Self {
+        self.source_locations = Some(yes);
+        self
+    }
+
+    /// Supplies a custom [`IncludeFileHandler`] to resolve `include::`
+    /// directives, taking precedence over the filesystem handler this crate
+    /// would otherwise install from [`base_dir`](Self::base_dir)/
+    /// [`input_file`](Self::input_file).
+    ///
+    /// The filesystem handler this crate installs by default only ever reads
+    /// from local disk. A caller resolving `include::` targets some other way
+    /// — for example an Antora-style generator resolving resource IDs
+    /// (`partial$note.adoc`) through a content catalog — can install its own
+    /// [`IncludeFileHandler`] here instead, without losing the rest of what
+    /// [`Options`] seeds (the safe-mode attribute locks, the version
+    /// intrinsics, and so on). Setting this leaves
+    /// [`base_dir`](Self::base_dir) free to keep anchoring the base
+    /// directory the other handlers
+    /// ([`docinfo_file_handler`](Self::docinfo_file_handler),
+    /// [`svg_file_handler`](Self::svg_file_handler)) install unless those are
+    /// likewise overridden.
+    ///
+    /// The parser converts `include::` directives to links (without
+    /// consulting any handler) under [`SafeMode::Secure`] and above, so a
+    /// handler installed here is only ever asked to resolve a target under
+    /// `unsafe`, `safe`, or `server`.
+    ///
+    /// The handler must be `Send + Sync` so that `Options` itself stays
+    /// `Send + Sync` — see the field-level note on why that matters.
+    pub fn include_file_handler<H: IncludeFileHandler + Send + Sync + 'static>(
+        mut self,
+        handler: H,
+    ) -> Self {
+        let handler: Arc<dyn IncludeFileHandler + Send + Sync> = Arc::new(handler);
+        self.include_file_handler = Some(handler);
+        self
+    }
+
+    /// Supplies a custom [`DocinfoFileHandler`] to resolve [docinfo] files,
+    /// taking precedence over the filesystem handler this crate would
+    /// otherwise install from [`base_dir`](Self::base_dir)/
+    /// [`input_file`](Self::input_file).
+    ///
+    /// See [`include_file_handler`](Self::include_file_handler) for why a
+    /// caller might replace the default filesystem-backed resolution — the
+    /// same reasoning applies here for docinfo files.
+    ///
+    /// The parser drops docinfo entirely under [`SafeMode::Secure`] and above
+    /// (without consulting any handler), so a handler installed here is only
+    /// ever asked to resolve a file under `unsafe`, `safe`, or `server`.
+    ///
+    /// [docinfo]: https://docs.asciidoctor.org/asciidoc/latest/docinfo/
+    ///
+    /// The handler must be `Send + Sync` — see the note on
+    /// [`include_file_handler`](Self::include_file_handler).
+    pub fn docinfo_file_handler<H: DocinfoFileHandler + Send + Sync + 'static>(
+        mut self,
+        handler: H,
+    ) -> Self {
+        let handler: Arc<dyn DocinfoFileHandler + Send + Sync> = Arc::new(handler);
+        self.docinfo_file_handler = Some(handler);
+        self
+    }
+
+    /// Supplies a custom [`SvgFileHandler`] to resolve inline SVG images
+    /// (`opts=inline`), taking precedence over the filesystem handler this
+    /// crate would otherwise install from [`base_dir`](Self::base_dir)/
+    /// [`input_file`](Self::input_file).
+    ///
+    /// See [`include_file_handler`](Self::include_file_handler) for why a
+    /// caller might replace the default filesystem-backed resolution — the
+    /// same reasoning applies here for inline SVG images.
+    ///
+    /// The parser only renders the `inline` (and `interactive`) SVG modes
+    /// below [`SafeMode::Secure`]; at `secure` an SVG image renders as an
+    /// ordinary `<img>` without consulting any handler, so a handler
+    /// installed here is only ever asked to resolve a target under `unsafe`,
+    /// `safe`, or `server`.
+    ///
+    /// The handler must be `Send + Sync` — see the note on
+    /// [`include_file_handler`](Self::include_file_handler).
+    pub fn svg_file_handler<H: SvgFileHandler + Send + Sync + 'static>(
+        mut self,
+        handler: H,
+    ) -> Self {
+        let handler: Arc<dyn SvgFileHandler + Send + Sync> = Arc::new(handler);
+        self.svg_file_handler = Some(handler);
+        self
+    }
+
+    /// Overrides the attribute `name` with an explicit string `value`.
+    ///
+    /// This is Asciidoctor's `-a name=value`: the value wins over any
+    /// assignment of the same name in the document header or body. Use
+    /// [`attribute_default`](Self::attribute_default) for the soft-set form the
+    /// document can override.
+    pub fn attribute<N: Into<String>, V: Into<String>>(mut self, name: N, value: V) -> Self {
+        self.push(name, Action::Value(value.into()), Precedence::Override);
+        self
+    }
+
+    /// Sets the attribute `name` (with no explicit value), overriding the
+    /// document.
+    ///
+    /// This is Asciidoctor's `-a name`: the attribute is turned on and the
+    /// document cannot change it. Use [`set_default`](Self::set_default) for
+    /// the soft-set form.
+    pub fn set<N: Into<String>>(mut self, name: N) -> Self {
+        self.push(name, Action::Set, Precedence::Override);
+        self
+    }
+
+    /// Unsets the attribute `name`, overriding the document.
+    ///
+    /// This is Asciidoctor's `-a name!`: the attribute is turned off and the
+    /// document cannot turn it back on. Use
+    /// [`unset_default`](Self::unset_default) for the soft-set form.
+    pub fn unset<N: Into<String>>(mut self, name: N) -> Self {
+        self.push(name, Action::Unset, Precedence::Override);
+        self
+    }
+
+    /// Assigns `value` to the attribute `name` as a default the document may
+    /// override.
+    ///
+    /// This is Asciidoctor's soft-set `-a name=value@`: the value applies only
+    /// when the document does not assign the same name itself.
+    pub fn attribute_default<N: Into<String>, V: Into<String>>(
+        mut self,
+        name: N,
+        value: V,
+    ) -> Self {
+        self.push(name, Action::Value(value.into()), Precedence::Default);
+        self
+    }
+
+    /// Sets the attribute `name` as a default the document may override.
+    ///
+    /// This is Asciidoctor's soft-set `-a name@`.
+    pub fn set_default<N: Into<String>>(mut self, name: N) -> Self {
+        self.push(name, Action::Set, Precedence::Default);
+        self
+    }
+
+    /// Unsets the attribute `name` as a default the document may override.
+    ///
+    /// This is Asciidoctor's soft-set `-a name!@`.
+    pub fn unset_default<N: Into<String>>(mut self, name: N) -> Self {
+        self.push(name, Action::Unset, Precedence::Default);
+        self
+    }
+
+    /// Records one directive. Names are lowercased to match how
+    /// `asciidoc-parser` stores attribute names.
+    fn push<N: Into<String>>(&mut self, name: N, action: Action, precedence: Precedence) {
+        self.attributes.push(Directive {
+            name: name.into().to_lowercase(),
+            action,
+            precedence,
+        });
+    }
+
+    /// Seeds `parser` with the safe mode and the recorded attribute directives,
+    /// returning the parser ready to parse. Directives are applied in order, so
+    /// a later one for the same name wins.
+    pub(crate) fn apply(&self, mut parser: Parser) -> Parser {
+        // The safe mode is established first. `with_safe_mode` also populates
+        // the `safe-mode-*` intrinsic attributes, which a bare `Parser` does
+        // not set on its own.
+        let mode = self.safe_mode.unwrap_or(SafeMode::Secure);
+        parser = parser.with_safe_mode(mode);
+
+        for directive in &self.attributes {
+            let context = directive.precedence.modification_context();
+            parser = match &directive.action {
+                Action::Value(value) => {
+                    parser.with_intrinsic_attribute(&directive.name, value, context)
+                }
+                Action::Set => parser.with_intrinsic_attribute_bool(&directive.name, true, context),
+                Action::Unset => {
+                    parser.with_intrinsic_attribute_bool(&directive.name, false, context)
+                }
+            };
+        }
+
+        // Matching Asciidoctor: in `Secure` (or greater), `linkcss` defaults on
+        // — the converter links the stylesheet instead of embedding it — unless
+        // the caller supplied `linkcss` from the API/CLI. Seeding it as an
+        // override (`ApiOnly`) also locks it, so a document `:linkcss!:` cannot
+        // turn embedding back on, again matching Asciidoctor.
+        if mode >= SafeMode::Secure && !self.mentions("linkcss") {
+            parser =
+                parser.with_intrinsic_attribute_bool("linkcss", true, ModificationContext::ApiOnly);
+        }
+
+        // `copycss` needs no seeding here: the parser sets it on by default in
+        // every safe mode (document-overridable), and the copy is gated on the
+        // safe mode being below `Secure` where it is resolved (see the
+        // [`copycss`](crate::copycss) module). `copycss` only governs whether a
+        // *linked* stylesheet is also copied next to the output; it never
+        // affects the HTML.
+
+        // Matching Asciidoctor: `Server` and above forbid the *document* from
+        // controlling docinfo — only the API may (Asciidoctor's SERVER
+        // "prevents the document from setting … docinfo"). Re-seed
+        // docinfo *silently* locked (`ApiOnly`) at whatever value the
+        // API directives resolved to, or unset when the API did not
+        // touch it, so any document `:docinfo:` is dropped with no
+        // warning and a docinfo file is read only when the API
+        // asked for it. This runs after the directive loop, so it wins — and,
+        // unlike a plain `mentions` check, it also covers a *soft* default: a
+        // soft API value seeds `docinfo` as document-overridable, which would
+        // otherwise let a document enable docinfo reads under `Server`. (Under
+        // `Secure` the parser drops docinfo resolution outright, so the value
+        // locked here is moot there.)
+        if mode >= SafeMode::Server {
+            let ctx = ModificationContext::ApiOnly;
+            parser = match self.last_action("docinfo") {
+                Some(Action::Value(value)) => {
+                    parser.with_intrinsic_attribute_silent("docinfo", value, ctx)
+                }
+                Some(Action::Set) => {
+                    parser.with_intrinsic_attribute_bool_silent("docinfo", true, ctx)
+                }
+                // An explicit API unset, or no API mention at all: docinfo off,
+                // locked against the document.
+                Some(Action::Unset) | None => {
+                    parser.with_intrinsic_attribute_bool_silent("docinfo", false, ctx)
+                }
+            };
+        }
+
+        // Matching Asciidoctor: `Server` and above forbid the *document* from
+        // setting `source-highlighter` (Asciidoctor's SERVER "restrict document
+        // from setting … source-highlighter" — `attr_overrides['source-
+        // highlighter'] ||= nil`). This is a real security boundary: a
+        // highlighter emits `<link>`/`<script>` tags into the output whose
+        // origin a document `:highlightjsdir:`/`:prettifydir:` can
+        // steer, so an untrusted document must not be able to turn one
+        // on. Re-seed it silently locked (`ApiOnly`) at whatever the
+        // API resolved to, or unset when the API did not touch it — so
+        // a document `:source-highlighter:` is dropped with no warning
+        // while an API/CLI `-a source-highlighter=…` (a trusted opt-in)
+        // is still honored, even under `Secure`. This adds the
+        // `source-highlighter` piece of the SERVER attribute lock; note
+        // Asciidoctor 2.0.26 does *not* additionally disable an API-set
+        // highlighter under `Secure` (verified against the oracle), so neither
+        // does this crate.
+        if mode >= SafeMode::Server {
+            let ctx = ModificationContext::ApiOnly;
+            parser = match self.last_action("source-highlighter") {
+                Some(Action::Value(value)) => {
+                    parser.with_intrinsic_attribute_silent("source-highlighter", value, ctx)
+                }
+                Some(Action::Set) => {
+                    parser.with_intrinsic_attribute_bool_silent("source-highlighter", true, ctx)
+                }
+                // An explicit API unset, or no API mention at all: no
+                // highlighter, locked against the document.
+                Some(Action::Unset) | None => {
+                    parser.with_intrinsic_attribute_bool_silent("source-highlighter", false, ctx)
+                }
+            };
+        }
+
+        // Matching Asciidoctor: `Secure` (and above) forbids the *document*
+        // from enabling `icons` (Asciidoctor's SECURE "restrict
+        // document from enabling icons" — `attr_overrides['icons'] ||=
+        // nil`). An icon-mode admonition or callout list points at
+        // `{iconsdir}` for its image sources, which a document `:
+        // iconsdir:` can steer at an arbitrary origin, so an untrusted
+        // document must not be able to turn icons on. Re-seed `icons` silently
+        // locked (`ApiOnly`) at whatever the API resolved to, or unset when the
+        // API did not touch it — so a document `:icons:`/`:icons: font` is
+        // dropped with no warning while an API/CLI `-a icons=…` (a
+        // trusted opt-in) is still honored. This is the `icons` piece
+        // of the SECURE attribute lock (#50). Unlike
+        // `source-highlighter`, the icons restriction begins at
+        // `Secure`, not `Server` — `Server` still allows the document
+        // to enable icons, matching the oracle.
+        if mode >= SafeMode::Secure {
+            let ctx = ModificationContext::ApiOnly;
+            parser = match self.last_action("icons") {
+                Some(Action::Value(value)) => {
+                    parser.with_intrinsic_attribute_silent("icons", value, ctx)
+                }
+                Some(Action::Set) => {
+                    parser.with_intrinsic_attribute_bool_silent("icons", true, ctx)
+                }
+                // An explicit API unset, or no API mention at all: no icons,
+                // locked against the document.
+                Some(Action::Unset) | None => {
+                    parser.with_intrinsic_attribute_bool_silent("icons", false, ctx)
+                }
+            };
+        }
+
+        // Note: `data-uri` is deliberately *not* re-seeded here. Asciidoctor's
+        // SECURE keeps the `data-uri` attribute set and instead gates the
+        // actual image embedding in the converter (`safe < SECURE &&
+        // (attr? 'data-uri')` in `abstract_node.rb`), so `{data-uri}`
+        // still resolves for a document that reads it. This crate
+        // matches that attribute state; data-uri image embedding itself
+        // is out of scope (https://github.com/asciidoc-rs/asciidoc-html5/issues/51).
+
+        // Surface the input-file attribute family — `docfile`, `docdir`,
+        // `docname`, `docfilesuffix` — the way Asciidoctor's loader does,
+        // honoring the safe mode. Asciidoctor derives all four from the input
+        // path; `asciidoc-parser` does not originate them, so this crate seeds
+        // them. `docfile`/`docdir` reveal the host location, so the safe mode
+        // sanitizes them: below `Server` they carry the input file's absolute
+        // path and directory (Asciidoctor's
+        // `File.absolute_path`/`File.dirname`); `Server` and above
+        // conceal the host — `docfile` is trimmed to its basename and
+        // `docdir` is emptied. `Secure`, being higher than
+        // `Server`, inherits the same sanitization (both modes leave `docdir`
+        // empty and `docfile` a bare basename, matching Asciidoctor and the
+        // AsciiDoc attributes reference). `docname` (the file stem) and
+        // `docfilesuffix` (the file extension) expose no more than the
+        // concealed `docfile` already does, so they carry no safe-mode
+        // nuance and are set the same in every mode. All are locked
+        // (`ApiOnly`) so the document cannot reassign them, and seeded
+        // silently so re-seeding over a caller-supplied value or the
+        // directive loop raises no lock warning.
+        let conceal = mode >= SafeMode::Server;
+
+        // The source document's path: a caller-supplied `docfile` value or,
+        // failing that, the primary file (made absolute). Absent both — a plain
+        // source string with no file — nothing names the document, so none of
+        // the four file intrinsics are seeded, matching Asciidoctor (a string
+        // carries no `docfile`/`docname`).
+        let docfile_source = self.last_value("docfile").map(str::to_owned).or_else(|| {
+            self.primary_file
+                .as_deref()
+                .map(|path| canonicalize_or(path).to_string_lossy().into_owned())
+        });
+        if let Some(source) = &docfile_source {
+            // `docfile` names the source document; `Server` and above trim it
+            // to its basename to conceal the host location.
+            let docfile = if conceal {
+                file_basename(source)
+            } else {
+                source.clone()
+            };
+            parser = parser.with_intrinsic_attribute_silent(
+                "docfile",
+                docfile,
+                ModificationContext::ApiOnly,
+            );
+
+            // `docfilesuffix` is the file extension (leading dot included,
+            // empty when the name has none) and `docname` the
+            // basename with that suffix removed — Asciidoctor's
+            // `Helpers.extname`/`Helpers.basename`.
+            // A caller-supplied value wins over the derived one.
+            let docfilesuffix = self
+                .last_value("docfilesuffix")
+                .map(str::to_owned)
+                .unwrap_or_else(|| file_extension(source));
+            let docname = self
+                .last_value("docname")
+                .map(str::to_owned)
+                .unwrap_or_else(|| document_name(source, &docfilesuffix));
+            parser = parser.with_intrinsic_attribute_silent(
+                "docfilesuffix",
+                docfilesuffix,
+                ModificationContext::ApiOnly,
+            );
+            parser = parser.with_intrinsic_attribute_silent(
+                "docname",
+                docname,
+                ModificationContext::ApiOnly,
+            );
+        }
+
+        // `docdir` is the source document's directory. Under concealment it is
+        // emptied; otherwise it is a caller-supplied `docdir`, the base
+        // directory, or — failing both — the current directory (Asciidoctor's
+        // `Dir.pwd` fallback for string input). It is always set, so `{docdir}`
+        // resolves to the empty string under `Server`/`Secure` rather than
+        // being left unresolved.
+        let docdir = if conceal {
+            String::new()
+        } else {
+            self.last_value("docdir")
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    self.effective_base_dir()
+                        .or_else(|| std::env::current_dir().ok())
+                        .map(|dir| dir.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                })
+        };
+        parser =
+            parser.with_intrinsic_attribute_silent("docdir", docdir, ModificationContext::ApiOnly);
+
+        // html5 is the only backend this crate produces, so `backend` is pinned
+        // to `html5` in *every* safe mode and locked against the document.
+        // Seeding it as a *silent* `ApiOnly` intrinsic drops any document
+        // `:backend:` with no warning; running after the directive loop makes
+        // it win over an API `backend` directive or a *soft* API
+        // default too. This goes further than Asciidoctor — whose
+        // SERVER "disallows the document from setting attributes that
+        // would affect conversion" (backend among them) and whose
+        // SECURE "sets the backend to html5," while lower modes honor a
+        // document `:backend:` — precisely because a non-html5 backend
+        // is out of scope here: the `{backend}` intrinsic always reflects what
+        // is actually rendered.
+        parser = parser.with_intrinsic_attribute_silent(
+            "backend",
+            "html5",
+            ModificationContext::ApiOnly,
+        );
+
+        // `article` is the structural doctype this renderer models, so
+        // `doctype` is pinned to it by default in *every* safe mode and locked
+        // against the document, mirroring the `backend` pin above. Seeding it
+        // as a *silent* `ApiOnly` intrinsic drops any document `:doctype:`
+        // (e.g. `book`, `manpage`) with no warning; running after the directive
+        // loop makes the pin win over an API `doctype` directive or a *soft*
+        // API default too. This goes further than Asciidoctor — whose SERVER
+        // "disallows the document from setting attributes that would affect
+        // conversion" (doctype among them) while lower modes honor a document
+        // `:doctype:` — precisely because non-`article` structural doctypes are
+        // out of scope here: the `{doctype}` intrinsic (and the `<body class>`
+        // it drives) always reflects what is actually rendered.
+        //
+        // The one exception is a doctype the caller sets through
+        // [`Options::doctype`], which stands in for the pinned `article`: this
+        // is how the `inline` doctype (a fragment-conversion mode) is selected.
+        // A caller-set doctype still overrides and locks out the document, so
+        // the intrinsic remains API-controlled either way.
+        let doctype = self.doctype.as_deref().unwrap_or("article");
+        parser = parser.with_intrinsic_attribute_silent(
+            "doctype",
+            doctype,
+            ModificationContext::ApiOnly,
+        );
+
+        // Seed the processor-version intrinsics documents use to detect the
+        // toolchain converting them. `asciidoctor-version` names the
+        // Asciidoctor release whose output this crate targets for parity (see
+        // CLAUDE.md), so a document guarding Asciidoctor-only markup with
+        // `ifdef::asciidoctor-version[]` behaves as it would under that
+        // Asciidoctor. `asciidoc-html5-version` names *this* crate's release,
+        // drawn from Cargo build metadata rather than hard-coded, so it always
+        // reflects the actual renderer. Both are locked (`ApiOnly`) and seeded
+        // silently so a document cannot reassign them and re-seeding raises no
+        // lock warning.
+        parser = parser.with_intrinsic_attribute_silent(
+            "asciidoctor-version",
+            ASCIIDOCTOR_COMPAT_VERSION,
+            ModificationContext::ApiOnly,
+        );
+        parser = parser.with_intrinsic_attribute_silent(
+            "asciidoc-html5-version",
+            env!("CARGO_PKG_VERSION"),
+            ModificationContext::ApiOnly,
+        );
+
+        // Anchor filesystem-relative resources: `include::` targets, docinfo
+        // files, and SVG images embedded inline (`opts=inline`, both the inline
+        // `image:` and block `image::` forms). Naming the primary file lets the
+        // parser resolve top-level includes against that file's directory and
+        // derive the `docname` for private docinfo; supplying a base directory
+        // (given directly or derived from the primary file) installs the
+        // filesystem include, docinfo, and SVG handlers, each confined by the
+        // safe mode. Under `secure` the parser converts includes to links,
+        // drops docinfo, and renders SVG images as plain `<img>`
+        // without consulting any handler, so installing them there is
+        // harmless.
+        //
+        // A caller-supplied handler
+        // ([`include_file_handler`](Self::include_file_handler) and its
+        // docinfo/SVG counterparts) takes precedence over the
+        // filesystem handler for that resource, independently of the other
+        // two — a caller resolving includes through, say, a content catalog
+        // can still get filesystem-backed docinfo and SVG resolution from a
+        // base directory, or replace any subset of the three.
+        if let Some(primary) = &self.primary_file {
+            parser = parser.with_primary_file_name(canonicalize_or(primary).to_string_lossy());
+        }
+        let base_dir = self.effective_base_dir();
+        match (&self.include_file_handler, &base_dir) {
+            (Some(handler), _) => {
+                parser = parser.with_include_file_handler(DynIncludeFileHandler(handler.clone()));
+            }
+            (None, Some(base)) => {
+                parser =
+                    parser.with_include_file_handler(FsIncludeFileHandler::new(base.clone(), mode));
+            }
+            (None, None) => {}
+        }
+        match (&self.docinfo_file_handler, &base_dir) {
+            (Some(handler), _) => {
+                parser = parser.with_docinfo_file_handler(DynDocinfoFileHandler(handler.clone()));
+            }
+            (None, Some(base)) => {
+                parser =
+                    parser.with_docinfo_file_handler(FsDocinfoFileHandler::new(base.clone(), mode));
+            }
+            (None, None) => {}
+        }
+        match (&self.svg_file_handler, base_dir) {
+            (Some(handler), _) => {
+                parser = parser.with_svg_file_handler(DynSvgFileHandler(handler.clone()));
+            }
+            (None, Some(base)) => {
+                parser = parser.with_svg_file_handler(FsSvgFileHandler::new(base, mode));
+            }
+            (None, None) => {}
+        }
+
+        // Pin the clock that drives the time-dependent document attributes, if
+        // the caller supplied one. A reference time fixes "now" (the `local*`
+        // family); a source-modification time fixes the `doc*` family. Absent
+        // both, the parser resolves the clock itself (the `SOURCE_DATE_EPOCH`
+        // environment variable, then the real wall clock).
+        if let Some(reference_time) = &self.reference_time {
+            parser = parser.with_reference_time(reference_time.clone());
+        }
+        if let Some(input_mtime) = &self.input_mtime {
+            parser = parser.with_input_mtime(input_mtime.clone());
+        }
+
+        // Asciidoctor's `catalog_assets` option; the parser's own default
+        // (disabled) already matches this crate's unset default, so there is
+        // nothing to seed when the caller left it unset.
+        if let Some(catalog_assets) = self.catalog_assets {
+            parser = parser.with_catalog_assets(catalog_assets);
+        }
+
+        parser
+    }
+
+    /// The base directory that anchors include and docinfo resolution, or
+    /// `None` when there is nothing to anchor (no base directory, no explicit
+    /// `docdir`, and no primary file).
+    ///
+    /// An explicit [`base_dir`](Self::base_dir) (Asciidoctor's `-B`) wins;
+    /// failing that, a caller-supplied `docdir` attribute (Asciidoctor's
+    /// `-a docdir=…`) seeds the base directory, so a piped or string document
+    /// with no file on disk can still resolve relative `include::` targets;
+    /// failing both, the primary file's directory is used (an empty directory
+    /// component — a bare file name — means the current directory). The result
+    /// is canonicalized when it exists on disk, so the handler's jail
+    /// comparisons and the primary file's name share one absolute form.
+    ///
+    /// `-B` outranking `docdir` mirrors Asciidoctor, which resolves the base
+    /// directory from the `base_dir` option first and only falls back to the
+    /// `docdir` attribute when that option is absent.
+    pub(crate) fn effective_base_dir(&self) -> Option<PathBuf> {
+        if let Some(base) = &self.base_dir {
+            return Some(canonicalize_or(base));
+        }
+
+        // With no explicit base directory, an explicitly set `docdir` attribute
+        // stands in for it — the same attribute this crate otherwise *derives*
+        // from the base directory. This closes Asciidoctor's second route for
+        // fixing include resolution when piping (`-a docdir=/abs/dir`), which
+        // Asciidoctor treats as equivalent to `-B /abs/dir`.
+        if let Some(docdir) = self.last_value("docdir") {
+            return Some(canonicalize_or(Path::new(docdir)));
+        }
+
+        let primary = self.primary_file.as_deref()?;
+        let dir = primary
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        Some(canonicalize_or(dir))
+    }
+
+    /// Whether any recorded directive names `name` (already lowercased). Used
+    /// to decide whether the caller has taken control of an attribute that
+    /// the safe mode would otherwise default.
+    fn mentions(&self, name: &str) -> bool {
+        self.attributes.iter().any(|d| d.name == name)
+    }
+
+    /// The CSS to embed for a custom stylesheet, if the caller supplied any.
+    pub(crate) fn custom_stylesheet(&self) -> Option<&str> {
+        self.stylesheet_content.as_deref()
+    }
+
+    /// The safe mode conversion runs under, defaulting to [`SafeMode::Secure`]
+    /// (Asciidoctor's API default) when the caller left it unset.
+    pub(crate) fn safe_mode_or_default(&self) -> SafeMode {
+        self.safe_mode.unwrap_or(SafeMode::Secure)
+    }
+
+    /// Whether to annotate rendered output with `data-source-line`
+    /// attributes, defaulting to `false` (off) when the caller left it unset.
+    pub(crate) fn source_locations_enabled(&self) -> bool {
+        self.source_locations.unwrap_or(false)
+    }
+
+    /// Whether to render a standalone document, resolving the unset default to
+    /// *embedded* (`false`) — the string entry points' default. The file entry
+    /// points pre-fill `Some(true)` with
+    /// [`default_standalone`](Self::default_standalone) before conversion,
+    /// so this returns `true` for them unless the caller opted into
+    /// embedded output.
+    pub(crate) fn is_standalone(&self) -> bool {
+        self.standalone.unwrap_or(false)
+    }
+
+    /// Fills in *standalone* as the output mode when the caller has not chosen
+    /// one — the file entry points' default. A caller who set the mode
+    /// explicitly (including [`embedded(true)`](Self::embedded)) keeps their
+    /// choice, so `convert_file` stays standalone by default while still
+    /// honoring an explicit request for embedded output.
+    pub(crate) fn default_standalone(mut self) -> Self {
+        self.standalone.get_or_insert(true);
+        self
+    }
+
+    /// The [`Action`] of the last directive naming `name` (already lowercased),
+    /// or `None` when no directive names it. This is the value [`apply`] leaves
+    /// in force, since it replays the directives in order and a later one for
+    /// the same name wins — regardless of whether it was an override or a soft
+    /// default, both of which set the same value (they differ only in the
+    /// modification context).
+    ///
+    /// [`apply`]: Self::apply
+    fn last_action(&self, name: &str) -> Option<&Action> {
+        self.attributes
+            .iter()
+            .rev()
+            .find(|directive| directive.name == name)
+            .map(|directive| &directive.action)
+    }
+
+    /// The explicit string value the last directive naming `name` assigns, when
+    /// that directive is a value assignment ([`Action::Value`]). A `Set`,
+    /// `Unset`, or no directive at all yields `None`. Used to let a
+    /// caller-supplied `docfile`/`docdir` seed the intrinsic this crate
+    /// otherwise derives from the file paths.
+    fn last_value(&self, name: &str) -> Option<&str> {
+        match self.last_action(name)? {
+            Action::Value(value) => Some(value),
+            Action::Set | Action::Unset => None,
+        }
+    }
+}
+
+/// The final path component of `path` — the file's basename — used to conceal a
+/// `docfile`'s host location under the `Server` and `Secure` safe modes. Falls
+/// back to the whole string when the path has no final component.
+fn file_basename(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_owned())
+}
+
+/// The `docfilesuffix` value for `path`: the file extension including the
+/// leading dot, or an empty string when the final path component has no
+/// extension. This mirrors Asciidoctor's `Helpers.extname` — the substring from
+/// the last `.` to the end, unless that dot lies in a directory component (a
+/// path separator follows it) or there is no dot at all.
+fn file_extension(path: &str) -> String {
+    match path.rfind('.') {
+        Some(idx) if !path[idx..].contains(['/', '\\']) => path[idx..].to_string(),
+        _ => String::new(),
+    }
+}
+
+/// The `docname` value for `path`: its basename with the trailing `suffix`
+/// (the `docfilesuffix`) removed, mirroring Asciidoctor's `Helpers.basename`.
+/// An empty `suffix` (an extensionless name) removes nothing, and a basename
+/// that is *entirely* the suffix — a leading-dot name such as `.adoc` — is kept
+/// whole rather than reduced to an empty stem.
+fn document_name(path: &str, suffix: &str) -> String {
+    let base = file_basename(path);
+    if !suffix.is_empty() {
+        if let Some(stem) = base.strip_suffix(suffix) {
+            if !stem.is_empty() {
+                return stem.to_owned();
+            }
+        }
+    }
+    base
+}
+
+/// Resolves `path` to an absolute form for anchoring the include and docinfo
+/// handlers.
+///
+/// When `path` exists on disk it is canonicalized, so the handlers' jail
+/// comparisons — which test a canonicalized (absolute) target against the base
+/// directory — sit on the same footing as the paths the parser reports. When it
+/// does not exist (so `canonicalize` fails), it is instead made absolute
+/// against the process's current directory; only when even that is unavailable
+/// is it returned as given. Keeping the result absolute upholds
+/// [`FsIncludeFileHandler`](crate::include_handler::FsIncludeFileHandler)'s
+/// invariant that the base directory is absolute, so a relative `base_dir` or
+/// `docdir` that names a directory not present on disk cannot leave the
+/// handlers with a relative jail root.
+fn canonicalize_or(path: &Path) -> PathBuf {
+    path.canonicalize()
+        .ok()
+        .or_else(|| absolutize(path))
+        .unwrap_or_else(|| path.to_path_buf())
+}
+
+/// Makes `path` absolute by joining a relative one onto the current directory,
+/// or returns `None` when the current directory cannot be determined. An
+/// already-absolute path is returned unchanged.
+fn absolutize(path: &Path) -> Option<PathBuf> {
+    if path.is_absolute() {
+        Some(path.to_path_buf())
+    } else {
+        std::env::current_dir().ok().map(|cwd| cwd.join(path))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Options, ReferenceTime, SafeMode};
+
+    // `Options` must stay `Send + Sync` even with a custom handler installed,
+    // so a caller can build one on one thread and move it into others (e.g. to
+    // convert several documents in parallel) — every other field is plain
+    // data, so a handler field that dropped this bound would silently strip
+    // both auto traits from the whole type. This is a compile-time check: it
+    // does nothing at runtime, but fails to compile if the bound regresses.
+    #[test]
+    fn options_stays_send_and_sync_with_a_handler_installed() {
+        fn assert_send_sync<T: Send + Sync>(_: &T) {}
+
+        #[derive(Debug)]
+        struct NoopHandler;
+
+        impl asciidoc_parser::parser::IncludeFileHandler for NoopHandler {
+            fn resolve_target<'src>(
+                &self,
+                _source: Option<&str>,
+                _target: &str,
+                _attrlist: &asciidoc_parser::attributes::Attrlist<'src>,
+                _parser: &asciidoc_parser::Parser,
+            ) -> asciidoc_parser::parser::IncludeResolution {
+                asciidoc_parser::parser::IncludeResolution::NotFound
+            }
+        }
+
+        let opts = Options::new().include_file_handler(NoopHandler);
+        assert_send_sync(&opts);
+    }
+
+    // These option tests assert the standalone document shell (its stylesheet
+    // and web-font links, the header, and the footer), so they render in
+    // standalone mode explicitly. The string entry points now default to
+    // embedded output, so `convert`/`convert_with` are shadowed here to force
+    // `standalone(true)`, keeping these tests focused on attribute and
+    // safe-mode behavior.
+    //
+    // The footer's "Last updated" stamp otherwise falls back to the real
+    // clock, which would make an equality assertion between two separate
+    // conversions (see `empty_options_match_plain_convert`) flaky whenever
+    // they straddle a second boundary. Pinning a reference time here keeps
+    // it deterministic.
+
+    /// Converts `source` to a standalone document under the default safe mode —
+    /// the standalone counterpart of [`crate::convert`].
+    fn convert(source: &str) -> String {
+        crate::convert_with(
+            source,
+            &Options::new()
+                .standalone(true)
+                .reference_time(ReferenceTime::from_unix_timestamp(0)),
+        )
+    }
+
+    /// Converts `source` to a standalone document under `options` — the
+    /// standalone counterpart of [`crate::convert_with`].
+    fn convert_with(source: &str, options: &Options) -> String {
+        crate::convert_with(
+            source,
+            &options
+                .clone()
+                .standalone(true)
+                .reference_time(ReferenceTime::from_unix_timestamp(0)),
+        )
+    }
+
+    // The default web-font family, present when `webfonts` is set with no
+    // value.
+    const DEFAULT_FAMILY: &str = "Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700";
+
+    fn font_link(family: &str) -> String {
+        format!(
+            "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css?family={family}\">"
+        )
+    }
+
+    #[test]
+    fn empty_options_match_plain_convert() {
+        let source = "= Doc\n:webfonts: from-header\n\nBody.";
+        assert_eq!(convert_with(source, &Options::new()), convert(source));
+    }
+
+    #[test]
+    fn attribute_value_supplies_a_value_absent_from_the_document() {
+        let html = convert_with(
+            "= Doc\n\nBody.",
+            &Options::new().attribute("webfonts", "X:400"),
+        );
+        assert!(html.contains(&font_link("X:400")));
+    }
+
+    #[test]
+    fn set_turns_an_attribute_on() {
+        let html = convert_with("= Doc\n\nBody.", &Options::new().set("linkcss"));
+        assert!(html.contains("<link rel=\"stylesheet\" href=\"./asciidoctor.css\">"));
+        assert!(!html.contains("<style>"));
+    }
+
+    #[test]
+    fn unset_turns_an_attribute_off() {
+        let html = convert_with("= Doc\n\nBody.", &Options::new().unset("webfonts"));
+        assert!(!html.contains("<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com"));
+
+        // The default stylesheet is still present — linked, under the default
+        // (Secure) safe mode.
+        assert!(html.contains("<link rel=\"stylesheet\" href=\"./asciidoctor.css\">"));
+    }
+
+    // An override (`-a name=value`) wins over a document-header assignment of
+    // the same name: the header value is ignored.
+    #[test]
+    fn override_beats_the_document_header() {
+        let source = "= Doc\n:webfonts: from-header\n\nBody.";
+        let html = convert_with(source, &Options::new().attribute("webfonts", "from-api"));
+        assert!(html.contains(&font_link("from-api")));
+        assert!(!html.contains("from-header"));
+    }
+
+    // An override to unset locks the attribute off even when the header sets
+    // it.
+    #[test]
+    fn override_unset_beats_a_header_value() {
+        let source = "= Doc\n:webfonts: from-header\n\nBody.";
+        let html = convert_with(source, &Options::new().unset("webfonts"));
+        assert!(!html.contains("<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com"));
+    }
+
+    // A soft-set default (`-a name=value@`) yields to a document-header
+    // assignment of the same name.
+    #[test]
+    fn default_yields_to_the_document_header() {
+        let source = "= Doc\n:webfonts: from-header\n\nBody.";
+        let html = convert_with(
+            source,
+            &Options::new().attribute_default("webfonts", "from-api"),
+        );
+        assert!(html.contains(&font_link("from-header")));
+        assert!(!html.contains("from-api"));
+    }
+
+    // A soft-set default still applies when the document does not assign the
+    // same name.
+    #[test]
+    fn default_applies_when_the_document_is_silent() {
+        let html = convert_with(
+            "= Doc\n\nBody.",
+            &Options::new().attribute_default("webfonts", "from-api"),
+        );
+        assert!(html.contains(&font_link("from-api")));
+    }
+
+    // Later directives for the same name supersede earlier ones.
+    #[test]
+    fn a_later_directive_wins() {
+        let html = convert_with(
+            "= Doc\n\nBody.",
+            &Options::new()
+                .attribute("webfonts", "first")
+                .attribute("webfonts", "second"),
+        );
+        assert!(html.contains(&font_link("second")));
+    }
+
+    // Attribute names are case-insensitive, matching how the parser stores
+    // them.
+    #[test]
+    fn attribute_names_are_lowercased() {
+        let html = convert_with("= Doc\n\nBody.", &Options::new().unset("WebFonts"));
+        assert!(!html.contains("<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com"));
+    }
+
+    // A bare `set` keeps the default family (Set, not an empty value).
+    #[test]
+    fn set_keeps_the_default_family() {
+        let html = convert_with("= Doc\n\nBody.", &Options::new().set("webfonts"));
+        assert!(html.contains(&font_link(DEFAULT_FAMILY)));
+    }
+
+    // A soft-set (`set_default`) turns an attribute on when the document is
+    // silent, but yields to a document assignment of the same name.
+    #[test]
+    fn set_default_is_soft() {
+        // Applies when the document does not touch `linkcss`.
+        let applied = convert_with("= Doc\n\nBody.", &Options::new().set_default("linkcss"));
+        assert!(applied.contains("<link rel=\"stylesheet\" href=\"./asciidoctor.css\">"));
+
+        // Yields to the document, which turns `linkcss` back off.
+        let overridden = convert_with(
+            "= Doc\n:linkcss!:\n\nBody.",
+            &Options::new().set_default("linkcss"),
+        );
+        assert!(!overridden.contains("./asciidoctor.css"));
+        assert!(overridden.contains("<style>"));
+    }
+
+    // A soft-unset (`unset_default`) turns an attribute off when the document
+    // is silent, but yields to a document assignment of the same name.
+    #[test]
+    fn unset_default_is_soft() {
+        // Applies when the document does not touch `webfonts`.
+        let applied = convert_with("= Doc\n\nBody.", &Options::new().unset_default("webfonts"));
+        assert!(!applied.contains("<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com"));
+
+        // Yields to the document, which assigns `webfonts` a value.
+        let overridden = convert_with(
+            "= Doc\n:webfonts: X:400\n\nBody.",
+            &Options::new().unset_default("webfonts"),
+        );
+        assert!(overridden.contains(&font_link("X:400")));
+    }
+
+    // The default safe mode is `Secure` (matching Asciidoctor's API), which
+    // links the default stylesheet instead of embedding it.
+    #[test]
+    fn secure_is_the_default_and_links_the_stylesheet() {
+        let html = convert("= Doc\n\nBody.");
+        assert!(html.contains("<link rel=\"stylesheet\" href=\"./asciidoctor.css\">"));
+        assert!(!html.contains("<style>"));
+    }
+
+    // A safe mode below `Secure` embeds the default stylesheet inline, the way
+    // the `adoc` CLI (which defaults to `Unsafe`) does.
+    #[test]
+    fn a_lower_safe_mode_embeds_the_stylesheet() {
+        for mode in [SafeMode::Unsafe, SafeMode::Safe, SafeMode::Server] {
+            let html = convert_with("= Doc\n\nBody.", &Options::new().safe_mode(mode));
+            assert!(html.contains("<style>"), "{mode:?} should embed");
+            assert!(
+                !html.contains("./asciidoctor.css"),
+                "{mode:?} should not link"
+            );
+        }
+    }
+
+    // The processor-version intrinsics are seeded for `ifdef`-based toolchain
+    // detection: `asciidoctor-version` carries the parity-target release and
+    // `asciidoc-html5-version` this crate's own version (from Cargo metadata).
+    // Both are locked against the document.
+    #[test]
+    fn version_intrinsics_are_seeded_and_locked() {
+        let html = convert_with(
+            "= Doc\n:asciidoctor-version: 9.9.9\n:asciidoc-html5-version: 9.9.9\n\n\
+             adoc={asciidoctor-version} html5={asciidoc-html5-version}",
+            &Options::new(),
+        );
+
+        // The document's attempts to reassign them are ignored (locked).
+        assert!(
+            html.contains(&format!("adoc=2.0.26 html5={}", env!("CARGO_PKG_VERSION"))),
+            "{html}"
+        );
+        assert!(!html.contains("9.9.9"), "{html}");
+    }
+
+    // A document guarding markup on `ifdef::asciidoctor-version[]` sees the
+    // attribute defined, so the guarded content is included.
+    #[test]
+    fn asciidoctor_version_enables_ifdef_guarded_content() {
+        let html = convert_with(
+            "ifdef::asciidoctor-version[Guarded content.]",
+            &Options::new(),
+        );
+        assert!(html.contains("Guarded content."), "{html}");
+    }
+
+    // Under `Secure`, `linkcss` is locked on: a document `:linkcss!:` cannot
+    // turn embedding back on (parity with Asciidoctor's api_test).
+    #[test]
+    fn secure_locks_linkcss_against_the_document() {
+        let html = convert_with("= Doc\n:linkcss!:\n\nBody.", &Options::new());
+        assert!(html.contains("<link rel=\"stylesheet\" href=\"./asciidoctor.css\">"));
+        assert!(!html.contains("<style>"));
+    }
+
+    // An API-level `linkcss` unset wins over the `Secure` default, so the
+    // stylesheet is embedded even under `Secure`.
+    #[test]
+    fn an_api_linkcss_unset_beats_the_secure_default() {
+        let html = convert_with("= Doc\n\nBody.", &Options::new().unset("linkcss"));
+        assert!(html.contains("<style>"));
+        assert!(!html.contains("./asciidoctor.css"));
+    }
+
+    // Docinfo is read from the base directory only when docinfo is enabled and
+    // the safe mode permits it: below `Server` a document `:docinfo:` enables
+    // it; `Server` and above require an API-set value (a document
+    // `:docinfo:` is ignored); `Secure` drops docinfo entirely — matching
+    // Asciidoctor. These exercise the wiring in `apply`; the handler's own
+    // resolution and jail are covered in `docinfo_handler`.
+
+    /// Creates a fresh temp directory named after `tag`, populated with `files`
+    /// (name → content), for a docinfo test to point a base directory at.
+    fn docinfo_scratch(tag: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("adoc-opts-docinfo-{}-{tag}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        for (name, content) in files {
+            std::fs::write(dir.join(name), content).expect("write scratch file");
+        }
+        dir
+    }
+
+    #[test]
+    fn docinfo_is_read_from_the_base_directory_below_secure() {
+        let dir = docinfo_scratch("below-secure", &[("docinfo.html", "<meta name=\"x\">")]);
+
+        // `Safe` permits a document-set `:docinfo:` (only `Server` and above
+        // forbid it) and installs the handler, so the file is read.
+        let html = convert_with(
+            "= Doc\n:docinfo: shared\n\nBody.",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .base_dir(dir.clone()),
+        );
+
+        assert!(html.contains("<meta name=\"x\">\n</head>"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn document_set_docinfo_is_ignored_under_server() {
+        // Under `Server`, a document that turns docinfo on itself is ignored —
+        // Asciidoctor's SERVER "prevents the document from setting … docinfo".
+        // The file exists in the base directory but must not be read.
+        let dir = docinfo_scratch("server-doc", &[("docinfo.html", "<meta name=\"x\">")]);
+
+        let html = convert_with(
+            "= Doc\n:docinfo: shared\n\nBody.",
+            &Options::new()
+                .safe_mode(SafeMode::Server)
+                .base_dir(dir.clone()),
+        );
+
+        assert!(!html.contains("<meta name=\"x\">"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn api_set_docinfo_still_applies_under_server() {
+        // The restriction is on the *document*, not the API: an API-set
+        // `docinfo` is honored under `Server`, and the document need not (and
+        // here does not) mention it.
+        let dir = docinfo_scratch("server-api", &[("docinfo.html", "<meta name=\"x\">")]);
+
+        let html = convert_with(
+            "= Doc\n\nBody.",
+            &Options::new()
+                .safe_mode(SafeMode::Server)
+                .attribute("docinfo", "shared")
+                .base_dir(dir.clone()),
+        );
+
+        assert!(html.contains("<meta name=\"x\">\n</head>"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn api_bare_set_docinfo_applies_under_server() {
+        // A *bare* API `docinfo` (a set with no value, `Action::Set`) enables
+        // docinfo under `Server` just like a valued one. A boolean `docinfo`
+        // resolves to *private*, so it reads `<docname>-docinfo.html` given a
+        // primary file. This exercises the `Some(Action::Set)` arm, distinct
+        // from the valued `attribute("docinfo", …)` path above.
+        let dir = docinfo_scratch(
+            "server-api-bare",
+            &[("guide-docinfo.html", "<meta name=\"x\">")],
+        );
+
+        let html = convert_with(
+            "= Doc\n\nBody.",
+            &Options::new()
+                .safe_mode(SafeMode::Server)
+                .set("docinfo")
+                .base_dir(dir.clone())
+                .input_file(dir.join("guide.adoc")),
+        );
+
+        assert!(html.contains("<meta name=\"x\">\n</head>"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn soft_default_docinfo_does_not_let_the_document_enable_it_under_server() {
+        // A *soft* API default leaves an attribute document-overridable, so a
+        // `mentions`-based guard would skip the safe-mode lock. Under `Server`
+        // docinfo must stay API-controlled regardless: a document `:docinfo:`
+        // is still ignored even when the API only soft-touched docinfo (here a
+        // soft unset, which by itself does not enable docinfo).
+        let dir = docinfo_scratch("server-soft", &[("docinfo.html", "<meta name=\"x\">")]);
+
+        let html = convert_with(
+            "= Doc\n:docinfo: shared\n\nBody.",
+            &Options::new()
+                .safe_mode(SafeMode::Server)
+                .unset_default("docinfo")
+                .base_dir(dir.clone()),
+        );
+
+        assert!(!html.contains("<meta name=\"x\">"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn soft_default_docinfo_value_is_honored_but_locked_under_server() {
+        // A soft-default docinfo *value* still enables docinfo under `Server`
+        // (the API asked for it), but the document cannot turn it off: the
+        // document's `:docinfo!:` is ignored and the file is still read.
+        let dir = docinfo_scratch("server-soft-val", &[("docinfo.html", "<meta name=\"x\">")]);
+
+        let html = convert_with(
+            "= Doc\n:docinfo!:\n\nBody.",
+            &Options::new()
+                .safe_mode(SafeMode::Server)
+                .attribute_default("docinfo", "shared")
+                .base_dir(dir.clone()),
+        );
+
+        assert!(html.contains("<meta name=\"x\">\n</head>"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn docinfo_is_disabled_under_the_secure_default() {
+        // Secure is the default; docinfo is dropped without any file being
+        // read, even with a base directory and the `docinfo` attribute
+        // set.
+        let dir = docinfo_scratch("secure", &[("docinfo.html", "<meta name=\"x\">")]);
+
+        let html = convert_with(
+            "= Doc\n:docinfo: shared\n\nBody.",
+            &Options::new().base_dir(dir.clone()),
+        );
+
+        assert!(!html.contains("<meta name=\"x\">"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn private_docinfo_requires_a_primary_file() {
+        let dir = docinfo_scratch(
+            "private",
+            &[("guide-docinfo.html", "<meta name=\"private\">")],
+        );
+
+        // `Safe` keeps the document's `:docinfo: private` in force (unlike
+        // `Server`); with only a base directory the `<docname>` is unknown, so
+        // the private file is not resolved.
+        let without = convert_with(
+            "= Doc\n:docinfo: private\n\nBody.",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .base_dir(dir.clone()),
+        );
+
+        assert!(!without.contains("name=\"private\""));
+
+        // Naming the primary file `guide.adoc` supplies the docname, so
+        // `guide-docinfo.html` is found and injected.
+        let with = convert_with(
+            "= Doc\n:docinfo: private\n\nBody.",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .base_dir(dir.clone())
+                .input_file(dir.join("guide.adoc")),
+        );
+
+        assert!(with.contains("name=\"private\""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // `source-highlighter` gets the same `Server`+ lock as `docinfo`: a
+    // highlighter emits `<link>`/`<script>` assets whose origin a document
+    // attribute can steer, so an untrusted document must not enable one under a
+    // server-side safe mode. Mirrors Asciidoctor's `attr_overrides['source-
+    // highlighter'] ||= nil` (#215).
+
+    #[test]
+    fn document_set_source_highlighter_is_ignored_under_server() {
+        // A document that enables a highlighter itself is ignored under
+        // `Server`, so no highlighter class is emitted on the source
+        // block.
+        let html = convert_with(
+            "= Doc\n:source-highlighter: highlightjs\n\n[source,ruby]\n----\nputs 1\n----",
+            &Options::new().safe_mode(SafeMode::Server),
+        );
+
+        assert!(!html.contains("highlightjs highlight"), "{html}");
+    }
+
+    #[test]
+    fn api_set_source_highlighter_still_applies_under_server() {
+        // The restriction is on the *document*, not the API: an API-set
+        // `source-highlighter` is honored under `Server` (and, being the
+        // default, under `Secure` too), with the document not
+        // mentioning it.
+        let html = convert_with(
+            "= Doc\n\n[source,ruby]\n----\nputs 1\n----",
+            &Options::new()
+                .safe_mode(SafeMode::Server)
+                .attribute("source-highlighter", "highlightjs"),
+        );
+
+        assert!(html.contains("highlightjs highlight"), "{html}");
+    }
+
+    #[test]
+    fn api_bare_set_source_highlighter_locks_out_the_document_under_server() {
+        // A *bare* API `source-highlighter` (a set with no value,
+        // `Action::Set`) is seeded locked under `Server` just like a
+        // valued one, exercising the `Some(Action::Set)` arm. Being
+        // valueless it names no client-side highlighter, so nothing is
+        // rendered — but, crucially, it locks the attribute so the
+        // document's own `:source-highlighter: highlightjs` is
+        // dropped rather than taking effect.
+        let html = convert_with(
+            "= Doc\n:source-highlighter: highlightjs\n\n[source,ruby]\n----\nputs 1\n----",
+            &Options::new()
+                .safe_mode(SafeMode::Server)
+                .set("source-highlighter"),
+        );
+
+        assert!(!html.contains("highlightjs highlight"), "{html}");
+    }
+
+    #[test]
+    fn document_source_highlighter_cannot_override_an_api_unset_under_server() {
+        // An API unset locks the highlighter off; the document's own
+        // `:source-highlighter:` cannot turn it back on under `Server`.
+        let html = convert_with(
+            "= Doc\n:source-highlighter: highlightjs\n\n[source,ruby]\n----\nputs 1\n----",
+            &Options::new()
+                .safe_mode(SafeMode::Server)
+                .unset("source-highlighter"),
+        );
+
+        assert!(!html.contains("highlightjs highlight"), "{html}");
+    }
+
+    #[test]
+    fn document_set_source_highlighter_is_honored_below_server() {
+        // Below `Server` (here `Safe`) a document may enable a highlighter,
+        // matching Asciidoctor.
+        let html = convert_with(
+            "= Doc\n:source-highlighter: highlightjs\n\n[source,ruby]\n----\nputs 1\n----",
+            &Options::new().safe_mode(SafeMode::Safe),
+        );
+
+        assert!(html.contains("highlightjs highlight"), "{html}");
+    }
+
+    // Under `Secure`, the document cannot enable `icons`: an icon-mode
+    // admonition or callout list draws its images from `{iconsdir}`, whose
+    // origin a document `:iconsdir:` can steer, so an untrusted document
+    // must not turn icons on. Mirrors Asciidoctor's
+    // `attr_overrides['icons'] ||= nil` under SECURE (#50). A NOTE
+    // admonition renders a font glyph (`<i class="fa icon-note">`) with
+    // icons on and a text label (`<div class="title">Note</div>`) with
+    // icons off, so it is the observable probe for whether icons took
+    // effect. Unlike `source-highlighter`, the restriction begins at
+    // `Secure`, not `Server`.
+
+    #[test]
+    fn document_set_icons_is_ignored_under_secure() {
+        // A document that enables font icons itself is ignored under `Secure`
+        // (the API default), so the admonition falls back to its text label.
+        let html = convert_with("= Doc\n:icons: font\n\nNOTE: Heed this.", &Options::new());
+
+        assert!(html.contains("<div class=\"title\">Note</div>"), "{html}");
+        assert!(!html.contains("icon-note"), "{html}");
+    }
+
+    #[test]
+    fn api_set_icons_still_applies_under_secure() {
+        // The restriction is on the *document*, not the API: an API-set `icons`
+        // is honored even under `Secure`, with the document not mentioning it.
+        let html = convert_with(
+            "= Doc\n\nNOTE: Heed this.",
+            &Options::new().attribute("icons", "font"),
+        );
+
+        assert!(html.contains("<i class=\"fa icon-note\""), "{html}");
+    }
+
+    #[test]
+    fn api_bare_set_icons_locks_out_the_document_under_secure() {
+        // A *bare* API `icons` (a set with no value, `Action::Set`) enables
+        // image icons under `Secure` and locks the attribute, so the document's
+        // own `:icons: font` is dropped rather than switching to font mode.
+        // This exercises the `Some(Action::Set)` arm, distinct from the
+        // valued `attribute("icons", …)` path above.
+        let html = convert_with(
+            "= Doc\n:icons: font\n\nNOTE: Heed this.",
+            &Options::new().set("icons"),
+        );
+
+        // Image mode (a bare set), not font mode: an `<img>` icon and no glyph.
+        assert!(
+            html.contains(r#"<img src="./images/icons/note.png" alt="Note">"#),
+            "{html}"
+        );
+        assert!(!html.contains("icon-note"), "{html}");
+    }
+
+    #[test]
+    fn document_icons_cannot_override_an_api_unset_under_secure() {
+        // An API unset locks icons off; the document's own `:icons: font`
+        // cannot turn them back on under `Secure`.
+        let html = convert_with(
+            "= Doc\n:icons: font\n\nNOTE: Heed this.",
+            &Options::new().unset("icons"),
+        );
+
+        assert!(html.contains("<div class=\"title\">Note</div>"), "{html}");
+        assert!(!html.contains("icon-note"), "{html}");
+    }
+
+    #[test]
+    fn document_set_icons_is_honored_below_secure() {
+        // Below `Secure` (here `Server`) a document may enable icons — `Server`
+        // "allows icons", matching Asciidoctor. This is the boundary that
+        // distinguishes the `icons` lock (Secure) from the `source-highlighter`
+        // lock (Server).
+        let html = convert_with(
+            "= Doc\n:icons: font\n\nNOTE: Heed this.",
+            &Options::new().safe_mode(SafeMode::Server),
+        );
+
+        assert!(html.contains("<i class=\"fa icon-note\""), "{html}");
+    }
+
+    // `docfile` and `docdir` are intrinsic attributes this crate originates
+    // (the parser does not), derived from the primary file and base directory
+    // and sanitized by the safe mode: below `Server` they carry the absolute
+    // path and directory; `Server` and above trim `docfile` to its basename and
+    // empty `docdir`, matching Asciidoctor.
+
+    /// Creates a temp directory named after `tag` containing an empty
+    /// `main.adoc`, returning the directory and the file both in the canonical
+    /// form `apply` records them in.
+    fn docpath_scratch(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir =
+            std::env::temp_dir().join(format!("adoc-opts-docpath-{}-{tag}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        let file = dir.join("main.adoc");
+        std::fs::write(&file, "").expect("write scratch file");
+        (super::canonicalize_or(&dir), super::canonicalize_or(&file))
+    }
+
+    #[test]
+    fn docfile_and_docdir_are_absolute_below_server() {
+        let (dir, file) = docpath_scratch("below-server");
+
+        let html = convert_with(
+            "= Doc\n\nfile={docfile} dir={docdir}",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .input_file(file.clone()),
+        );
+
+        assert!(
+            html.contains(&format!("file={} dir={}", file.display(), dir.display())),
+            "{html}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn server_trims_docfile_and_empties_docdir() {
+        let (dir, file) = docpath_scratch("server");
+
+        let html = convert_with(
+            "= Doc\n\nfile={docfile} dir={docdir}",
+            &Options::new()
+                .safe_mode(SafeMode::Server)
+                .input_file(file.clone()),
+        );
+
+        // `docfile` is trimmed to the basename and `docdir` is empty, so the
+        // host directory never appears.
+        assert!(html.contains("<p>file=main.adoc dir=</p>"), "{html}");
+        assert!(!html.contains(&dir.display().to_string()), "{html}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn secure_conceals_docfile_and_docdir_like_server() {
+        let (dir, file) = docpath_scratch("secure");
+
+        // `Secure` is the API default; it inherits `Server`'s sanitization.
+        let html = convert_with(
+            "= Doc\n\nfile={docfile} dir={docdir}",
+            &Options::new().input_file(file.clone()),
+        );
+
+        assert!(html.contains("<p>file=main.adoc dir=</p>"), "{html}");
+        assert!(!html.contains(&dir.display().to_string()), "{html}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_document_cannot_reassign_docdir_or_docfile() {
+        let (dir, file) = docpath_scratch("locked");
+
+        // The intrinsics are locked (`ApiOnly`), so a header assignment is
+        // dropped and the derived values stand — with no lock warning, since
+        // they are seeded silently.
+        let html = convert_with(
+            "= Doc\n:docdir: HACKED\n:docfile: HACKED\n\nfile={docfile} dir={docdir}",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .input_file(file.clone()),
+        );
+
+        assert!(!html.contains("HACKED"), "{html}");
+        assert!(
+            html.contains(&format!("file={} dir={}", file.display(), dir.display())),
+            "{html}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_caller_supplied_docdir_seeds_the_value_below_server() {
+        // With no primary file, a caller-supplied `docdir` stands in for the
+        // derived directory — used as given (not expanded), matching
+        // Asciidoctor's "docdir specified via API is not expanded".
+        let html = convert_with(
+            "= Doc\n\ndir={docdir}",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .attribute("docdir", "virtual/directory"),
+        );
+
+        assert!(html.contains("<p>dir=virtual/directory</p>"), "{html}");
+    }
+
+    #[test]
+    fn a_caller_supplied_docdir_resolves_relative_includes() {
+        // With no primary file and no base directory, an explicitly set
+        // `docdir` anchors a relative `include::` target — Asciidoctor's second
+        // route (`-a docdir=/abs/dir`) for fixing include resolution when
+        // piping, treated as equivalent to a base directory.
+        let dir = std::env::temp_dir().join(format!(
+            "adoc-options-docdir-include-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create docdir");
+        std::fs::write(dir.join("part.adoc"), "Included body text.\n").expect("write include");
+
+        let html = convert_with(
+            "= Doc\n\ninclude::part.adoc[]\n",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .attribute("docdir", dir.to_string_lossy()),
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(html.contains("Included body text."), "{html}");
+    }
+
+    #[test]
+    fn an_explicit_base_dir_outranks_docdir_for_includes() {
+        // When both are supplied, the base directory (`-B`) wins over `docdir`,
+        // mirroring Asciidoctor's resolution order: the `base_dir` option
+        // first, the `docdir` attribute only as a fallback. Each
+        // directory holds a different `part.adoc`, so the resolved
+        // include reveals which won.
+        let base =
+            std::env::temp_dir().join(format!("adoc-options-basedir-{}", std::process::id()));
+        let doc = std::env::temp_dir().join(format!("adoc-options-docdir-{}", std::process::id()));
+        for dir in [&base, &doc] {
+            let _ = std::fs::remove_dir_all(dir);
+            std::fs::create_dir_all(dir).expect("create dir");
+        }
+        std::fs::write(base.join("part.adoc"), "From base directory.\n")
+            .expect("write base include");
+        std::fs::write(doc.join("part.adoc"), "From docdir.\n").expect("write docdir include");
+
+        let html = convert_with(
+            "= Doc\n\ninclude::part.adoc[]\n",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .base_dir(base.clone())
+                .attribute("docdir", doc.to_string_lossy()),
+        );
+        for dir in [&base, &doc] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+
+        assert!(html.contains("From base directory."), "{html}");
+        assert!(!html.contains("From docdir."), "{html}");
+    }
+
+    #[test]
+    fn a_relative_docdir_yields_an_absolute_base_directory() {
+        // The include and docinfo handlers require an absolute base directory.
+        // A relative `docdir` (or `-B`) naming a directory not on disk
+        // must still resolve to an absolute jail root rather than
+        // reaching the handlers as a relative path, so the jailed
+        // comparison against a canonicalized target stays sound.
+        let cwd = std::env::current_dir().expect("cwd");
+
+        let from_docdir = Options::new()
+            .attribute("docdir", "no/such/dir")
+            .effective_base_dir()
+            .expect("docdir seeds the base directory");
+        assert_eq!(from_docdir, cwd.join("no/such/dir"));
+
+        let from_base = Options::new()
+            .base_dir("no/such/dir")
+            .effective_base_dir()
+            .expect("base_dir sets the base directory");
+        assert_eq!(from_base, cwd.join("no/such/dir"));
+    }
+
+    #[test]
+    fn string_input_has_docdir_but_no_docfile() {
+        // A plain source string names no file, so `docfile` stays unset (its
+        // reference is left unresolved), while `docdir` falls back to the
+        // current directory below `Server`.
+        let cwd = std::env::current_dir().expect("cwd");
+        let html = convert_with(
+            "= Doc\n\nfile=[{docfile}] dir={docdir}",
+            &Options::new().safe_mode(SafeMode::Unsafe),
+        );
+
+        assert!(html.contains("file=[{docfile}]"), "{html}");
+        assert!(html.contains(&format!("dir={}", cwd.display())), "{html}");
+    }
+
+    // `docname` (the file stem) and `docfilesuffix` (the file extension) round
+    // out the input-file attribute family. Unlike `docfile`/`docdir` they carry
+    // no safe-mode nuance — the stem and extension expose nothing the concealed
+    // `docfile` basename does not — so they are set the same in every mode.
+
+    // The path-splitting helpers behind `docname`/`docfilesuffix` are exercised
+    // directly for the Asciidoctor `Helpers.extname`/`Helpers.basename` edges
+    // that the file-driven tests above do not reach.
+    #[test]
+    fn file_basename_falls_back_for_a_nameless_path() {
+        // A normal path yields its final component; a path with no final
+        // component (a bare root) falls back to the whole string.
+        assert_eq!(super::file_basename("/docs/guide.adoc"), "guide.adoc");
+        assert_eq!(super::file_basename("/"), "/");
+    }
+
+    #[test]
+    fn file_extension_matches_asciidoctor_extname() {
+        // A normal extension, and only the *final* one.
+        assert_eq!(super::file_extension("/docs/guide.adoc"), ".adoc");
+        assert_eq!(super::file_extension("/tmp/archive.tar.gz"), ".gz");
+
+        // No dot at all → no extension.
+        assert_eq!(super::file_extension("/tmp/README"), "");
+
+        // A dot in a *directory* component is not an extension (a path
+        // separator follows the last dot).
+        assert_eq!(super::file_extension("/etc/rc.d/README"), "");
+    }
+
+    #[test]
+    fn document_name_matches_asciidoctor_basename() {
+        // The suffix is stripped when a non-empty stem remains.
+        assert_eq!(super::document_name("/docs/guide.adoc", ".adoc"), "guide");
+
+        // Only the given suffix is removed (multi-extension).
+        assert_eq!(
+            super::document_name("/tmp/archive.tar.gz", ".gz"),
+            "archive.tar"
+        );
+
+        // An empty suffix (an extensionless name) removes nothing.
+        assert_eq!(super::document_name("/docs/README", ""), "README");
+
+        // A basename that is *entirely* the suffix — a leading-dot name such as
+        // `.adoc` — is kept whole rather than reduced to an empty stem.
+        assert_eq!(super::document_name("/docs/.adoc", ".adoc"), ".adoc");
+
+        // A suffix that is not actually a suffix of the basename leaves it
+        // whole (in practice the suffix is always the path's own extension).
+        assert_eq!(
+            super::document_name("/docs/guide.adoc", ".xyz"),
+            "guide.adoc"
+        );
+    }
+
+    #[test]
+    fn a_bare_set_docfile_or_docdir_is_not_treated_as_a_value() {
+        // A bare API `set` (no value) is not a value directive, so `docdir`
+        // still derives from the file's directory rather than being treated as
+        // caller-supplied. This exercises `last_value`'s non-value arm.
+        let (dir, file) = docpath_scratch("bare-set");
+
+        let html = convert_with(
+            "= Doc\n\ndir={docdir}",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .set("docdir")
+                .input_file(file.clone()),
+        );
+
+        assert!(html.contains(&format!("dir={}", dir.display())), "{html}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn docname_and_docfilesuffix_are_derived_from_the_file() {
+        for mode in [
+            SafeMode::Unsafe,
+            SafeMode::Safe,
+            SafeMode::Server,
+            SafeMode::Secure,
+        ] {
+            let html = convert_with(
+                "= Doc\n\nname={docname} suffix={docfilesuffix}",
+                &Options::new()
+                    .safe_mode(mode)
+                    .input_file("/docs/guide/userguide.adoc"),
+            );
+            assert!(
+                html.contains("<p>name=userguide suffix=.adoc</p>"),
+                "{mode:?}: {html}"
+            );
+        }
+    }
+
+    #[test]
+    fn docfilesuffix_preserves_an_alternate_extension() {
+        let html = convert_with(
+            "= Doc\n\nname={docname} suffix={docfilesuffix}",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .input_file("/docs/notes.asciidoc"),
+        );
+        assert!(
+            html.contains("<p>name=notes suffix=.asciidoc</p>"),
+            "{html}"
+        );
+    }
+
+    // An end-to-end guard that the primary-file-name path reaches the parser's
+    // inter-document xref self-reference resolution: naming the primary file
+    // `test.adoc` derives `docname=test`, so `xref:test.adoc[]` — whose path
+    // names the current document — collapses to a same-document reference
+    // (`href="#"`) with the doctitle as fallback text. The Ruby-port cases in
+    // `links_test.rs` drive the same behavior through the `docname` attribute
+    // directly (mirroring Asciidoctor's tests); this one covers the
+    // filename-derived leg that `Options::input_file` supplies.
+    #[test]
+    fn input_file_docname_collapses_an_inter_document_self_xref() {
+        let html = crate::convert_with(
+            "= Links & Stuff\n\nSee xref:test.adoc[]\n",
+            &Options::new().input_file("test.adoc"),
+        );
+
+        assert!(
+            html.contains(r##"<a href="#">Links &amp; Stuff</a>"##),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn an_extensionless_name_has_an_empty_docfilesuffix() {
+        // With no extension, `docfilesuffix` is empty and `docname` is the
+        // whole basename (Asciidoctor's `Helpers.extname` fallback).
+        let html = convert_with(
+            "= Doc\n\nname={docname} suffix=[{docfilesuffix}]",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .input_file("/docs/README"),
+        );
+        assert!(html.contains("<p>name=README suffix=[]</p>"), "{html}");
+    }
+
+    #[test]
+    fn a_document_cannot_reassign_docname_or_docfilesuffix() {
+        let html = convert_with(
+            "= Doc\n:docname: HACKED\n:docfilesuffix: .HACKED\n\nname={docname} suffix={docfilesuffix}",
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .input_file("/docs/guide/userguide.adoc"),
+        );
+        assert!(!html.contains("HACKED"), "{html}");
+        assert!(
+            html.contains("<p>name=userguide suffix=.adoc</p>"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn string_input_has_no_docname_or_docfilesuffix() {
+        // Without a file, none of the file-derived intrinsics beyond `docdir`
+        // are set, so their references are left unresolved.
+        let html = convert_with(
+            "= Doc\n\nname=[{docname}] suffix=[{docfilesuffix}]",
+            &Options::new().safe_mode(SafeMode::Unsafe),
+        );
+        assert!(
+            html.contains("name=[{docname}] suffix=[{docfilesuffix}]"),
+            "{html}"
+        );
+    }
+
+    // The backend the document sees is reachable through the `{backend}`
+    // intrinsic reference. html5 is the only backend this crate produces, so
+    // `apply` pins `backend` to `html5` in every safe mode and locks it against
+    // the document and the API alike — going further than Asciidoctor, which
+    // only restricts the document at `Server`/`Secure`.
+
+    // A helper document that echoes the resolved `backend` intrinsic into the
+    // body, where it lands in the rendered output.
+    const BACKEND_ECHO: &str = "= Doc\n:backend: docbook\n\nbackend={backend}";
+
+    #[test]
+    fn document_set_backend_is_pinned_to_html5_in_every_mode() {
+        // A document `:backend:` is dropped and `{backend}` resolves to html5
+        // regardless of the safe mode — including the lower modes where
+        // Asciidoctor would honor it.
+        for mode in [
+            SafeMode::Unsafe,
+            SafeMode::Safe,
+            SafeMode::Server,
+            SafeMode::Secure,
+        ] {
+            let html = convert_with(BACKEND_ECHO, &Options::new().safe_mode(mode));
+            assert!(html.contains("backend=html5"), "{mode:?} should pin html5");
+            assert!(
+                !html.contains("backend=docbook"),
+                "{mode:?} dropped docbook"
+            );
+        }
+    }
+
+    #[test]
+    fn api_set_backend_is_also_pinned_to_html5() {
+        // The pin overrides the API too: an API `backend` directive does not
+        // survive in any mode (unlike, e.g., `docinfo`, which the API may set).
+        for mode in [SafeMode::Unsafe, SafeMode::Server, SafeMode::Secure] {
+            let html = convert_with(
+                BACKEND_ECHO,
+                &Options::new()
+                    .safe_mode(mode)
+                    .attribute("backend", "docbook5"),
+            );
+            assert!(html.contains("backend=html5"), "{mode:?} should pin html5");
+            assert!(!html.contains("docbook"), "{mode:?} dropped the API value");
+        }
+    }
+
+    #[test]
+    fn soft_default_backend_does_not_survive() {
+        // A *soft* API default leaves an attribute document-overridable, so a
+        // `mentions`-based guard would skip the pin. The backend stays html5
+        // regardless: neither the document's `:backend:` nor the API's soft
+        // default takes effect.
+        let html = convert_with(
+            BACKEND_ECHO,
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .attribute_default("backend", "docbook5"),
+        );
+        assert!(html.contains("backend=html5"));
+        assert!(!html.contains("docbook"));
+    }
+
+    // The doctype the document sees is reachable through the `{doctype}`
+    // intrinsic reference (and drives the `<body class>`). `article` is the
+    // only doctype this renderer models, so `apply` pins `doctype` to
+    // `article` in every safe mode and locks it against the document and
+    // the API alike — going further than Asciidoctor, which only restricts
+    // the document at `Server`/`Secure`.
+
+    // A helper document that sets a non-`article` doctype and echoes the
+    // resolved `doctype` intrinsic into the body, where it lands in the
+    // rendered output alongside the `<body class>`.
+    const DOCTYPE_ECHO: &str = "= Doc\n:doctype: book\n\ndoctype={doctype}";
+
+    #[test]
+    fn document_set_doctype_is_pinned_to_article_in_every_mode() {
+        // A document `:doctype:` is dropped and `{doctype}` resolves to article
+        // regardless of the safe mode — including the lower modes where
+        // Asciidoctor would honor it. The `<body class>` follows suit.
+        for mode in [
+            SafeMode::Unsafe,
+            SafeMode::Safe,
+            SafeMode::Server,
+            SafeMode::Secure,
+        ] {
+            let html = convert_with(DOCTYPE_ECHO, &Options::new().safe_mode(mode));
+            assert!(
+                html.contains("doctype=article"),
+                "{mode:?} should pin article"
+            );
+            assert!(!html.contains("doctype=book"), "{mode:?} dropped book");
+            assert!(
+                html.contains("<body class=\"article\">"),
+                "{mode:?} body class"
+            );
+        }
+    }
+
+    #[test]
+    fn api_set_doctype_is_also_pinned_to_article() {
+        // The pin overrides the API too: an API `doctype` directive does not
+        // survive in any mode (unlike, e.g., `docinfo`, which the API may set).
+        for mode in [SafeMode::Unsafe, SafeMode::Server, SafeMode::Secure] {
+            let html = convert_with(
+                DOCTYPE_ECHO,
+                &Options::new().safe_mode(mode).attribute("doctype", "book"),
+            );
+            assert!(
+                html.contains("doctype=article"),
+                "{mode:?} should pin article"
+            );
+            assert!(
+                !html.contains("doctype=book"),
+                "{mode:?} dropped the API value"
+            );
+        }
+    }
+
+    #[test]
+    fn soft_default_doctype_does_not_survive() {
+        // A *soft* API default leaves an attribute document-overridable, so a
+        // `mentions`-based guard would skip the pin. The doctype stays article
+        // regardless: neither the document's `:doctype:` nor the API's soft
+        // default takes effect.
+        let html = convert_with(
+            DOCTYPE_ECHO,
+            &Options::new()
+                .safe_mode(SafeMode::Safe)
+                .attribute_default("doctype", "book"),
+        );
+        assert!(html.contains("doctype=article"));
+        assert!(!html.contains("doctype=book"));
+    }
+
+    // `catalog_assets` is off by default: images and links referenced in the
+    // document are not recorded in the catalog.
+    #[test]
+    fn catalog_assets_defaults_to_disabled() {
+        let doc = crate::load_with(
+            "image::screenshot.png[]\n\nSee https://example.org for details.",
+            &Options::new(),
+        );
+        assert!(doc.catalog().images().is_empty());
+        assert!(doc.catalog().links().is_empty());
+    }
+
+    // `catalog_assets(true)` records referenced images and links in document
+    // order. Both lists are already populated on the loaded `Document` -- this
+    // crate substitutes inline macros while parsing, unlike Asciidoctor, which
+    // only catalogs them once the document is converted.
+    #[test]
+    fn catalog_assets_true_populates_the_image_and_link_catalog() {
+        let doc = crate::load_with(
+            "image::screenshot.png[]\n\nSee https://example.org and \
+             https://docs.example.org for details.",
+            &Options::new().catalog_assets(true),
+        );
+
+        let images = doc.catalog().images();
+        assert_eq!(images.len(), 1, "{images:?}");
+        assert_eq!(images[0].target, "screenshot.png");
+        assert_eq!(images[0].imagesdir, None);
+
+        assert_eq!(
+            doc.catalog().links(),
+            ["https://example.org", "https://docs.example.org"]
+        );
+    }
+
+    // A custom `IncludeFileHandler`/`DocinfoFileHandler`/`SvgFileHandler`
+    // supplied through `Options` resolves the corresponding resource without
+    // ever touching the filesystem — the seam #337 asks for, so a caller such
+    // as an Antora-style generator can resolve through its own content catalog
+    // instead of a base directory.
+    mod custom_handlers {
+        use std::fmt::Debug;
+
+        use asciidoc_parser::{
+            attributes::Attrlist,
+            parser::{
+                DocinfoFileHandler, IncludeContent, IncludeFileHandler, IncludeResolution,
+                RenderContext, SvgFileHandler,
+            },
+            Parser, SafeMode,
+        };
+
+        use crate::Options;
+
+        #[derive(Debug)]
+        struct CatalogIncludeHandler;
+
+        impl IncludeFileHandler for CatalogIncludeHandler {
+            fn resolve_target<'src>(
+                &self,
+                _source: Option<&str>,
+                target: &str,
+                _attrlist: &Attrlist<'src>,
+                _parser: &Parser,
+            ) -> IncludeResolution {
+                if target == "partial$note.adoc" {
+                    IncludeResolution::Found(IncludeContent::new("Included from catalog."))
+                } else {
+                    IncludeResolution::NotFound
+                }
+            }
+        }
+
+        #[test]
+        fn a_custom_include_handler_resolves_with_no_base_directory() {
+            // No `base_dir`/`input_file` at all -- the filesystem handler is
+            // never installed, so only the custom handler could have resolved
+            // this.
+            let html = crate::convert_with(
+                "= Doc\n\ninclude::partial$note.adoc[]",
+                &Options::new()
+                    .safe_mode(SafeMode::Unsafe)
+                    .include_file_handler(CatalogIncludeHandler),
+            );
+            assert!(html.contains("Included from catalog."), "{html}");
+        }
+
+        #[test]
+        fn a_custom_include_handler_takes_precedence_over_the_filesystem_handler() {
+            let dir = super::docinfo_scratch("include-precedence", &[]);
+
+            // A base directory is also supplied, which would otherwise install
+            // the filesystem handler; the custom handler wins and the
+            // filesystem is never consulted (there is no
+            // `partial$note.adoc` file in `dir`).
+            let html = crate::convert_with(
+                "= Doc\n\ninclude::partial$note.adoc[]",
+                &Options::new()
+                    .safe_mode(SafeMode::Unsafe)
+                    .base_dir(dir.clone())
+                    .include_file_handler(CatalogIncludeHandler),
+            );
+            assert!(html.contains("Included from catalog."), "{html}");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        #[derive(Debug)]
+        struct MapDocinfoHandler;
+
+        impl DocinfoFileHandler for MapDocinfoHandler {
+            fn resolve_docinfo(
+                &self,
+                _docinfodir: Option<&str>,
+                file_name: &str,
+                _parser: &Parser,
+            ) -> Option<String> {
+                (file_name == "docinfo.html").then(|| "<meta name=\"catalog\">".to_owned())
+            }
+        }
+
+        #[test]
+        fn a_custom_docinfo_handler_resolves_with_no_base_directory() {
+            let html = crate::convert_with(
+                "= Doc\n:docinfo: shared\n\nBody.",
+                &Options::new()
+                    .standalone(true)
+                    .safe_mode(SafeMode::Safe)
+                    .docinfo_file_handler(MapDocinfoHandler),
+            );
+            assert!(html.contains("<meta name=\"catalog\">\n</head>"), "{html}");
+        }
+
+        #[derive(Debug)]
+        struct FixedSvgHandler;
+
+        impl SvgFileHandler for FixedSvgHandler {
+            fn resolve_svg(&self, target: &str, _context: &RenderContext) -> Option<String> {
+                (target == "diagram.svg")
+                    .then(|| "<svg><title>from catalog</title></svg>".to_owned())
+            }
+        }
+
+        #[test]
+        fn a_custom_svg_handler_resolves_with_no_base_directory() {
+            let html = crate::convert_with(
+                "image:diagram.svg[opts=inline]",
+                &Options::new()
+                    .safe_mode(SafeMode::Unsafe)
+                    .svg_file_handler(FixedSvgHandler),
+            );
+            assert!(html.contains("<title>from catalog</title>"), "{html}");
+        }
+    }
+}

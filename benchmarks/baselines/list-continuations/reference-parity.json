@@ -1,0 +1,1006 @@
+{
+  "binarySha256": "03b2aa66bc0711c3f4507f9f8ca58c993cd7d4a0a293aaeea63c260f2df4a201",
+  "cases": 111,
+  "passed": 111,
+  "results": [
+    {
+      "case": "NOTE-.-prefix-lf",
+      "sourceSha256": "53b2a11d2a0c1e458d828c7202e93f25b98cb97e1c80e42638f6f1badbff6205",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-.-prefix-crlf",
+      "sourceSha256": "2c1cf5d3ff02893ebd975f3999d62627982fc0d3464a5b46309d509d0c2f2173",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-.-style-lf",
+      "sourceSha256": "57ae20adb0b22d67a1d73da66d3fa062da76c34a67bc675eb59d0d2aae63f989",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-.-style-crlf",
+      "sourceSha256": "4017f4d9f71c923702fadba6aecb4cacb7784d4bacde4b560154930f33526dfa",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-*-prefix-lf",
+      "sourceSha256": "9fa5f0001cc71149c1d2c5b565ad6e83264312e579cdb91a43aa76968bb621a5",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-*-prefix-crlf",
+      "sourceSha256": "eeecb9a2a924ee89ee897c901ab0b75729520ffedbf2a6f47a0d8b7da250870f",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-*-style-lf",
+      "sourceSha256": "55411311a41cdba7e2022f309b1769d0a2552acab44b76836156c1969b8383bf",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-*-style-crlf",
+      "sourceSha256": "eee5bc97ff9dff841ef185ad241e42be43dbffba7ee22ce6e33f959070f52c01",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE---prefix-lf",
+      "sourceSha256": "75b8bab85a7693e3e36168a8b43336d750b3cb00fecf24305201a54e805a51a2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE---prefix-crlf",
+      "sourceSha256": "9d3ea87d3d4a5a9ccc0d5f6ed85ec230122053464ca93ae0d4c964b47bc8c600",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE---style-lf",
+      "sourceSha256": "cb41a6a328eae97803f4ddf411f90a0454d5b0cc51c36892f00137ffce1d41ea",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE---style-crlf",
+      "sourceSha256": "79f19aa616bbb1b9e1e6f3a171ca71f73a42043cb7be15ee8a204209a393697c",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-1.-prefix-lf",
+      "sourceSha256": "72e65ecae2dfaebd8880e63aaac13026ca496587f47a08e012ea7c03a67b219c",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-1.-prefix-crlf",
+      "sourceSha256": "b2ac46b91161b5bc1e07749998c897a158a4e53a2f81ac14795a4979f24d1ac6",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-1.-style-lf",
+      "sourceSha256": "28569d85dd24213c2f443eff1dc07dfbf087cc37d1cc382838423d727e735240",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-1.-style-crlf",
+      "sourceSha256": "9fb719fcdf2d0589a82a0ffffd0f7ed464516855ef8d5138d1ffc142c245a56a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-top-level-prefix",
+      "sourceSha256": "abde2bae1eb16b311cab29334732eba4d34af5dcbdcaf9512697ccfba8c2ab58",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-top-level-style",
+      "sourceSha256": "bf794c166ff1e7597c32906780ce2db96259c9fc0f69dc39f953c1012422b2ed",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-compound-====",
+      "sourceSha256": "6884cae3d996c9f161a2d79a15425cd4e7b85ee54d12594bba8dc3df9aa937b9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-compound---",
+      "sourceSha256": "32f29d5def97a382076e2cf4c5ecea6e87aeb13b50d5e8d3e530bf9992833656",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "NOTE-ancestor",
+      "sourceSha256": "c9b28823b0fa8134fb42e38f195137933dc9000fc3e4ff15c82f9eed04b2e8b5",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-.-prefix-lf",
+      "sourceSha256": "c4f62850f57dbc32f44fb348725fc428fe92e6ddbfc793a8d404e279d8546210",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-.-prefix-crlf",
+      "sourceSha256": "79fabefe2fd49377b75678958133bde08bd3eaf01eb3f743569660bb60d694a2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-.-style-lf",
+      "sourceSha256": "5e74b36e53630792793b26296cffdefe9f8519230cbce5e2e5ff5e68c90bb104",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-.-style-crlf",
+      "sourceSha256": "9c492f9dcb4b32c63bcd11a340fb069684e074b2208242ea6978a8eaf3aad6d7",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-*-prefix-lf",
+      "sourceSha256": "0d9d05e5c4c34def0e4f6895749c56f3e974cf639ffbc7b37a1b45f42ae330bf",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-*-prefix-crlf",
+      "sourceSha256": "d706e5fc2fb6d6b6752406094f0baf6dd0fe6acd7801239c8ead66e19ec8293b",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-*-style-lf",
+      "sourceSha256": "062598eeef4b442f8c4f89909953fd2854a232848dcfdbc7803ef0c8b69a1d98",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-*-style-crlf",
+      "sourceSha256": "311367e00406ed46a4bd9ea7b21447f8274f19c5710820791abd6e62c667c8d1",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP---prefix-lf",
+      "sourceSha256": "494bd0e330ee094a004116ab2c0022e54aacdad147205315684b7c8dc109034f",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP---prefix-crlf",
+      "sourceSha256": "5eef89c0b1a4b3dd8c5089d77ad9186995b753343e51bb6c92a3d7420f2761f6",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP---style-lf",
+      "sourceSha256": "3aee7c9286fd4ac33ff8d9a9be6d84cd8a9e4459d6717728d989845d7dd1df1d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP---style-crlf",
+      "sourceSha256": "0057a630615b869836b8a5f17f9cfcbf09b920b66e2cf0a4565136d6db2a889b",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-1.-prefix-lf",
+      "sourceSha256": "4b790be00a46dd656e5c414211a77de1ed74c940c4e690ff33bff5b6fd178e5f",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-1.-prefix-crlf",
+      "sourceSha256": "387c738472732437a92bd383dccd73eb66a010ac9996673c8851e441958776a2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-1.-style-lf",
+      "sourceSha256": "5963ce166f6588f4943004c82de2f85998f0fb869286af1afb5fb63125bf33ba",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-1.-style-crlf",
+      "sourceSha256": "1c16638a8a7c55a15ce31bdebe116ac818e07a04153334f48dd043090503520d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-top-level-prefix",
+      "sourceSha256": "a7f0bb1c756c7e46daa707129672acee3a57c198c684307ca67b40584482cbd9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-top-level-style",
+      "sourceSha256": "885feaf3b6e45a207a9dc1289aedc4b9ca082f2ef75056eaa17b908c3847ba6e",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-compound-====",
+      "sourceSha256": "1c0a9126c4dec05e7b214b6eaa84c327dc9cee69889165dd0552c0d4f5f3f3b7",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-compound---",
+      "sourceSha256": "a70d80b3515952f90778baa00c8116cc4aed95929827e57d76b95ad14d87eb37",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "TIP-ancestor",
+      "sourceSha256": "dec6934459e8cb0be086c805e40e850547fc0c8c1cafbfe585745f157443b548",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-.-prefix-lf",
+      "sourceSha256": "1569e3cb561754b9d38b4da5051fbac9ebe3acc7e09d404f2e66eab60f1c51d4",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-.-prefix-crlf",
+      "sourceSha256": "07703dcd6825fe0d452ba385b7fc25be8cf6c8f90a270c0ba1558ea16c7aada1",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-.-style-lf",
+      "sourceSha256": "2b97cc74bed6a420c5241032232226eb6e200f3917c163eaadf15e3133e0dfe2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-.-style-crlf",
+      "sourceSha256": "678f3064662a47bfab313fc59f3946cf7fda965fd2ca252dbbe517d1215f8064",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-*-prefix-lf",
+      "sourceSha256": "8c14893ee523949120a4190285a78fc4da79648fecf97297c4b3b4a90777062e",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-*-prefix-crlf",
+      "sourceSha256": "eafbc14ab197d71c2e049235a9203d7e4b0f41069a4c91d3dcd93da32d0dd25a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-*-style-lf",
+      "sourceSha256": "a323404f3f9f132e7285211863e6de2247d4e49bdc00c10e3750403605e76dff",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-*-style-crlf",
+      "sourceSha256": "4647cc4faded1d38cc2c2917047b75d220389216ceb9ff96318065511c2f915f",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT---prefix-lf",
+      "sourceSha256": "ab0c5a4631525e838811df92cb46cf83369b36d3095dfbdd2ce4f98c50d3b13d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT---prefix-crlf",
+      "sourceSha256": "8a437abe6d61a96981d95f1244e34a28064b8e3829609a47c42af47d36f5b392",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT---style-lf",
+      "sourceSha256": "88586fd14de2b7e8dc3acef9fdfcee58b21f3cb37dd622d424fcce480213bb7a",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT---style-crlf",
+      "sourceSha256": "5263a4ece0dc7687266e7b7958ee217a4a09578a92ee01bae51fa144306359e2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-1.-prefix-lf",
+      "sourceSha256": "e4d3691abe80a1700d4f7c73cb04be8d4ef691360a1b974665b6dd6ab5b6c441",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-1.-prefix-crlf",
+      "sourceSha256": "f53a08ba188ae362dc7db7c602513cc42e846257c13f26993e1652f2c1f10585",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-1.-style-lf",
+      "sourceSha256": "d99843ee70ec832810b3205bb9a7e6686a12ae988a7513c23e381a9db7fa8cda",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-1.-style-crlf",
+      "sourceSha256": "002e5f2b632fa4e5ec0f60712ce194ef778e729281c848a02955a8232b786595",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-top-level-prefix",
+      "sourceSha256": "a640581ed418056d4eb9588f92a13d4cd1b6028c8e0ea1e2f34fc6c1bc07cb05",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-top-level-style",
+      "sourceSha256": "55a3deac3197721c4bd54ba2fcf482ab7792864a61af975048ff7ee68609b8ba",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-compound-====",
+      "sourceSha256": "9059453a3ef8b6b94fd860398123343e69e62408b06c64a5177f31a085bb7341",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-compound---",
+      "sourceSha256": "11965ed2baf318a4e02f75f0e5b0652459823827b93ab13216b1106d00439432",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "IMPORTANT-ancestor",
+      "sourceSha256": "fbec84d8071a3c61fb580b3ba30b843b924a097511acb163d57adcbb4ad227b0",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-.-prefix-lf",
+      "sourceSha256": "87a796e7076ab1011e0eb7421566f92bf461759b35fefd778d9cf2a2be3e43f3",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-.-prefix-crlf",
+      "sourceSha256": "5e71100847ccc0f50f044c21f930d030ea5feff5de65b71ced0a7a97dca31093",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-.-style-lf",
+      "sourceSha256": "dcd96d43368b2baea46a2a93ec3d5f7505b7867aa4e6c2b3d9cfb8470c496031",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-.-style-crlf",
+      "sourceSha256": "38337e7529669c6e6843c1053e55fc966e46699bb2d8edb83e86e377ef8d1edf",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-*-prefix-lf",
+      "sourceSha256": "e5173bd8efe4d33340aef643fb1617c638d8e2aec43bcf641b530e1e2366904d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-*-prefix-crlf",
+      "sourceSha256": "f4de93713467e05f154c06ebf5ec24614332e11bf818e6d937b2eab94bb150a0",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-*-style-lf",
+      "sourceSha256": "3851a6d431e9088df527511974a8fdd2283b7f365189193356b3fdb1f9b812ea",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-*-style-crlf",
+      "sourceSha256": "064f979d4d0aa3cf932e7e534b29944bb84a0d1d3300226208c0cf67e6c7c7e2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION---prefix-lf",
+      "sourceSha256": "0575505df19c48cd0cf0a4d2825726b7a25619aec31849f4104dde2deb372433",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION---prefix-crlf",
+      "sourceSha256": "8a9ce5f9e7ac89c13c0970e056c59281b4d9314bdf1e989feef8437625378bd9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION---style-lf",
+      "sourceSha256": "9b0f5e07446cb64635369b692fa8963784064ac51a85b732650e24ce0fc4e963",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION---style-crlf",
+      "sourceSha256": "79b260f6cf968f7525212e2d9c29076fc448fc5b95d74c5bbcb7cb740acccacb",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-1.-prefix-lf",
+      "sourceSha256": "5c1d3b73c08f71b237320a4c9a3f64d58d175091f1f599a9aed2fbb8aa46a6dd",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-1.-prefix-crlf",
+      "sourceSha256": "5ba27c40e44cb2e8cde6fa49bf11ee1a2fd20d1ae668b3ac9e8fe438bb1d9eff",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-1.-style-lf",
+      "sourceSha256": "fed293eafc03fd2c170d6d9ddc254df6abbd5e4ad55103a22feab360630fdd00",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-1.-style-crlf",
+      "sourceSha256": "6b16dbf7f725fa42abcd124a98883c65a1e73131836c73dd3ac82f892773b263",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-top-level-prefix",
+      "sourceSha256": "82f9152db67bf3a34bf54e641e8efa9675e52f35477cac4cd80b2f5eb5315c7b",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-top-level-style",
+      "sourceSha256": "aae1211c64ebbf56cf6934acd2b96744477c69df8016145e37a5439cac6e1081",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-compound-====",
+      "sourceSha256": "8c20c5fc3ecddcfde12d463247b95ff66a9a662c818622807a5e8063556fcf1f",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-compound---",
+      "sourceSha256": "59dd9f1dd2151c705996c8e8b4df5506f56181a057c82e8a0a02be5ed9c91d79",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "CAUTION-ancestor",
+      "sourceSha256": "4f116ef5e75b190255292c0778095733f378e8e27b22bd28582fe65089f31b21",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-.-prefix-lf",
+      "sourceSha256": "447e3baa964e26c54ddc211d06eb2faddf3902f3df560d4b13c3d12b00a1e115",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-.-prefix-crlf",
+      "sourceSha256": "aa321968b7c324e0e51f1fea2cf4376906a2273afc0537b7a86d2f97bb7bf8c6",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-.-style-lf",
+      "sourceSha256": "24e99930aec6ca22a770c747927fe0e520411accfe91c584d9b581cea7597163",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-.-style-crlf",
+      "sourceSha256": "c1ee9df689f6d921d0f85bc8aa59586dbedd8f472f34ca73976c70ec794e334e",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-*-prefix-lf",
+      "sourceSha256": "eeed5cebd001de4a6d49c31a8f60f2898f836c83516f5738b0a64ad2cc8146bf",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-*-prefix-crlf",
+      "sourceSha256": "962697fec4e7753cf021ca81de463fe7034b52069efd4e41129fe8028014fef5",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-*-style-lf",
+      "sourceSha256": "7096ffa6d33e71f23ff9acf78459dcc7cc37371bb44e3d8158417eacdca04dc3",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-*-style-crlf",
+      "sourceSha256": "be73c7f5a2306d8cf0098379cfccea0b956bd074781bfa2c61fa8b581a565f6b",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING---prefix-lf",
+      "sourceSha256": "628e7a65ac27558f39cd3e1254bb49c76354ea20a329b721be1326e26eb49b4d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING---prefix-crlf",
+      "sourceSha256": "6e7bb7b2b469ec632e38b7e104f2ebf4f38b1667776b596be983358efaa94211",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING---style-lf",
+      "sourceSha256": "c121871bf9d6384e2ce7806123cf707a4de3de1e98b487db84eda9331007c2e9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING---style-crlf",
+      "sourceSha256": "e621541e7554fac82c4d699caa5917ea1b1f8c1b3bd1ce92a0dffd1a76aacaa0",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-1.-prefix-lf",
+      "sourceSha256": "37697a143f6807f92a066c5fae727d84aa76096a4a6a2452da6d2405b7ec5639",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-1.-prefix-crlf",
+      "sourceSha256": "e21cd0190aa1c8d595d23f7b527a829774c27ee03fac886a54be686ee1525dca",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-1.-style-lf",
+      "sourceSha256": "1282117dc5c9222581cfae565bcea76cb5b86cec8fa88a120affba62dc392521",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-1.-style-crlf",
+      "sourceSha256": "4aaf9e903816e78f16f4a9ca534b247f622ba920313c6242592d611f1ad03dfc",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-top-level-prefix",
+      "sourceSha256": "d5e7ea01f02a47cc2c82302e73ab8d3fda1a017dd88db768fd228e5918c2cb9d",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-top-level-style",
+      "sourceSha256": "1df0d685af4e2190dcfb12a37a1a2baae845d415ed1e7f7fdf3a6bddb1c96d23",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-compound-====",
+      "sourceSha256": "562679cf310be9e2bebcf8c36f24b0c8925b889c3cfd456750304f27368765d2",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-compound---",
+      "sourceSha256": "8899b37bb60b77c80e5a9ba26e2316907b46a8525a36507050b680e9b59d6ca1",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "WARNING-ancestor",
+      "sourceSha256": "6e4fd80fa764334bd93bb26032a812d4c4e79f7fd062fc1a21f8a3fa1ee544a6",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "boundary-immediate",
+      "sourceSha256": "21bfdf6d161fe1324fc0bb073e3c6cbd5d2b0b4d0c0200515cffe8be760b0750",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "boundary-blank",
+      "sourceSha256": "2fb7cf0b70fcfe98d27c5ace70bdbe4b6fd863f483b8072f333af80f930e0c9c",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "boundary-comment",
+      "sourceSha256": "67353ef87f4818e11d6dc18a0d69ff81058c1c4c72f1a186d6238410b62099c9",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "boundary-indented-marker",
+      "sourceSha256": "fb8615d39d582b3b165d0c250c240f5214a3923084c7b79832d5077b60ef7f50",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "showcase",
+      "sourceSha256": "a4f6723a5d75363b66652b58dabcdfba46fb7ade8fc3ba36aaca55b73a1ec3f8",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    },
+    {
+      "case": "raw-literal",
+      "sourceSha256": "d6ac08f5fbdd9efacdaa8aa994523977c9d5bdf5089e2b26b7f508132a1082cd",
+      "parity": {
+        "ruby": true,
+        "js": true,
+        "rust": true
+      }
+    }
+  ]
+}

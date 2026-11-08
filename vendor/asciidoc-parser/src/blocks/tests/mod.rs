@@ -1,0 +1,774 @@
+//! This module contains tests related to each of the cases of the `Block` enum.
+//! Many of these tests are repeated from the tests for the individual block
+//! types.
+
+#![allow(clippy::indexing_slicing)]
+#![allow(clippy::panic)]
+#![allow(clippy::unwrap_used)]
+
+mod r#break;
+mod compound_delimited;
+mod media;
+mod raw_delimited;
+mod section;
+mod simple;
+mod table;
+mod toc;
+
+mod content_model {
+    use crate::blocks::ContentModel;
+
+    #[test]
+    fn impl_copy() {
+        // Silly test to mark the #[derive(...)] line as covered.
+        let c1 = ContentModel::Simple;
+        let c2 = c1;
+        assert_eq!(c1, c2);
+    }
+}
+
+mod impl_debug {
+    use crate::{Parser, blocks::Block, span::Span};
+
+    #[test]
+    fn simple() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new("This is a simple paragraph."), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        let debug_output = format!("{:?}", mi.item);
+        assert!(debug_output.starts_with("Block::Simple"));
+    }
+
+    #[test]
+    fn media() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new("image::example.png[]"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        let debug_output = format!("{:?}", mi.item);
+        assert!(debug_output.starts_with("Block::Media"));
+    }
+
+    #[test]
+    fn section() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new("== Section Title\n"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        let debug_output = format!("{:?}", mi.item);
+        assert!(debug_output.starts_with("Block::Section"));
+    }
+
+    #[test]
+    fn raw_delimited() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new("----\ncode\n----"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        let debug_output = format!("{:?}", mi.item);
+        assert!(debug_output.starts_with("Block::RawDelimited"));
+    }
+
+    #[test]
+    fn compound_delimited() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new("****\nSidebar content\n****"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        let debug_output = format!("{:?}", mi.item);
+        assert!(debug_output.starts_with("Block::CompoundDelimited"));
+    }
+
+    #[test]
+    fn document_attribute() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new(":author: John Doe"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        let debug_output = format!("{:?}", mi.item);
+        assert!(debug_output.starts_with("Block::DocumentAttribute"));
+    }
+
+    #[test]
+    fn r#break() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new("'''"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        let debug_output = format!("{:?}", mi.item);
+        assert!(debug_output.starts_with("Block::Break"));
+    }
+
+    #[test]
+    fn toc() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new("toc::[]"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        let debug_output = format!("{:?}", mi.item);
+        assert!(debug_output.starts_with("Block::Toc"));
+    }
+}
+
+mod as_list_item {
+    use crate::{blocks::Block, span::Span, tests::prelude::*};
+
+    #[test]
+    fn returns_some_for_list_item() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new("* item one"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        // The parsed block is a List; its first nested block is a ListItem.
+        let list_items: Vec<_> = mi.item.child_blocks().collect();
+        assert!(list_items[0].as_list_item().is_some());
+    }
+
+    #[test]
+    fn returns_none_for_non_list_item() {
+        let mut parser = Parser::default();
+        let mi = Block::parse(Span::new("Just a paragraph."), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        // A simple paragraph block is not a ListItem.
+        assert!(mi.item.as_list_item().is_none());
+    }
+}
+
+mod caption_and_number {
+    use crate::{
+        blocks::{Block, IsBlock},
+        span::Span,
+        tests::prelude::*,
+    };
+
+    /// Parses `input` as a single block, ignoring any warnings.
+    fn parse_block(input: &'static str) -> Block<'static> {
+        let mut parser = Parser::default();
+        Block::parse(Span::new(input), &mut parser)
+            .item
+            .unwrap()
+            .item
+    }
+
+    #[test]
+    fn non_captionable_blocks_have_no_caption_or_number() {
+        // Every `Block` variant that is not a captionable context reports no
+        // caption and no number, exercising the `Block` delegation arms and the
+        // default `IsBlock::caption`/`IsBlock::number` implementations.
+        let inputs = [
+            "a paragraph.",           // Simple
+            "image::example.png[]",   // Media
+            "== Section\n",           // Section
+            "----\ncode\n----",       // RawDelimited (listing)
+            "--\nopen\n--",           // CompoundDelimited (open)
+            "****\nsidebar\n****",    // CompoundDelimited (sidebar)
+            "NOTE: an admonition.",   // Admonition
+            "[quote]\n____\nq\n____", // Quote
+            "* item",                 // List
+            "'''",                    // Break
+            "toc::[]",                // Toc
+            ":author: Jane",          // DocumentAttribute
+        ];
+
+        for input in inputs {
+            let block = parse_block(input);
+            assert!(block.caption().is_none(), "caption for {input:?}");
+            assert!(block.number().is_none(), "number for {input:?}");
+        }
+
+        // A ListItem (reached only as a nested block of a List).
+        let list = parse_block("* item one");
+        let mut saw_list_item = false;
+        for item in list.child_blocks() {
+            assert!(matches!(item, Block::ListItem(_)));
+            assert!(item.caption().is_none());
+            assert!(item.number().is_none());
+            saw_list_item = true;
+        }
+        assert!(saw_list_item);
+
+        // An untitled table is captionable but, lacking a title, is unnumbered.
+        let table = parse_block("|===\n|a\n|===");
+        assert!(table.caption().is_none());
+        assert!(table.number().is_none());
+
+        // A Preamble (synthesized for content that precedes the first section).
+        let doc = Parser::default().parse("= Title\n\nintro paragraph.\n\n== Section\n\nbody.");
+        let preamble = doc.child_blocks().next().unwrap();
+        assert!(matches!(preamble, Block::Preamble(_)));
+        assert!(preamble.caption().is_none());
+        assert!(preamble.number().is_none());
+    }
+
+    #[test]
+    fn captionable_blocks_expose_caption_and_number_via_block_enum() {
+        // A titled example and a titled table surface their caption prefix and
+        // number through the `Block` enum's delegation.
+        let example = parse_block(".Onomatopoeia\n====\nbody.\n====");
+        assert_eq!(example.caption(), Some("Example 1. "));
+        assert_eq!(example.number(), Some(1));
+
+        let table = parse_block(".A table\n|===\n|a\n|===");
+        assert_eq!(table.caption(), Some("Table 1. "));
+        assert_eq!(table.number(), Some(1));
+    }
+
+    #[test]
+    fn literal_styled_block_in_list_item_is_reparsed() {
+        // A `[literal]`-styled block attached to a list item is skipped by the
+        // speculative simple-block parse (because it is literal) and re-parsed
+        // through the list-item path. It carries no caption or number.
+        let doc = Parser::default().parse("* item\n+\n[literal]\nliteral text\n");
+
+        let list = doc.child_blocks().next().unwrap();
+        let item = list.child_blocks().next().unwrap();
+
+        // The literal block is attached to the list item and renders verbatim.
+        let literal = item
+            .child_blocks()
+            .find(|b| b.declared_style() == Some("literal"))
+            .unwrap();
+
+        assert_eq!(literal.rendered_html_content(), Some("literal text"));
+        assert!(literal.caption().is_none());
+        assert!(literal.number().is_none());
+    }
+}
+
+mod error_cases {
+    use std::ops::Deref;
+
+    use crate::{
+        blocks::{ContentModel, IsBlock, ListType, metadata::BlockMetadata},
+        tests::prelude::*,
+        warnings::MatchAndWarnings,
+    };
+
+    #[test]
+    fn title_line_separated_from_block_by_blank_line_attaches() {
+        // Regression test for issue #664: a block title (`.title`) separated
+        // from its block by a blank line attaches to the following block,
+        // matching Asciidoctor (which tolerates the intervening blank line).
+        // The title line is *not* demoted to a standalone paragraph and no
+        // spurious `MissingBlockAfterTitleOrAttributeList` warning is emitted.
+        let mut parser = Parser::default();
+        let mut warnings: Vec<crate::warnings::Warning<'_>> = vec![];
+
+        let mi = crate::blocks::SectionBlock::parse(
+            &BlockMetadata::new("=== Section Title\n\nabc\n\n.ancestor section== Section 2\n\ndef"),
+            &mut parser,
+            &mut warnings,
+        )
+        .unwrap();
+
+        let item = &mi.item;
+
+        assert_eq!(item.content_model(), ContentModel::Compound);
+        assert_eq!(item.raw_context().deref(), "section");
+        assert_eq!(item.resolved_context().deref(), "section");
+        assert!(item.declared_style().is_none());
+        assert_eq!(item.id().unwrap(), "_section_title");
+        assert!(item.roles().is_empty());
+        assert!(item.options().is_empty());
+        assert!(item.title_source().is_none());
+        assert!(item.title().is_none());
+        assert!(item.anchor().is_none());
+        assert!(item.anchor_reftext().is_none());
+        assert!(item.attrlist().is_none());
+        assert_eq!(item.substitution_group(), SubstitutionGroup::Normal);
+
+        assert_eq!(
+            mi.item,
+            SectionBlock {
+                level: 2,
+                section_title: Content {
+                    original: Span {
+                        data: "Section Title",
+                        line: 1,
+                        col: 5,
+                        offset: 4,
+                    },
+                    rendered: "Section Title",
+                },
+                blocks: &[
+                    Block::Simple(SimpleBlock {
+                        content: Content {
+                            original: Span {
+                                data: "abc",
+                                line: 3,
+                                col: 1,
+                                offset: 19,
+                            },
+                            rendered: "abc",
+                        },
+                        source: Span {
+                            data: "abc",
+                            line: 3,
+                            col: 1,
+                            offset: 19,
+                        },
+                        style: SimpleBlockStyle::Paragraph,
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    }),
+                    Block::Simple(SimpleBlock {
+                        content: Content {
+                            original: Span {
+                                data: "def",
+                                line: 7,
+                                col: 1,
+                                offset: 55,
+                            },
+                            rendered: "def",
+                        },
+                        source: Span {
+                            data: ".ancestor section== Section 2\n\ndef",
+                            line: 5,
+                            col: 1,
+                            offset: 24,
+                        },
+                        style: SimpleBlockStyle::Paragraph,
+                        title_source: Some(Span {
+                            data: "ancestor section== Section 2",
+                            line: 5,
+                            col: 2,
+                            offset: 25,
+                        }),
+                        title: Some("ancestor section== Section 2"),
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    },),
+                ],
+                source: Span {
+                    data: "=== Section Title\n\nabc\n\n.ancestor section== Section 2\n\ndef",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+                section_type: SectionType::Normal,
+                section_id: Some("_section_title"),
+                caption: None,
+                section_number: None,
+            }
+        );
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "",
+                line: 7,
+                col: 4,
+                offset: 58
+            }
+        );
+
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn attribute_list_separated_from_block_by_blank_line_attaches() {
+        // Issue #664 (generalized): the blank-line tolerance applies to any
+        // block metadata, not just titles. A block attribute list separated
+        // from its block by a blank line attaches to the following block (its
+        // role is applied here) rather than dangling with a warning.
+        let doc = Parser::default().parse("[.myrole]\n\ndef");
+
+        let blocks: Vec<_> = doc.child_blocks().collect();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].roles(), vec!["myrole"]);
+        assert_eq!(blocks[0].rendered_html_content(), Some("def"));
+        assert!(doc.warnings().next().is_none());
+    }
+
+    #[test]
+    fn multiple_blank_lines_between_title_and_block_are_tolerated() {
+        // More than one blank line between the metadata and its block is also
+        // tolerated, matching Asciidoctor's `skip_blank_lines`.
+        let doc = Parser::default().parse(".My Title\n\n\ndef");
+
+        let blocks: Vec<_> = doc.child_blocks().collect();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].title(), Some("My Title"));
+        assert_eq!(blocks[0].rendered_html_content(), Some("def"));
+        assert!(doc.warnings().next().is_none());
+    }
+
+    #[test]
+    fn title_with_only_blank_lines_after_still_warns() {
+        // A title followed by nothing but blank lines has no block to attach
+        // to, so the `MissingBlockAfterTitleOrAttributeList` warning
+        // still fires and the title line is demoted to paragraph
+        // content.
+        let doc = Parser::default().parse(".My Title\n\n");
+
+        let blocks: Vec<_> = doc.child_blocks().collect();
+        assert_eq!(blocks.len(), 1);
+        assert!(blocks[0].title().is_none());
+        assert_eq!(
+            doc.warnings()
+                .map(|w| w.warning.clone())
+                .collect::<Vec<_>>(),
+            vec![WarningType::MissingBlockAfterTitleOrAttributeList]
+        );
+    }
+
+    #[test]
+    fn missing_close_brace_on_attrlist() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(
+            crate::Span::new("[incomplete attrlist\n=== Section Title (except it isn't)\n\nabc\n"),
+            &mut parser,
+        )
+        .unwrap_if_no_warnings()
+        .unwrap();
+
+        assert_eq!(mi.item.content_model(), ContentModel::Simple);
+        assert_eq!(mi.item.raw_context().deref(), "paragraph");
+        assert_eq!(mi.item.resolved_context().deref(), "paragraph");
+        assert!(mi.item.declared_style().is_none());
+        assert!(mi.item.id().is_none());
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert!(mi.item.attrlist().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+        assert_eq!(
+            mi.item,
+            Block::Simple(SimpleBlock {
+                content: Content {
+                    original: Span {
+                        data: "[incomplete attrlist\n=== Section Title (except it isn't)",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    rendered: "[incomplete attrlist\n=== Section Title (except it isn&#8217;t)",
+                },
+                source: Span {
+                    data: "[incomplete attrlist\n=== Section Title (except it isn't)",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                style: SimpleBlockStyle::Paragraph,
+                title_source: None,
+                title: None,
+                caption: None,
+                number: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            },)
+        );
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "abc\n",
+                line: 4,
+                col: 1,
+                offset: 58
+            }
+        );
+    }
+
+    #[test]
+    fn attrlist_warning_carried_forward() {
+        let mut parser = Parser::default();
+
+        let MatchAndWarnings { item: mi, warnings } = crate::blocks::Block::parse(
+            crate::Span::new(
+                "[alt=\"Sunset\"width=300]\n=== Section Title (except it isn't)\n\nabc\n",
+            ),
+            &mut parser,
+        );
+
+        let mi = mi.unwrap();
+
+        assert_eq!(mi.item.content_model(), ContentModel::Compound);
+        assert_eq!(mi.item.raw_context().deref(), "section");
+        assert_eq!(mi.item.resolved_context().deref(), "section");
+        assert!(mi.item.declared_style().is_none());
+        assert_eq!(mi.item.id().unwrap(), "_section_title_except_it_isnt");
+        assert!(mi.item.roles().is_empty());
+        assert!(mi.item.options().is_empty());
+        assert!(mi.item.title_source().is_none());
+        assert!(mi.item.title().is_none());
+        assert!(mi.item.anchor().is_none());
+        assert!(mi.item.anchor_reftext().is_none());
+        assert_eq!(mi.item.substitution_group(), SubstitutionGroup::Normal);
+
+        assert_eq!(
+            mi.item.attrlist().unwrap(),
+            Attrlist {
+                attributes: &[ElementAttribute {
+                    name: Some("alt"),
+                    shorthand_items: &[],
+                    value: "Sunset"
+                },],
+                anchor: None,
+                source: Span {
+                    data: "alt=\"Sunset\"width=300",
+                    line: 1,
+                    col: 2,
+                    offset: 1,
+                },
+            }
+        );
+
+        assert_eq!(
+            mi.item,
+            Block::Section(SectionBlock {
+                level: 2,
+                section_title: Content {
+                    original: Span {
+                        data: "Section Title (except it isn't)",
+                        line: 2,
+                        col: 5,
+                        offset: 28,
+                    },
+                    rendered: "Section Title (except it isn&#8217;t)",
+                },
+                blocks: &[Block::Simple(SimpleBlock {
+                    content: Content {
+                        original: Span {
+                            data: "abc",
+                            line: 4,
+                            col: 1,
+                            offset: 61,
+                        },
+                        rendered: "abc",
+                    },
+                    source: Span {
+                        data: "abc",
+                        line: 4,
+                        col: 1,
+                        offset: 61,
+                    },
+                    style: SimpleBlockStyle::Paragraph,
+                    title_source: None,
+                    title: None,
+                    caption: None,
+                    number: None,
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: "[alt=\"Sunset\"width=300]\n=== Section Title (except it isn't)\n\nabc",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: Some(Attrlist {
+                    attributes: &[ElementAttribute {
+                        name: Some("alt"),
+                        shorthand_items: &[],
+                        value: "Sunset"
+                    },],
+                    anchor: None,
+                    source: Span {
+                        data: "alt=\"Sunset\"width=300",
+                        line: 1,
+                        col: 2,
+                        offset: 1,
+                    },
+                },),
+                section_type: SectionType::Normal,
+                section_id: Some("_section_title_except_it_isnt"),
+                caption: None,
+                section_number: None,
+            },)
+        );
+
+        assert_eq!(
+            mi.after,
+            Span {
+                data: "",
+                line: 5,
+                col: 1,
+                offset: 65
+            }
+        );
+
+        assert_eq!(
+            warnings,
+            vec![Warning {
+                source: Span {
+                    data: "alt=\"Sunset\"width=300",
+                    line: 1,
+                    col: 2,
+                    offset: 1,
+                },
+                warning: WarningType::MissingCommaAfterQuotedAttributeValue,
+            },]
+        );
+    }
+
+    #[test]
+    fn list_item_not_title() {
+        let mut parser = Parser::default();
+
+        let mi = crate::blocks::Block::parse(crate::Span::new(". abc\ndef"), &mut parser)
+            .unwrap_if_no_warnings()
+            .unwrap();
+
+        assert_eq!(
+            mi.item,
+            Block::List(ListBlock {
+                type_: ListType::Ordered,
+                items: &[Block::ListItem(ListItem {
+                    marker: ListItemMarker::Dots(Span {
+                        data: ".",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },),
+                    blocks: &[Block::Simple(SimpleBlock {
+                        content: Content {
+                            original: Span {
+                                data: "abc\ndef",
+                                line: 1,
+                                col: 3,
+                                offset: 2,
+                            },
+                            rendered: "abc\ndef",
+                        },
+                        source: Span {
+                            data: "abc\ndef",
+                            line: 1,
+                            col: 3,
+                            offset: 2,
+                        },
+                        style: SimpleBlockStyle::Paragraph,
+                        title_source: None,
+                        title: None,
+                        caption: None,
+                        number: None,
+                        anchor: None,
+                        anchor_reftext: None,
+                        attrlist: None,
+                    },),],
+                    source: Span {
+                        data: ". abc\ndef",
+                        line: 1,
+                        col: 1,
+                        offset: 0,
+                    },
+                    anchor: None,
+                    anchor_reftext: None,
+                    attrlist: None,
+                },),],
+                source: Span {
+                    data: ". abc\ndef",
+                    line: 1,
+                    col: 1,
+                    offset: 0,
+                },
+                title_source: None,
+                title: None,
+                anchor: None,
+                anchor_reftext: None,
+                attrlist: None,
+            },)
+        );
+
+        assert_eq!(
+            mi.item.span(),
+            Span {
+                data: ". abc\ndef",
+                line: 1,
+                col: 1,
+                offset: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn duplicate_id_warning() {
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[#this_one]\nBlah\n\n[#this_one]\nAgain");
+
+        let mut warnings = doc.warnings();
+
+        assert_eq!(
+            warnings.next().unwrap(),
+            Warning {
+                source: Span {
+                    data: "[#this_one]\nAgain",
+                    line: 4,
+                    col: 1,
+                    offset: 18,
+                },
+                warning: WarningType::DuplicateId("this_one".to_owned(),),
+            }
+        );
+
+        assert!(warnings.next().is_none());
+    }
+
+    #[test]
+    fn duplicate_id_warning_from_leading_anchor_in_description_list_term() {
+        // A leading `[[id]]` anchor on a description-list term is registered in
+        // the catalog; a second term reusing the same id is reported as a
+        // duplicate (the warning points at the offending term's line).
+        let mut parser = Parser::default();
+
+        let doc = parser.parse("[[dup]]term1:: def1\n[[dup]]term2:: def2\n");
+
+        let mut warnings = doc.warnings();
+
+        assert_eq!(
+            warnings.next().unwrap(),
+            Warning {
+                source: Span {
+                    data: "[[dup]]term2",
+                    line: 2,
+                    col: 1,
+                    offset: 20,
+                },
+                warning: WarningType::DuplicateId("dup".to_owned()),
+            }
+        );
+
+        assert!(warnings.next().is_none());
+
+        // The first anchor is cataloged.
+        assert!(doc.catalog().contains_id("dup"));
+    }
+}

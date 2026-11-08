@@ -34,7 +34,8 @@ allows access outside it. Network resource fetching is disabled.
 `crates/engine` contains the public API, include resolver, shared semantic analysis,
 HTML presentation, EPUB packaging, and publication exports. `crates/cli` contains
 CLI commands and the LSP. `vendor/adocers-typst` contains a narrowly patched,
-licensed publication emitter; see [patch notes](vendor/PATCHES.md).
+licensed publication emitter. `vendor/asciidoc-parser` preserves list context in
+continued admonitions for every backend; see [patch notes](vendor/PATCHES.md).
 
 External Rust projects can use the verified Git release:
 
@@ -78,6 +79,7 @@ See the [release verification record](VERIFICATION.md) for exact test counts, bi
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
+python3 tests/library_consumer.py
 cargo build --release --locked
 python3 tests/protocol.py target/release/adoc-engine
 python3 tests/publications.py target/release/adoc-engine --epubcheck /path/to/epubcheck.jar
@@ -97,6 +99,12 @@ cd benchmarks
 npm ci --ignore-scripts
 bundle install
 python3 run.py --update-readme
+```
+
+For focused list/admonition compatibility checks against the same pinned runtimes:
+
+```sh
+python3 tests/list_continuations.py target/release/adoc-engine
 ```
 
 This suite covers generated document sizes through 1 MiB, sections, attributes,
@@ -127,6 +135,8 @@ and [inventory](THIRD_PARTY.md).
 
 <!-- PERFORMANCE:START -->
 ## Verified performance
+
+The published measurements below describe the v0.1.0 release executable.
 
 Measured 2026-11-08T04:33:21.357646+00:00 on Apple M2 Pro (macOS-26.5.1-arm64-arm-64bit-Mach-O).
 Pinned Asciidoctor.js 3.0.4 (v26.8.2), Ruby Asciidoctor 2.0.26 (ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]), and release-built Rust.
@@ -162,6 +172,21 @@ See [full report](benchmarks/baselines/release/report.md) and [raw samples and m
 Results describe this corpus and machine; they are not universal speed guarantees.
 The edit workload measures successive complete conversions in persistent processes; it does not claim incremental parsing.
 <!-- PERFORMANCE:END -->
+
+<!-- RELEASE-PERF-CHARTS:START -->
+### Large-document conversion
+
+The v0.1.0 release benchmark for a roughly 1 MiB document; lower is better. Times measure warm conversion only, excluding IPC and browser painting.
+
+```mermaid
+%%{init: {"xyChart": {"width": 700, "height": 300}, "themeVariables": {"xyChart": {"plotColorPalette": "#2f81f7"}}}}%%
+xychart-beta
+    title "1 MiB document: warm conversion (v0.1.0)"
+    x-axis [JavaScript, Ruby, Rust]
+    y-axis "Median time (ms)" 0 --> 1200
+    bar [1147.178, 592.625, 101.735]
+```
+<!-- RELEASE-PERF-CHARTS:END -->
 
 <!-- EXPORT-PERF:START -->
 ### Publication export performance
@@ -202,3 +227,84 @@ The final executable was measured in 6350 latency samples across HTML conversion
 
 Two initial differences above 10% did not reproduce in isolated confirmations with 200 warm samples and 50 cold executions per engine/case. [Verification summary](benchmarks/baselines/release/verification.json), [confirmation samples](benchmarks/baselines/release/confirmation/raw.json), and [comparison baseline](benchmarks/baselines/release/comparison-baseline.json) are published for inspection.
 <!-- CONFIRMATION:END -->
+
+### Unreleased compatibility verification
+
+The current fixes pass 270 focused Ruby/JavaScript/Rust comparisons, all 23
+compatibility corpora (including the unchanged complete showcase and its tagged
+include), and 20 edit variants. All 29 Rust tests, six protocol tests, formatting,
+Clippy, and the isolated library-consumer check pass. Publication checks verify
+checklist titles, example numbering, and bibliography headings in EPUB and native
+publication markup. Explicit `sectnums=all` remains supported.
+
+The complete 254-line [showcase source](benchmarks/fixtures/showcase/main.adoc)
+now produces matching normalized HTML. All three full-page Chrome screenshots
+at 1100 pixels wide are byte-identical; ten 360-pixel-wide section excerpts also
+match. This verifies this showcase and the listed cases, rather than certifying
+complete language conformance.
+
+The showcase benchmark uses the same pinned Asciidoctor versions on Apple M2 Pro,
+with Node 24.22.0, Ruby 4.0.6, and the current Rust working build: ten warm-ups,
+100 warm conversions, ten cold executions, and one peak-RSS measurement per engine. Warm timing excludes transport and browser painting; cold
+timing includes process startup, conversion, transport, and exit.
+
+| Engine | Warm median ms | Cold median ms | Peak RSS MiB |
+|---|---:|---:|---:|
+| JavaScript | 8.888 | 139.547 | 95.4 |
+| Ruby | 2.709 | 78.474 | 24.0 |
+| Rust | 0.793 | 18.467 | 18.5 |
+
+<!-- SHOWCASE-PERF-CHARTS:START -->
+Lower is better in each chart. These measurements use the corrected, unreleased showcase build described above.
+
+```mermaid
+%%{init: {"xyChart": {"width": 700, "height": 300}, "themeVariables": {"xyChart": {"plotColorPalette": "#2f81f7"}}}}%%
+xychart-beta
+    title "Showcase: warm conversion"
+    x-axis [JavaScript, Ruby, Rust]
+    y-axis "Median time (ms)" 0 --> 10
+    bar [8.888, 2.709, 0.793]
+```
+
+```mermaid
+%%{init: {"xyChart": {"width": 700, "height": 300}, "themeVariables": {"xyChart": {"plotColorPalette": "#2f81f7"}}}}%%
+xychart-beta
+    title "Showcase: cold process execution"
+    x-axis [JavaScript, Ruby, Rust]
+    y-axis "Median time (ms)" 0 --> 160
+    bar [139.547, 78.474, 18.467]
+```
+
+```mermaid
+%%{init: {"xyChart": {"width": 700, "height": 300}, "themeVariables": {"xyChart": {"plotColorPalette": "#2f81f7"}}}}%%
+xychart-beta
+    title "Showcase: peak process memory"
+    x-axis [JavaScript, Ruby, Rust]
+    y-axis "Peak RSS (MiB)" 0 --> 110
+    bar [95.4, 24.0, 18.5]
+```
+<!-- SHOWCASE-PERF-CHARTS:END -->
+
+A separate comparison with v0.1.0 collected 800 interleaved warm Rust conversion
+samples across admonitions, nested lists, basic text, and a 1 MiB input, after ten
+warm-ups per executable/corpus. Median current/released ratios were 0.978–1.016.
+Both builds produced matching normalized HTML on these performance corpora.
+
+[Three-engine samples and metadata](benchmarks/baselines/showcase-compatibility/showcase-performance/raw.json),
+[full timing report](benchmarks/baselines/showcase-compatibility/showcase-performance/report.md),
+[native before/after samples](benchmarks/baselines/showcase-compatibility/native-performance.json),
+[reference checks](benchmarks/baselines/showcase-compatibility/reference-parity.json),
+[continuation checks](benchmarks/baselines/showcase-compatibility/continuation-parity.json),
+and [corpus verification](benchmarks/baselines/showcase-compatibility/corpus-parity.json)
+record executable/source fingerprints. These are unreleased working-tree results;
+the released measurements above remain tied to v0.1.0.
+
+Reproduce the new reference and showcase performance checks from the repository root:
+
+```sh
+python3 tests/showcase_compatibility.py target/release/adoc-engine
+python3 benchmarks/run.py --cases showcase --samples 100 --warmup 10 --cold 10
+```
+
+Refresh the README charts from the archived verified samples with
+`python3 scripts/update_performance_charts.py`.

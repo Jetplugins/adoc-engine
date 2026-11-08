@@ -1,0 +1,289 @@
+{
+  "browser": "Chrome/157.0.8103.38",
+  "engines": {
+    "ruby": {
+      "title": "Atlas Operations Handbook",
+      "sections": [
+        {
+          "id": "typography",
+          "text": "1. Typography and navigation"
+        },
+        {
+          "id": "deployment",
+          "text": "2. Deployment and nested lists"
+        },
+        {
+          "id": "ordered-steps-and-attached-blocks",
+          "text": "2.1. Ordered steps and attached blocks"
+        },
+        {
+          "id": "unordered-lists-and-checklists",
+          "text": "2.2. Unordered lists and checklists"
+        },
+        {
+          "id": "description-lists",
+          "text": "2.3. Description lists"
+        },
+        {
+          "id": "capacity",
+          "text": "3. Tables and cell styles"
+        },
+        {
+          "id": "code-callouts-and-literal-text",
+          "text": "4. Code, callouts, and literal text"
+        },
+        {
+          "id": "admonitions-and-compound-blocks",
+          "text": "5. Admonitions and compound blocks"
+        },
+        {
+          "id": "images-and-captions",
+          "text": "6. Images and captions"
+        },
+        {
+          "id": "includes-and-conditional-content",
+          "text": "7. Includes and conditional content"
+        },
+        {
+          "id": "recovery-drill",
+          "text": "7.1. Recovery drill"
+        },
+        {
+          "id": "references-and-final-checks",
+          "text": "8. References and final checks"
+        },
+        {
+          "id": "further-reading",
+          "text": "Further reading"
+        }
+      ],
+      "images": [
+        {
+          "source": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMTYwIiB2aWV3Qm94PSIwIDAgNjQwIDE2MCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPgo8dGl0bGUgaWQ9InRpdGxlIj5Eb2N1bWVudCBwcm9jZXNzaW5nIHBpcGVsaW5lPC90aXRsZT4KPGRlc2MgaWQ9ImRlc2MiPkFzY2lpRG9jIHNvdXJjZSBpcyBjb252ZXJ0ZWQgYnkgYSByZW5kZXJlciBpbnRvIEhUTUwsIFBERiwgRVBVQiBhbmQgU1ZHLjwvZGVzYz4KPHJlY3Qgd2lkdGg9IjY0MCIgaGVpZ2h0PSIxNjAiIHJ4PSI4IiBmaWxsPSIjZjRmN2ZhIi8+CjxnIGZpbGw9IiNmZmZmZmYiIHN0cm9rZT0iIzY0NzQ4YiIgc3Ryb2tlLXdpZHRoPSIxLjUiPgo8cmVjdCB4PSIyMiIgeT0iNDgiIHdpZHRoPSIxNDIiIGhlaWdodD0iNjQiIHJ4PSI2Ii8+CjxyZWN0IHg9IjIzNyIgeT0iNDgiIHdpZHRoPSIxNTgiIGhlaWdodD0iNjQiIHJ4PSI2Ii8+CjxyZWN0IHg9IjQ2OCIgeT0iMjciIHdpZHRoPSIxNTAiIGhlaWdodD0iMTA2IiByeD0iNiIvPgo8L2c+CjxnIHN0cm9rZT0iI2I0NGIzNSIgc3Ryb2tlLXdpZHRoPSIzIiBmaWxsPSJub25lIj4KPHBhdGggZD0iTTE3MCA4MGg1N20tOS03IDkgNy05IDdNNDAxIDgwaDU3bS05LTcgOSA3LTkgNyIvPgo8L2c+CjxnIGZpbGw9IiMyNDM0NDciIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE3Ij4KPHRleHQgeD0iOTMiIHk9Ijg3Ij5Bc2NpaURvYyBzb3VyY2U8L3RleHQ+Cjx0ZXh0IHg9IjMxNiIgeT0iODciPlJlbmRlcmVyPC90ZXh0Pgo8dGV4dCB4PSI1NDMiIHk9IjY1Ij5IVE1MIMK3IFBERjwvdGV4dD4KPHRleHQgeD0iNTQzIiB5PSI5OSI+RVBVQiDCtyBTVkc8L3RleHQ+CjwvZz4KPC9zdmc+Cg==",
+          "loaded": true
+        }
+      ],
+      "brokenReferences": [],
+      "height": 7007
+    },
+    "js": {
+      "title": "Atlas Operations Handbook",
+      "sections": [
+        {
+          "id": "typography",
+          "text": "1. Typography and navigation"
+        },
+        {
+          "id": "deployment",
+          "text": "2. Deployment and nested lists"
+        },
+        {
+          "id": "ordered-steps-and-attached-blocks",
+          "text": "2.1. Ordered steps and attached blocks"
+        },
+        {
+          "id": "unordered-lists-and-checklists",
+          "text": "2.2. Unordered lists and checklists"
+        },
+        {
+          "id": "description-lists",
+          "text": "2.3. Description lists"
+        },
+        {
+          "id": "capacity",
+          "text": "3. Tables and cell styles"
+        },
+        {
+          "id": "code-callouts-and-literal-text",
+          "text": "4. Code, callouts, and literal text"
+        },
+        {
+          "id": "admonitions-and-compound-blocks",
+          "text": "5. Admonitions and compound blocks"
+        },
+        {
+          "id": "images-and-captions",
+          "text": "6. Images and captions"
+        },
+        {
+          "id": "includes-and-conditional-content",
+          "text": "7. Includes and conditional content"
+        },
+        {
+          "id": "recovery-drill",
+          "text": "7.1. Recovery drill"
+        },
+        {
+          "id": "references-and-final-checks",
+          "text": "8. References and final checks"
+        },
+        {
+          "id": "further-reading",
+          "text": "Further reading"
+        }
+      ],
+      "images": [
+        {
+          "source": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMTYwIiB2aWV3Qm94PSIwIDAgNjQwIDE2MCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPgo8dGl0bGUgaWQ9InRpdGxlIj5Eb2N1bWVudCBwcm9jZXNzaW5nIHBpcGVsaW5lPC90aXRsZT4KPGRlc2MgaWQ9ImRlc2MiPkFzY2lpRG9jIHNvdXJjZSBpcyBjb252ZXJ0ZWQgYnkgYSByZW5kZXJlciBpbnRvIEhUTUwsIFBERiwgRVBVQiBhbmQgU1ZHLjwvZGVzYz4KPHJlY3Qgd2lkdGg9IjY0MCIgaGVpZ2h0PSIxNjAiIHJ4PSI4IiBmaWxsPSIjZjRmN2ZhIi8+CjxnIGZpbGw9IiNmZmZmZmYiIHN0cm9rZT0iIzY0NzQ4YiIgc3Ryb2tlLXdpZHRoPSIxLjUiPgo8cmVjdCB4PSIyMiIgeT0iNDgiIHdpZHRoPSIxNDIiIGhlaWdodD0iNjQiIHJ4PSI2Ii8+CjxyZWN0IHg9IjIzNyIgeT0iNDgiIHdpZHRoPSIxNTgiIGhlaWdodD0iNjQiIHJ4PSI2Ii8+CjxyZWN0IHg9IjQ2OCIgeT0iMjciIHdpZHRoPSIxNTAiIGhlaWdodD0iMTA2IiByeD0iNiIvPgo8L2c+CjxnIHN0cm9rZT0iI2I0NGIzNSIgc3Ryb2tlLXdpZHRoPSIzIiBmaWxsPSJub25lIj4KPHBhdGggZD0iTTE3MCA4MGg1N20tOS03IDkgNy05IDdNNDAxIDgwaDU3bS05LTcgOSA3LTkgNyIvPgo8L2c+CjxnIGZpbGw9IiMyNDM0NDciIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE3Ij4KPHRleHQgeD0iOTMiIHk9Ijg3Ij5Bc2NpaURvYyBzb3VyY2U8L3RleHQ+Cjx0ZXh0IHg9IjMxNiIgeT0iODciPlJlbmRlcmVyPC90ZXh0Pgo8dGV4dCB4PSI1NDMiIHk9IjY1Ij5IVE1MIMK3IFBERjwvdGV4dD4KPHRleHQgeD0iNTQzIiB5PSI5OSI+RVBVQiDCtyBTVkc8L3RleHQ+CjwvZz4KPC9zdmc+Cg==",
+          "loaded": true
+        }
+      ],
+      "brokenReferences": [],
+      "height": 7007
+    },
+    "rust": {
+      "title": "Atlas Operations Handbook",
+      "sections": [
+        {
+          "id": "typography",
+          "text": "1. Typography and navigation"
+        },
+        {
+          "id": "deployment",
+          "text": "2. Deployment and nested lists"
+        },
+        {
+          "id": "ordered-steps-and-attached-blocks",
+          "text": "2.1. Ordered steps and attached blocks"
+        },
+        {
+          "id": "unordered-lists-and-checklists",
+          "text": "2.2. Unordered lists and checklists"
+        },
+        {
+          "id": "description-lists",
+          "text": "2.3. Description lists"
+        },
+        {
+          "id": "capacity",
+          "text": "3. Tables and cell styles"
+        },
+        {
+          "id": "code-callouts-and-literal-text",
+          "text": "4. Code, callouts, and literal text"
+        },
+        {
+          "id": "admonitions-and-compound-blocks",
+          "text": "5. Admonitions and compound blocks"
+        },
+        {
+          "id": "images-and-captions",
+          "text": "6. Images and captions"
+        },
+        {
+          "id": "includes-and-conditional-content",
+          "text": "7. Includes and conditional content"
+        },
+        {
+          "id": "recovery-drill",
+          "text": "7.1. Recovery drill"
+        },
+        {
+          "id": "references-and-final-checks",
+          "text": "8. References and final checks"
+        },
+        {
+          "id": "further-reading",
+          "text": "Further reading"
+        }
+      ],
+      "images": [
+        {
+          "source": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NDAiIGhlaWdodD0iMTYwIiB2aWV3Qm94PSIwIDAgNjQwIDE2MCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPgo8dGl0bGUgaWQ9InRpdGxlIj5Eb2N1bWVudCBwcm9jZXNzaW5nIHBpcGVsaW5lPC90aXRsZT4KPGRlc2MgaWQ9ImRlc2MiPkFzY2lpRG9jIHNvdXJjZSBpcyBjb252ZXJ0ZWQgYnkgYSByZW5kZXJlciBpbnRvIEhUTUwsIFBERiwgRVBVQiBhbmQgU1ZHLjwvZGVzYz4KPHJlY3Qgd2lkdGg9IjY0MCIgaGVpZ2h0PSIxNjAiIHJ4PSI4IiBmaWxsPSIjZjRmN2ZhIi8+CjxnIGZpbGw9IiNmZmZmZmYiIHN0cm9rZT0iIzY0NzQ4YiIgc3Ryb2tlLXdpZHRoPSIxLjUiPgo8cmVjdCB4PSIyMiIgeT0iNDgiIHdpZHRoPSIxNDIiIGhlaWdodD0iNjQiIHJ4PSI2Ii8+CjxyZWN0IHg9IjIzNyIgeT0iNDgiIHdpZHRoPSIxNTgiIGhlaWdodD0iNjQiIHJ4PSI2Ii8+CjxyZWN0IHg9IjQ2OCIgeT0iMjciIHdpZHRoPSIxNTAiIGhlaWdodD0iMTA2IiByeD0iNiIvPgo8L2c+CjxnIHN0cm9rZT0iI2I0NGIzNSIgc3Ryb2tlLXdpZHRoPSIzIiBmaWxsPSJub25lIj4KPHBhdGggZD0iTTE3MCA4MGg1N20tOS03IDkgNy05IDdNNDAxIDgwaDU3bS05LTcgOSA3LTkgNyIvPgo8L2c+CjxnIGZpbGw9IiMyNDM0NDciIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE3Ij4KPHRleHQgeD0iOTMiIHk9Ijg3Ij5Bc2NpaURvYyBzb3VyY2U8L3RleHQ+Cjx0ZXh0IHg9IjMxNiIgeT0iODciPlJlbmRlcmVyPC90ZXh0Pgo8dGV4dCB4PSI1NDMiIHk9IjY1Ij5IVE1MIMK3IFBERjwvdGV4dD4KPHRleHQgeD0iNTQzIiB5PSI5OSI+RVBVQiDCtyBTVkc8L3RleHQ+CjwvZz4KPC9zdmc+Cg==",
+          "loaded": true
+        }
+      ],
+      "brokenReferences": [],
+      "height": 7007
+    }
+  },
+  "errors": [],
+  "showcase": [
+    {
+      "lists": 2,
+      "normalList": true,
+      "title": "Release checklist",
+      "checklist": true,
+      "example": "Example 1. An example with a nested block",
+      "bibliography": "Further reading",
+      "bibliographyToc": "Further reading"
+    },
+    {
+      "lists": 2,
+      "normalList": true,
+      "title": "Release checklist",
+      "checklist": true,
+      "example": "Example 1. An example with a nested block",
+      "bibliography": "Further reading",
+      "bibliographyToc": "Further reading"
+    },
+    {
+      "lists": 2,
+      "normalList": true,
+      "title": "Release checklist",
+      "checklist": true,
+      "example": "Example 1. An example with a nested block",
+      "bibliography": "Further reading",
+      "bibliographyToc": "Further reading"
+    }
+  ],
+  "binarySha256": "2aed2ba330572a1564f9d1a694e142ee25141124371b4f29f3e4736f2bcecaa8",
+  "sourceSha256": "de647b0646c8c3f923a7d5bc228d26478f23661e90736d0db8a31026086869b2",
+  "matchingScreenshotSha256": {
+    "full.png": {
+      "ruby": "b119a077ff01c6bfd61c2a1b7469a1c7654f27ab14f6c3e8542a9c999e7c42b7",
+      "js": "b119a077ff01c6bfd61c2a1b7469a1c7654f27ab14f6c3e8542a9c999e7c42b7",
+      "rust": "b119a077ff01c6bfd61c2a1b7469a1c7654f27ab14f6c3e8542a9c999e7c42b7"
+    },
+    "overview.jpg": {
+      "ruby": "901ad96543d217549737395a7b5ec420684ba1104fbc2a85ce1bcd2d37fadc33",
+      "js": "901ad96543d217549737395a7b5ec420684ba1104fbc2a85ce1bcd2d37fadc33",
+      "rust": "901ad96543d217549737395a7b5ec420684ba1104fbc2a85ce1bcd2d37fadc33"
+    },
+    "typography.jpg": {
+      "ruby": "89ac7c65b5cd097b57034931bbb2078d9bd2a6fffe79308806e9bf2008ae3525",
+      "js": "89ac7c65b5cd097b57034931bbb2078d9bd2a6fffe79308806e9bf2008ae3525",
+      "rust": "89ac7c65b5cd097b57034931bbb2078d9bd2a6fffe79308806e9bf2008ae3525"
+    },
+    "lists.jpg": {
+      "ruby": "5c922d8b720146ea2ef5a28f2906598393dd8ef008f92330acf97893a065334e",
+      "js": "5c922d8b720146ea2ef5a28f2906598393dd8ef008f92330acf97893a065334e",
+      "rust": "5c922d8b720146ea2ef5a28f2906598393dd8ef008f92330acf97893a065334e"
+    },
+    "checklists.jpg": {
+      "ruby": "feb2da89aecc367315c25dde44efe22abd7410abc29160a88a3417d86657d90d",
+      "js": "feb2da89aecc367315c25dde44efe22abd7410abc29160a88a3417d86657d90d",
+      "rust": "feb2da89aecc367315c25dde44efe22abd7410abc29160a88a3417d86657d90d"
+    },
+    "tables.jpg": {
+      "ruby": "7f3908e2003549b8c61a7f785ebcd9800b96c22958011275ceb5caba6ecdf861",
+      "js": "7f3908e2003549b8c61a7f785ebcd9800b96c22958011275ceb5caba6ecdf861",
+      "rust": "7f3908e2003549b8c61a7f785ebcd9800b96c22958011275ceb5caba6ecdf861"
+    },
+    "code.jpg": {
+      "ruby": "5c9b169213fbad09884a93d3f31efcdc6f5c3da1378d8a693cd5358646e9618a",
+      "js": "5c9b169213fbad09884a93d3f31efcdc6f5c3da1378d8a693cd5358646e9618a",
+      "rust": "5c9b169213fbad09884a93d3f31efcdc6f5c3da1378d8a693cd5358646e9618a"
+    },
+    "blocks.jpg": {
+      "ruby": "1fc4f483723ed6eec93791a48959413968ce48a344506798f97887a615c6acba",
+      "js": "1fc4f483723ed6eec93791a48959413968ce48a344506798f97887a615c6acba",
+      "rust": "1fc4f483723ed6eec93791a48959413968ce48a344506798f97887a615c6acba"
+    },
+    "images.jpg": {
+      "ruby": "03207c29d433b08719cb2c31fd090474eddcaf76dd35744fc4b9b7360dc81fc9",
+      "js": "03207c29d433b08719cb2c31fd090474eddcaf76dd35744fc4b9b7360dc81fc9",
+      "rust": "03207c29d433b08719cb2c31fd090474eddcaf76dd35744fc4b9b7360dc81fc9"
+    },
+    "includes.jpg": {
+      "ruby": "10f3083816928760feea37ecd853f9627e08447f853e822e870e82c690640e71",
+      "js": "10f3083816928760feea37ecd853f9627e08447f853e822e870e82c690640e71",
+      "rust": "10f3083816928760feea37ecd853f9627e08447f853e822e870e82c690640e71"
+    },
+    "references.jpg": {
+      "ruby": "c6bcc12936df3455fe7e00e63204e24f5eec018711072c8a223459922bfba75b",
+      "js": "c6bcc12936df3455fe7e00e63204e24f5eec018711072c8a223459922bfba75b",
+      "rust": "c6bcc12936df3455fe7e00e63204e24f5eec018711072c8a223459922bfba75b"
+    }
+  }
+}
