@@ -15,7 +15,7 @@ fn text(node: &Handle) -> String {
     }
 }
 fn find(node: &Handle, name: &str) -> Option<Handle> {
-    if matches!(&node.data,NodeData::Element{name:n,..}if n.local.as_ref()==name) {
+    if matches!(&node.data,NodeData::Element{name:n,..}if &*n.local==name) {
         return Some(node.clone());
     }
     node.children.borrow().iter().find_map(|c| find(c, name))
@@ -44,9 +44,9 @@ pub fn inject(html: String, diagrams: &BTreeMap<String, String>) -> Result<Strin
     fn replace(node: &Handle, diagrams: &BTreeMap<String, String>) {
         for child in node.children.borrow_mut().iter_mut() {
             let listing = match &child.data {
-                NodeData::Element { name, attrs, .. } if name.local.as_ref() == "div" => {
+                NodeData::Element { name, attrs, .. } if &*name.local == "div" => {
                     attrs.borrow().iter().any(|a| {
-                        a.name.local.as_ref() == "class"
+                        &*a.name.local == "class"
                             && a.value
                                 .split_whitespace()
                                 .any(|s| matches!(s, "listingblock" | "literalblock"))
@@ -62,7 +62,7 @@ pub fn inject(html: String, diagrams: &BTreeMap<String, String>) -> Result<Strin
                     NodeData::Element { attrs, .. } => attrs
                         .borrow()
                         .iter()
-                        .find(|a| a.name.local.as_ref() == "data-source-line")
+                        .find(|a| &*a.name.local == "data-source-line")
                         .map(|a| format!(" data-source-line=\"{}\"", a.value))
                         .unwrap_or_default(),
                     _ => String::new(),
@@ -100,10 +100,10 @@ pub fn inject(html: String, diagrams: &BTreeMap<String, String>) -> Result<Strin
 pub fn image_sources(html: &str) -> Vec<String> {
     fn walk(n: &Handle, images: &mut Vec<String>) {
         if let NodeData::Element { name, attrs, .. } = &n.data
-            && name.local.as_ref() == "img"
+            && &*name.local == "img"
         {
             for attr in attrs.borrow().iter() {
-                if attr.name.local.as_ref() == "src" {
+                if &*attr.name.local == "src" {
                     images.push(attr.value.to_string());
                 }
             }

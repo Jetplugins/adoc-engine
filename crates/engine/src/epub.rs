@@ -114,7 +114,7 @@ fn xhtml(html: &str) -> Result<String> {
         match &node.data {
             NodeData::Text { contents } => out.push_str(&xml(&contents.borrow())),
             NodeData::Element { name, attrs, .. } => {
-                let tag = name.local.as_ref();
+                let tag = &*name.local;
                 if matches!(tag, "script" | "iframe" | "object" | "embed") {
                     anyhow::bail!("active HTML element {tag} is not supported in EPUB");
                 }
@@ -127,7 +127,7 @@ fn xhtml(html: &str) -> Result<String> {
                     out.push_str(" xmlns=\"http://www.w3.org/1998/Math/MathML\"");
                 }
                 for a in attrs.borrow().iter() {
-                    if a.name.local.as_ref() == "xmlns" {
+                    if &*a.name.local == "xmlns" {
                         continue;
                     }
                     out.push(' ');
@@ -181,14 +181,14 @@ fn xhtml(html: &str) -> Result<String> {
         .children
         .borrow()
         .iter()
-        .find(|n| matches!(&n.data,NodeData::Element{name,..}if name.local.as_ref()=="html"))
+        .find(|n| matches!(&n.data,NodeData::Element{name,..}if &*name.local=="html"))
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("missing HTML root"))?;
     let body = html
         .children
         .borrow()
         .iter()
-        .find(|n| matches!(&n.data,NodeData::Element{name,..}if name.local.as_ref()=="body"))
+        .find(|n| matches!(&n.data,NodeData::Element{name,..}if &*name.local=="body"))
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("missing body"))?;
     let mut out = String::new();
