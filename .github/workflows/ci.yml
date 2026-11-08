@@ -9,7 +9,7 @@ jobs:
       - run: cargo fmt --all --check
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v5
-        with: { python-version: '3.14' }
+        with: { python-version: '3.15' }
       - run: cargo test --workspace --locked
       - run: cargo build --locked
       - run: python3 tests/library_consumer.py
