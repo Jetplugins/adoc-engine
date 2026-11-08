@@ -72,6 +72,8 @@ retains its existing PSI features and offers native preview and publication expo
 
 ## Verification
 
+See the [release verification record](VERIFICATION.md) for exact test counts, binary fingerprints, regression confirmations, and distribution gates.
+
 ```sh
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -126,7 +128,7 @@ and [inventory](THIRD_PARTY.md).
 <!-- PERFORMANCE:START -->
 ## Verified performance
 
-Measured 2026-11-08T04:12:11.962068+00:00 on Apple M2 Pro (macOS-26.5.1-arm64-arm-64bit-Mach-O).
+Measured 2026-11-08T04:33:21.357646+00:00 on Apple M2 Pro (macOS-26.5.1-arm64-arm-64bit-Mach-O).
 Pinned Asciidoctor.js 3.0.4 (v26.8.2), Ruby Asciidoctor 2.0.26 (ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]), and release-built Rust.
 Each case: 10 warm-ups, 50 warm samples, 20 cold executions per engine. All 21 cases passed structural HTML parity against Ruby.
 
@@ -134,27 +136,27 @@ Warm median conversion times (milliseconds); excludes IPC and browser painting:
 
 | Corpus | Input bytes | JS | Ruby | Rust | Ruby / Rust |
 |---|---:|---:|---:|---:|---:|
-| admonitions | 13963 | 16.052 | 5.225 | 0.787 | 6.64x |
-| attributes | 20743 | 13.636 | 9.550 | 2.338 | 4.08x |
-| basic | 83 | 0.423 | 0.146 | 0.061 | 2.40x |
-| code | 298929 | 36.660 | 6.857 | 2.236 | 3.07x |
-| conditionals | 20112 | 9.043 | 2.841 | 0.577 | 4.93x |
-| features | 141 | 0.838 | 0.231 | 0.106 | 2.18x |
-| footnotes | 8087 | 4.977 | 2.103 | 0.573 | 3.67x |
-| nested-lists | 6397 | 17.457 | 4.019 | 1.047 | 3.84x |
-| sections | 6397 | 15.723 | 4.527 | 1.131 | 4.00x |
-| tables | 20859 | 59.993 | 11.072 | 5.165 | 2.14x |
-| unicode | 30819 | 12.074 | 10.415 | 1.551 | 6.71x |
-| paragraphs-100 | 5101 | 4.325 | 2.762 | 0.612 | 4.52x |
-| paragraphs-1000 | 51901 | 42.863 | 27.954 | 5.186 | 5.39x |
-| paragraphs-10000 | 528901 | 424.607 | 309.812 | 51.518 | 6.01x |
-| bytes-1024 | 990 | 1.049 | 0.606 | 0.180 | 3.37x |
-| bytes-10240 | 10224 | 8.166 | 5.173 | 1.085 | 4.77x |
-| bytes-102400 | 102402 | 74.898 | 54.965 | 9.848 | 5.58x |
-| bytes-1048576 | 1048590 | 1147.194 | 589.646 | 102.182 | 5.77x |
-| includes | 36 | 0.472 | 0.161 | 0.182 | 0.88x |
-| include-selection | 91 | 0.799 | 0.225 | 0.121 | 1.86x |
-| repeated-edits | 30026 | 35.605 | 16.256 | 2.975 | 5.46x |
+| admonitions | 13963 | 15.824 | 5.143 | 0.796 | 6.46x |
+| attributes | 20743 | 13.560 | 9.380 | 2.320 | 4.04x |
+| basic | 83 | 0.412 | 0.183 | 0.095 | 1.93x |
+| code | 298929 | 34.882 | 6.759 | 2.133 | 3.17x |
+| conditionals | 20112 | 9.565 | 2.780 | 0.589 | 4.72x |
+| features | 141 | 0.853 | 0.243 | 0.109 | 2.23x |
+| footnotes | 8087 | 4.815 | 2.050 | 0.564 | 3.63x |
+| nested-lists | 6397 | 17.204 | 3.985 | 1.093 | 3.65x |
+| sections | 6397 | 15.996 | 4.660 | 1.146 | 4.07x |
+| tables | 20859 | 58.129 | 10.966 | 5.100 | 2.15x |
+| unicode | 30819 | 12.719 | 9.816 | 1.502 | 6.53x |
+| paragraphs-100 | 5101 | 4.300 | 2.702 | 0.555 | 4.87x |
+| paragraphs-1000 | 51901 | 39.417 | 27.967 | 5.169 | 5.41x |
+| paragraphs-10000 | 528901 | 438.006 | 299.333 | 52.961 | 5.65x |
+| bytes-1024 | 990 | 1.123 | 0.624 | 0.159 | 3.91x |
+| bytes-10240 | 10224 | 8.007 | 5.415 | 1.082 | 5.00x |
+| bytes-102400 | 102402 | 76.568 | 55.623 | 10.102 | 5.51x |
+| bytes-1048576 | 1048590 | 1147.178 | 592.625 | 101.735 | 5.83x |
+| includes | 36 | 0.547 | 0.130 | 0.191 | 0.68x |
+| include-selection | 91 | 0.801 | 0.220 | 0.124 | 1.77x |
+| repeated-edits | 30026 | 37.201 | 16.197 | 2.938 | 5.51x |
 
 See [full report](benchmarks/baselines/release/report.md) and [raw samples and metadata](benchmarks/baselines/release/raw.json) for p95, variation, cold startup, repeated edits, peak RSS, and the executable checksum.
 Results describe this corpus and machine; they are not universal speed guarantees.
@@ -168,13 +170,13 @@ End-to-end CLI medians in milliseconds: 10 executions after two warm-ups per cor
 
 | Format | Small book | Medium book |
 |---|---:|---:|
-| html | 11.42 | 11.02 |
-| pdf | 39.72 | 41.37 |
-| epub | 12.00 | 12.31 |
-| svg | 39.78 | 50.17 |
-| svg-merged | 40.28 | 46.83 |
-| png | 58.64 | 155.34 |
-| json | 12.03 | 12.44 |
+| html | 12.48 | 10.92 |
+| pdf | 39.99 | 41.47 |
+| epub | 12.58 | 12.69 |
+| svg | 40.29 | 49.87 |
+| svg-merged | 39.93 | 46.54 |
+| png | 59.65 | 156.79 |
+| json | 11.70 | 12.43 |
 
 [Raw publication samples and p95](benchmarks/baselines/release/exports.json).
 <!-- EXPORT-PERF:END -->
@@ -186,9 +188,17 @@ End-to-end JSON-RPC render latency with persistent native workers, ten warm-ups 
 
 | Paragraphs | Median ms | p95 ms |
 |---|---:|---:|
-| 10 | 0.32 | 0.39 |
-| 1000 | 4.99 | 5.92 |
-| 10000 | 49.44 | 53.92 |
+| 10 | 0.22 | 0.27 |
+| 1000 | 5.35 | 7.01 |
+| 10000 | 47.81 | 50.94 |
 
 [Raw LSP samples](benchmarks/baselines/release/lsp.json).
 <!-- LSP-PERF:END -->
+
+<!-- CONFIRMATION:START -->
+### Repeat-run verification
+
+The final executable was measured in 6350 latency samples across HTML conversion, publication exports, LSP round trips, and targeted confirmations, plus 69 peak-memory measurements. Strict structural parity passed all 21 corpora and all 20 edit variants.
+
+Two initial differences above 10% did not reproduce in isolated confirmations with 200 warm samples and 50 cold executions per engine/case. [Verification summary](benchmarks/baselines/release/verification.json), [confirmation samples](benchmarks/baselines/release/confirmation/raw.json), and [comparison baseline](benchmarks/baselines/release/comparison-baseline.json) are published for inspection.
+<!-- CONFIRMATION:END -->

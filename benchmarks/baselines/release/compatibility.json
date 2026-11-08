@@ -1,0 +1,133 @@
+{
+  "normalization": "HTML ASCII whitespace normalization; preserves inline word boundaries, non-breaking spaces, and literal code whitespace",
+  "binarySha256": "c36ae1aacaa2ec79c482b14d5feb114da182f520fba3f850bad6708798810d13",
+  "cases": [
+    {
+      "case": "admonitions",
+      "eligible": true,
+      "sha256": "2ec4ac241a1f1f8c39b2581e0fa4dffa9b0a9909c1607dc312063204ef957a4d",
+      "inputBytes": 13963
+    },
+    {
+      "case": "attributes",
+      "eligible": true,
+      "sha256": "3cdcc9852784e33d7ad8a17abd0c44763cf22ab5f98b7ae171f2fd2b42b5185d",
+      "inputBytes": 20743
+    },
+    {
+      "case": "basic",
+      "eligible": true,
+      "sha256": "2e7c768205c32a69b2114d1b3c5e00bb820858929d72610769c38b64beb13bda",
+      "inputBytes": 83
+    },
+    {
+      "case": "code",
+      "eligible": true,
+      "sha256": "e71789e7bc6ce7dae90ac0ebd17781490dde94d0e0f05eaa2edcbf7c55ba976c",
+      "inputBytes": 298929
+    },
+    {
+      "case": "conditionals",
+      "eligible": true,
+      "sha256": "1d5cdada0e43bf9201caf3f76576e843f3557fd21653b8cd1d7f7036232fc39a",
+      "inputBytes": 20112
+    },
+    {
+      "case": "features",
+      "eligible": true,
+      "sha256": "2ff2225deb266a22acce9d799023065aee902f2ab8e499c56d3095eb0d75955c",
+      "inputBytes": 141
+    },
+    {
+      "case": "footnotes",
+      "eligible": true,
+      "sha256": "2865d9992b7cd6e8fd84ff2b4f8ddf9acf385d0f81b35394d313e2252aa66f75",
+      "inputBytes": 8087
+    },
+    {
+      "case": "nested-lists",
+      "eligible": true,
+      "sha256": "492b794bc9776817d0f33b740f37a82ea67539813e70b911942c17ed1f3804db",
+      "inputBytes": 6397
+    },
+    {
+      "case": "sections",
+      "eligible": true,
+      "sha256": "222243925db6d30a28595e31b90cb69bccfe3d9e0c0014c67b1e7113934f2ae4",
+      "inputBytes": 6397
+    },
+    {
+      "case": "tables",
+      "eligible": true,
+      "sha256": "89ec2232c3457eb4fa30214511040ca2620a034ce88e57dca3c8057fd09ccc40",
+      "inputBytes": 20859
+    },
+    {
+      "case": "unicode",
+      "eligible": true,
+      "sha256": "ff68d37bc3981cbb3b4e5925c7eb08a1c6d99e49b171ec0aef4059d4d5526b77",
+      "inputBytes": 30819
+    },
+    {
+      "case": "paragraphs-100",
+      "eligible": true,
+      "sha256": "ee5d151725d1a54c44e379d05680b716778cd7d349f1bf82bb2730790e478b69",
+      "inputBytes": 5101
+    },
+    {
+      "case": "paragraphs-1000",
+      "eligible": true,
+      "sha256": "9f1d2067fb8abd43d0df610cbd5cb470e840afeb63eb04c0e805411e7be91561",
+      "inputBytes": 51901
+    },
+    {
+      "case": "paragraphs-10000",
+      "eligible": true,
+      "sha256": "a13559d5f3c08e82761acdd0682515f948c8dea990b69411f7c35a4b1a8d0457",
+      "inputBytes": 528901
+    },
+    {
+      "case": "bytes-1024",
+      "eligible": true,
+      "sha256": "b0065fed6a34c26b5a5b045714a11fb8c90872fc20ed46d8b6bc9676709f38a0",
+      "inputBytes": 990
+    },
+    {
+      "case": "bytes-10240",
+      "eligible": true,
+      "sha256": "0c182b80e6d2157cfdca493aeabcef630a3513fb5ec24044c3d5cae1c1d15a30",
+      "inputBytes": 10224
+    },
+    {
+      "case": "bytes-102400",
+      "eligible": true,
+      "sha256": "83e6d51c416e9fa4019336252c7fc87bff624e05e6ce5f8b93e6d43894a2b953",
+      "inputBytes": 102402
+    },
+    {
+      "case": "bytes-1048576",
+      "eligible": true,
+      "sha256": "472d1aed257e0d36d348536018822c6eabcd467d6dc4705c3c822fba66f68886",
+      "inputBytes": 1048590
+    },
+    {
+      "case": "includes",
+      "eligible": true,
+      "sha256": "498b4a81880b1f998b56176774c21c07e8c4f3452a6ab06baa6c0b7fbdab07de",
+      "inputBytes": 36
+    },
+    {
+      "case": "include-selection",
+      "eligible": true,
+      "sha256": "ed39290ee46ab6d665705024378a01f4d47bb0267fb134293e91c1c4effeb105",
+      "inputBytes": 91
+    },
+    {
+      "case": "repeated-edits",
+      "eligible": true,
+      "sha256": "2494703c390dfc56b49f3f6199ade6d17f55f0b9b299dfc1059c71b0dc0b1dda",
+      "inputBytes": 30026
+    }
+  ],
+  "editVariants": 20
+}

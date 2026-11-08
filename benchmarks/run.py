@@ -8,17 +8,20 @@ from pathlib import Path
 from html.parser import HTMLParser
 ROOT=Path(__file__).resolve().parent
 class Canonical(HTMLParser):
-    def __init__(self): super().__init__(convert_charrefs=True); self.tokens=[]; self.literal=0
+    def __init__(self): super().__init__(convert_charrefs=True); self.tokens=[]; self.literal=0; self.tags=[]
     def handle_starttag(self,tag,attrs):
         self.tokens.append(('open',tag,tuple(sorted(attrs))))
+        if tag not in ('img','br','hr','input','meta','link','col','wbr'):self.tags.append(tag)
         if tag in ('pre','code'): self.literal+=1
     def handle_startendtag(self,tag,attrs): self.handle_starttag(tag,attrs); self.handle_endtag(tag)
     def handle_endtag(self,tag):
         self.tokens.append(('close',tag))
+        if tag in self.tags:self.tags=self.tags[:len(self.tags)-1-self.tags[::-1].index(tag)]
         if tag in ('pre','code'): self.literal=max(0,self.literal-1)
     def handle_data(self,s):
-        text=s if self.literal else ' '.join(s.split())
-        if text:self.tokens.append(('text',text))
+        text=s if self.literal else re.sub(r'[ \t\r\n\f]+',' ',s)
+        inline=any(tag in ('h1','h2','h3','h4','h5','h6','p','span','a','strong','em','b','i','code','sup','sub','li','dt','dd','th','td')for tag in self.tags)
+        if text and (self.literal or text.strip() or inline):self.tokens.append(('text',text))
 def canonical(s):
     p=Canonical();p.feed(s);return p.tokens
 class Worker:
@@ -37,7 +40,7 @@ class Worker:
         try:self.p.wait(timeout=10)
         except subprocess.TimeoutExpired:self.p.kill();self.p.wait()
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--rust',default=str(ROOT.parent/'target/release/adoc-engine'));p.add_argument('--samples',type=int,default=50);p.add_argument('--warmup',type=int,default=10);p.add_argument('--cold',type=int,default=20);p.add_argument('--output',type=Path,default=ROOT/'results');p.add_argument('--update-readme',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--rust',default=str(ROOT.parent/'target/release/adoc-engine'));p.add_argument('--samples',type=int,default=50);p.add_argument('--warmup',type=int,default=10);p.add_argument('--cold',type=int,default=20);p.add_argument('--output',type=Path,default=ROOT/'results');p.add_argument('--update-readme',action='store_true');p.add_argument('--verify-only',action='store_true');p.add_argument('--cases',help='Comma-separated case names for targeted confirmation');a=p.parse_args()
     if min(a.samples,a.cold)<1 or a.warmup<0:p.error('invalid sample counts')
     commands={'js':['node',str(ROOT/'js-worker.cjs')],'ruby':['ruby',str(ROOT/'ruby-worker.rb')],'rust':[str(Path(a.rust).resolve()),'worker']}
     fixtures={f.stem:f.read_text() for f in sorted((ROOT/'fixtures').glob('*.adoc'))}
@@ -51,6 +54,10 @@ def main():
     cases.append(('include-selection',{'source':(ROOT/'fixtures/includes/selection.adoc').read_text(),'options':{'safeMode':'safe','baseDir':str(ROOT/'fixtures/includes')}}))
     edit_variants=['= Editing\n\n'+('Base text with *formatting*.\n\n'*1000)+f'Changed line {i}.'for i in range(20)]
     cases.append(('repeated-edits',{'source':edit_variants[0],'options':{'safeMode':'secure','attributes':{}}}))
+    if a.cases:
+        requested=set(a.cases.split(','));known={name for name,_ in cases}
+        if requested-known:p.error('Unknown cases: '+', '.join(sorted(requested-known)))
+        cases=[case for case in cases if case[0]in requested]
     raw=[]; parity=[]; memory=[];rng=random.Random(42)
     for name,request in cases:
         outputs={}
@@ -64,6 +71,16 @@ def main():
             a.output.mkdir(parents=True,exist_ok=True)
             for e,s in outputs.items():(a.output/f'{name}-{e}.html').write_text(s)
             print(f'{name}: semantic mismatch; timings excluded',flush=True);continue
+        if a.verify_only:
+            if name=='repeated-edits':
+                workers={e:Worker(command)for e,command in commands.items()}
+                try:
+                    for source in edit_variants:
+                        converted={e:w.render(request|{'source':source})['html']for e,w in workers.items()}
+                        if not all(canonical(converted[e])==canonical(converted['ruby'])for e in commands):raise RuntimeError('strict edit parity mismatch')
+                finally:
+                    for worker in workers.values():worker.close()
+            print(f'{name}: strict structural parity passed',flush=True);continue
         order=list(commands);rng.shuffle(order)
         for e in order:
             w=Worker(commands[e])
@@ -122,7 +139,7 @@ def main():
     report+=['','## Peak process memory','','| Case | Engine | Peak RSS MiB |','|---|---|---:|']
     report += [f"| {m['case']} | {m['engine']} | {m['peakRssBytes']/1048576:.1f} |" for m in memory]
     (a.output/'report.md').write_text('\n'.join(report)+'\n')
-    if a.update_readme and all(c['eligible']for c in parity):
+    if a.update_readme and not a.verify_only and all(c['eligible']for c in parity):
         section=['## Verified performance','',f"Measured {metadata['timestampUtc']} on {metadata['cpu']} ({metadata['platform']}).",f"Pinned Asciidoctor.js 3.0.4 ({metadata['node']}), Ruby Asciidoctor 2.0.26 ({metadata['ruby']}), and release-built Rust.",f"Each case: {a.warmup} warm-ups, {a.samples} warm samples, {a.cold} cold executions per engine. All {len(parity)} cases passed structural HTML parity against Ruby.",'','Warm median conversion times (milliseconds); excludes IPC and browser painting:','','| Corpus | Input bytes | JS | Ruby | Rust | Ruby / Rust |','|---|---:|---:|---:|---:|---:|']
         for case in parity:
             med={e:statistics.median([s['nanos']for s in raw if s['case']==case['case']and s['mode']=='warm'and s['engine']==e])/1e6 for e in commands}

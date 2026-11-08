@@ -29,6 +29,7 @@ jobs:
       - run: python tests/protocol.py target/release/${{ matrix.binary }}
       - run: python scripts/font_licenses.py
       - run: python scripts/package.py --target ${{ matrix.target }} --binary target/release/${{ matrix.binary }}
+      - run: python scripts/verify_archive.py --execute --expected-commit "${{ github.sha }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
@@ -45,6 +46,14 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: curl -fL https://github.com/w3c/epubcheck/releases/download/v5.4.0/epubcheck-5.4.0.zip -o /tmp/epubcheck.zip && unzip -q /tmp/epubcheck.zip -d /tmp
       - run: cargo build --release --locked
+      - uses: actions/setup-node@v4
+        with: { node-version: '24' }
+      - uses: ruby/setup-ruby@v1
+        with: { ruby-version: '4.0' }
+      - run: gem install asciidoctor -v 2.0.26 --no-document
+      - run: npm ci --ignore-scripts
+        working-directory: benchmarks
+      - run: python3 benchmarks/run.py --verify-only --output verification/compatibility
       - run: python tests/publications.py target/release/adoc-engine --epubcheck /tmp/epubcheck-5.4.0/epubcheck.jar
       - uses: actions/upload-artifact@v4
         with:

@@ -24,12 +24,12 @@ try:
   for i in range(a.samples+10):
    result,elapsed=request('asciidoc/render',{'text':source});assert result['html']
    if i>=10:values.append(elapsed)
-  results.append({'paragraphs':count,'inputBytes':len(source.encode()),'samplesNanos':values,'medianMs':statistics.median(values)/1e6,'p95Ms':sorted(values)[math.ceil(.95*len(values))-1]/1e6});print(f'LSP/{count}: {results[-1]["medianMs"]:.2f} ms',flush=True)
+  results.append({'paragraphs':count,'inputBytes':len(source.encode()),'sourceSha256':hashlib.sha256(source.encode()).hexdigest(),'samplesNanos':values,'medianMs':statistics.median(values)/1e6,'p95Ms':sorted(values)[math.ceil(.95*len(values))-1]/1e6});print(f'LSP/{count}: {results[-1]["medianMs"]:.2f} ms',flush=True)
  request('shutdown');payload=b'{"jsonrpc":"2.0","method":"exit"}';process.stdin.write(f'Content-Length: {len(payload)}\r\n\r\n'.encode()+payload);process.stdin.flush();process.wait(timeout=10);assert process.returncode==0
 finally:
  if process.poll()is None:process.kill();process.wait()
  for stream in (process.stdin,process.stdout,process.stderr):stream.close()
-output=root/'benchmarks/baselines/release';output.mkdir(parents=True,exist_ok=True);(output/'lsp.json').write_text(json.dumps({'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'method':'JSON-RPC round trip including IPC, native worker conversion and response decoding; ten warmups per case.','results':results},indent=2)+'\n')
+output=root/'benchmarks/baselines/release';output.mkdir(parents=True,exist_ok=True);(output/'lsp.json').write_text(json.dumps({'binarySha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True,encoding='utf-8').strip(),'method':'JSON-RPC round trip including IPC, native worker conversion and response decoding; ten warmups per case.','results':results},indent=2)+'\n')
 if a.update_readme:
  section=['### Language-server performance','',f'End-to-end JSON-RPC render latency with persistent native workers, ten warm-ups and {a.samples} measured requests per case. IPC and client response decoding are included.','','| Paragraphs | Median ms | p95 ms |','|---|---:|---:|']+[f"| {r['paragraphs']} | {r['medianMs']:.2f} | {r['p95Ms']:.2f} |"for r in results]+['','[Raw LSP samples](benchmarks/baselines/release/lsp.json).']
  readme=root/'README.md';text=readme.read_text();start='<!-- LSP-PERF:START -->';end='<!-- LSP-PERF:END -->';block=start+'\n'+'\n'.join(section)+'\n'+end

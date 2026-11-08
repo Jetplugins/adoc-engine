@@ -1,0 +1,26 @@
+{
+  "binarySha256": "c36ae1aacaa2ec79c482b14d5feb114da182f520fba3f850bad6708798810d13",
+  "coreCases": 21,
+  "latencySamples": 6350,
+  "memorySamples": 69,
+  "strictParityPassed": true,
+  "confirmedRegressions": [],
+  "timingFlagsNotReproduced": [
+    {
+      "case": "basic",
+      "mode": "warm",
+      "initialRatio": 1.5629733059548254,
+      "confirmationRatio": 0.9517453798767967,
+      "baselineMedianMs": 0.060875,
+      "confirmationMedianMs": 0.0579375
+    },
+    {
+      "case": "bytes-1024",
+      "mode": "cold",
+      "initialRatio": 1.1139211915534255,
+      "confirmationRatio": 0.8970512390801474,
+      "baselineMedianMs": 9.514437,
+      "confirmationMedianMs": 8.5349375
+    }
+  ]
+}
