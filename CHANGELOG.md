@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - Preserve separate titled checklists after nested lists, including the preceding
   list's ordinary bullet markers.

@@ -1,12 +1,43 @@
-name: Release verification
+name: Release engine
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag matching the Cargo version (for example v0.2.0)
+        required: true
+        type: string
+      publish:
+        description: Publish the verified release after attaching all platform packages
+        default: false
+        type: boolean
 permissions:
-  contents: write
+  contents: read
+concurrency:
+  group: engine-release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
 jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      commit: ${{ steps.version.outputs.commit }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.15' }
+      - id: version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          python scripts/release.py validate --tag "$RELEASE_TAG"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -19,7 +50,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        with: { ref: '${{ needs.prepare.outputs.commit }}' }
       - uses: dtolnay/rust-toolchain@stable
+        with: { toolchain: '1.99.1' }
       - uses: Swatinem/rust-cache@v2
         with: { cache-on-failure: true }
       - uses: actions/setup-python@v5
@@ -29,16 +62,19 @@ jobs:
       - run: python tests/protocol.py target/release/${{ matrix.binary }}
       - run: python scripts/font_licenses.py
       - run: python scripts/package.py --target ${{ matrix.target }} --binary target/release/${{ matrix.binary }}
-      - run: python scripts/verify_archive.py --execute --expected-commit "${{ github.sha }}"
+      - run: python scripts/verify_archive.py --execute --expected-commit "${{ needs.prepare.outputs.commit }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: dist/*
   publication:
+    needs: prepare
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with: { ref: '${{ needs.prepare.outputs.commit }}' }
       - uses: dtolnay/rust-toolchain@stable
+        with: { toolchain: '1.99.1' }
       - uses: Swatinem/rust-cache@v2
         with: { cache-on-failure: true }
       - uses: actions/setup-python@v5
@@ -53,21 +89,42 @@ jobs:
       - run: gem install asciidoctor -v 2.0.26 --no-document
       - run: npm ci --ignore-scripts
         working-directory: benchmarks
-      - run: python3 benchmarks/run.py --verify-only --output verification/compatibility
+      - run: python benchmarks/run.py --verify-only --output verification/compatibility
+      - run: python tests/showcase_compatibility.py target/release/adoc-engine
+      - run: python tests/list_continuations.py target/release/adoc-engine
       - run: python tests/publications.py target/release/adoc-engine --epubcheck /tmp/epubcheck-5.4.0/epubcheck.jar
       - uses: actions/upload-artifact@v4
         with:
           name: publication-verification
-          path: verification/publication
-  draft:
-    needs: [build, publication]
-    if: startsWith(github.ref, 'refs/tags/')
+          path: verification
+  release:
+    needs: [prepare, build, publication]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with: { ref: '${{ needs.prepare.outputs.commit }}' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.15' }
       - uses: actions/download-artifact@v4
         with: { path: artifacts }
-      - name: Create verified draft release
+      - run: python scripts/release.py collect --tag "$RELEASE_TAG"
+        env: { RELEASE_TAG: '${{ needs.prepare.outputs.tag }}' }
+      - name: Attach verified distributions and publish when requested
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --draft --title "adoc-engine $GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md artifacts/*/*.tar.gz artifacts/*/*.zip artifacts/*/*.sha256
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          PUBLISH: ${{ inputs.publish }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --draft --verify-tag --title "adoc-engine $RELEASE_TAG" --notes-file RELEASE_NOTES.md
+          fi
+          if ! gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -qx release-manifest.json; then
+            gh release upload "$RELEASE_TAG" artifacts/*/*.tar.gz artifacts/*/*.zip artifacts/*/*.sha256 --clobber
+            gh release upload "$RELEASE_TAG" release-manifest.json
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$PUBLISH" = "true" ]; then
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          fi

@@ -11,7 +11,7 @@ readme = "../../README.md"
 name = "adoc-engine"
 path = "src/main.rs"
 [dependencies]
-adoc-engine = { path = "../engine", version = "0.1.0" }
+adoc-engine = { path = "../engine", version = "0.2.0" }
 anyhow = "1"
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }

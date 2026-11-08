@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Create a self-contained binary archive and checksums from verified release output."""
-import argparse,hashlib,json,os,shutil,subprocess,tarfile,tempfile,zipfile,platform,datetime
+import argparse,hashlib,json,os,shutil,subprocess,tarfile,tempfile,zipfile,platform,datetime,tomllib
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--target',required=True);p.add_argument('--binary',type=Path,required=True);p.add_argument('--output',type=Path,default=Path('dist'));a=p.parse_args()
-root=Path(__file__).resolve().parents[1];version='0.1.0';name=f'adoc-engine-{version}-{a.target}'
+root=Path(__file__).resolve().parents[1];version=tomllib.loads((root/'Cargo.toml').read_text())['workspace']['package']['version'];name=f'adoc-engine-{version}-{a.target}'
 a.output.mkdir(parents=True,exist_ok=True)
 notices=root/'THIRD_PARTY_LICENSES.html'
 if not notices.exists():raise SystemExit('Generate THIRD_PARTY_LICENSES.html with cargo about first')

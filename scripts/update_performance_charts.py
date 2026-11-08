@@ -61,7 +61,7 @@ def main():
     parser.add_argument('--check', action='store_true', help='Report stale charts without writing')
     args = parser.parse_args()
     release = load('benchmarks/baselines/release/raw.json')
-    showcase = load('benchmarks/baselines/showcase-compatibility/showcase-performance/raw.json')
+    showcase = load('benchmarks/baselines/v0.2.0/showcase-performance/raw.json')
     release_chart = '\n\n'.join([
         '### Large-document conversion',
         'The v0.1.0 release benchmark for a roughly 1 MiB document; lower is better. '
@@ -73,7 +73,7 @@ def main():
                    if sample['case'] == 'showcase' and sample['engine'] == engine) for engine in ENGINES]
     showcase_charts = '\n\n'.join([
         'Lower is better in each chart. These measurements use the corrected, '
-        'unreleased showcase build described above.',
+        'version 0.2.0 source build described above.',
         chart('Showcase: warm conversion', 'Median time (ms)', medians(showcase, 'showcase', 'warm'), 2),
         chart('Showcase: cold process execution', 'Median time (ms)', medians(showcase, 'showcase', 'cold'), 20),
         chart('Showcase: peak process memory', 'Peak RSS (MiB)', memory, 10, precision=1),

@@ -41,7 +41,7 @@ External Rust projects can use the verified Git release:
 
 ```toml
 [dependencies]
-adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.1.0" }
+adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.2.0" }
 ```
 
 ```rust
@@ -228,7 +228,7 @@ The final executable was measured in 6350 latency samples across HTML conversion
 Two initial differences above 10% did not reproduce in isolated confirmations with 200 warm samples and 50 cold executions per engine/case. [Verification summary](benchmarks/baselines/release/verification.json), [confirmation samples](benchmarks/baselines/release/confirmation/raw.json), and [comparison baseline](benchmarks/baselines/release/comparison-baseline.json) are published for inspection.
 <!-- CONFIRMATION:END -->
 
-### Unreleased compatibility verification
+### Version 0.2.0 compatibility verification
 
 The current fixes pass 270 focused Ruby/JavaScript/Rust comparisons, all 23
 compatibility corpora (including the unchanged complete showcase and its tagged
@@ -250,12 +250,12 @@ timing includes process startup, conversion, transport, and exit.
 
 | Engine | Warm median ms | Cold median ms | Peak RSS MiB |
 |---|---:|---:|---:|
-| JavaScript | 8.888 | 139.547 | 95.4 |
-| Ruby | 2.709 | 78.474 | 24.0 |
-| Rust | 0.793 | 18.467 | 18.5 |
+| JavaScript | 8.835 | 140.807 | 95.4 |
+| Ruby | 2.709 | 80.291 | 23.7 |
+| Rust | 0.745 | 18.654 | 18.5 |
 
 <!-- SHOWCASE-PERF-CHARTS:START -->
-Lower is better in each chart. These measurements use the corrected, unreleased showcase build described above.
+Lower is better in each chart. These measurements use the corrected, version 0.2.0 source build described above.
 
 ```mermaid
 %%{init: {"xyChart": {"width": 700, "height": 300}, "themeVariables": {"xyChart": {"plotColorPalette": "#2f81f7"}}}}%%
@@ -263,7 +263,7 @@ xychart-beta
     title "Showcase: warm conversion"
     x-axis [JavaScript, Ruby, Rust]
     y-axis "Median time (ms)" 0 --> 10
-    bar [8.888, 2.709, 0.793]
+    bar [8.835, 2.709, 0.745]
 ```
 
 ```mermaid
@@ -272,7 +272,7 @@ xychart-beta
     title "Showcase: cold process execution"
     x-axis [JavaScript, Ruby, Rust]
     y-axis "Median time (ms)" 0 --> 160
-    bar [139.547, 78.474, 18.467]
+    bar [140.807, 80.291, 18.654]
 ```
 
 ```mermaid
@@ -281,22 +281,22 @@ xychart-beta
     title "Showcase: peak process memory"
     x-axis [JavaScript, Ruby, Rust]
     y-axis "Peak RSS (MiB)" 0 --> 110
-    bar [95.4, 24.0, 18.5]
+    bar [95.4, 23.7, 18.5]
 ```
 <!-- SHOWCASE-PERF-CHARTS:END -->
 
-A separate comparison with v0.1.0 collected 800 interleaved warm Rust conversion
+An earlier pre-release comparison with v0.1.0 collected 800 interleaved warm Rust conversion
 samples across admonitions, nested lists, basic text, and a 1 MiB input, after ten
-warm-ups per executable/corpus. Median current/released ratios were 0.978–1.016.
+warm-ups per executable/corpus. Median compatibility-fix/released ratios were 0.978–1.016.
 Both builds produced matching normalized HTML on these performance corpora.
 
-[Three-engine samples and metadata](benchmarks/baselines/showcase-compatibility/showcase-performance/raw.json),
-[full timing report](benchmarks/baselines/showcase-compatibility/showcase-performance/report.md),
+[Three-engine samples and metadata](benchmarks/baselines/v0.2.0/showcase-performance/raw.json),
+[full timing report](benchmarks/baselines/v0.2.0/showcase-performance/report.md),
 [native before/after samples](benchmarks/baselines/showcase-compatibility/native-performance.json),
-[reference checks](benchmarks/baselines/showcase-compatibility/reference-parity.json),
-[continuation checks](benchmarks/baselines/showcase-compatibility/continuation-parity.json),
-and [corpus verification](benchmarks/baselines/showcase-compatibility/corpus-parity.json)
-record executable/source fingerprints. These are unreleased working-tree results;
+[reference checks](benchmarks/baselines/v0.2.0/reference-parity.json),
+[continuation checks](benchmarks/baselines/v0.2.0/continuation-parity.json),
+and [corpus verification](benchmarks/baselines/v0.2.0/corpus-parity.json)
+record executable/source fingerprints. These are measured version 0.2.0 source-build results;
 the released measurements above remain tied to v0.1.0.
 
 Reproduce the new reference and showcase performance checks from the repository root:
@@ -308,3 +308,16 @@ python3 benchmarks/run.py --cases showcase --samples 100 --warmup 10 --cold 10
 
 Refresh the README charts from the archived verified samples with
 `python3 scripts/update_performance_charts.py`.
+
+## Publishing a release
+
+Keep the workspace and CLI dependency versions in sync, commit the version bump,
+and create the matching tag (for example `v0.2.0`). In GitHub Releases, publishing
+that tag starts **Release engine**, which validates the version, tests five native
+platforms, checks reference compatibility and publications, then attaches archives,
+SHA-256 checksums, and `release-manifest.json`. Assets appear after verification.
+
+Alternatively run **Release engine** from Actions with the existing tag. Leave
+`publish` disabled to prepare a verified draft; enable it to publish only after all
+gates pass. The workflow uses the tagged commit and rejects version mismatches.
+Completed releases retain their existing distribution assets on a rerun.
