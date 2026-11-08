@@ -24,7 +24,7 @@ jobs:
       commit: ${{ steps.version.outputs.commit }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
       - uses: actions/setup-python@v5
@@ -49,7 +49,7 @@ jobs:
           - { runner: windows-2025, target: x86_64-pc-windows-msvc, binary: adoc-engine.exe }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { ref: '${{ needs.prepare.outputs.commit }}' }
       - uses: dtolnay/rust-toolchain@stable
         with: { toolchain: '1.99.1' }
@@ -71,7 +71,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { ref: '${{ needs.prepare.outputs.commit }}' }
       - uses: dtolnay/rust-toolchain@stable
         with: { toolchain: '1.99.1' }
@@ -119,7 +119,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { ref: '${{ needs.prepare.outputs.commit }}' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.15' }
