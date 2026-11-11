@@ -1,0 +1,71 @@
+{
+  "version": "0.4.0",
+  "tag": "v0.4.0",
+  "commit": "6f31608a453f93b4afe5617b2dd56a3032915eb7",
+  "release": "https://github.com/Jetplugins/adoc-engine/releases/tag/v0.4.0",
+  "publishedAt": "2026-11-11T11:12:43Z",
+  "workflow": "https://github.com/Jetplugins/adoc-engine/actions/runs/43006851867",
+  "mainCI": "https://github.com/Jetplugins/adoc-engine/actions/runs/43006815451",
+  "mergedPRs": [
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17
+  ],
+  "platforms": [
+    "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu"
+  ],
+  "assets": [
+    {
+      "name": "adoc-engine-0.4.0-aarch64-apple-darwin.tar.gz",
+      "target": "aarch64-apple-darwin",
+      "sha256": "b2869d55972aca5a489263b36fc9ecb9a264ab0dbde61202f7c0cb48c28b7333",
+      "size": 23784240
+    },
+    {
+      "name": "adoc-engine-0.4.0-aarch64-unknown-linux-gnu.tar.gz",
+      "target": "aarch64-unknown-linux-gnu",
+      "sha256": "78fdfe1e6f1eca8e7c4c774a700cfa779f13aec1856624e4e49d7f71700ccc0f",
+      "size": 24762046
+    },
+    {
+      "name": "adoc-engine-0.4.0-x86_64-apple-darwin.tar.gz",
+      "target": "x86_64-apple-darwin",
+      "sha256": "2049468760bee4de9b33c7a80ee722fa3a8e95cc90fa6756ff2d819bb36f470a",
+      "size": 24630098
+    },
+    {
+      "name": "adoc-engine-0.4.0-x86_64-pc-windows-msvc.zip",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "154cce3037eb9c26769d684f3e7820d0dc0c5dc5179be5025f695deab5f8fa69",
+      "size": 24734609
+    },
+    {
+      "name": "adoc-engine-0.4.0-x86_64-unknown-linux-gnu.tar.gz",
+      "target": "x86_64-unknown-linux-gnu",
+      "sha256": "39d0cc7b871d055c9f6b906b00f04bcef82f435df442153149d525f28ed92187",
+      "size": 25244329
+    }
+  ],
+  "publishedMacOSARM64": {
+    "archive": "adoc-engine-0.4.0-aarch64-apple-darwin.tar.gz",
+    "sha256": "b2869d55972aca5a489263b36fc9ecb9a264ab0dbde61202f7c0cb48c28b7333",
+    "checks": [
+      "manifest and all five checksum files",
+      "archive and binary fingerprints",
+      "source provenance",
+      "relocated executable: HTML, PDF, EPUB, merged SVG and PNG with empty PATH"
+    ]
+  }
+}

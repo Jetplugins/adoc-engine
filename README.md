@@ -31,7 +31,8 @@ allows access outside it. Network resource fetching is disabled.
 
 ## Version 0.4.0
 
-Version 0.4.0 refreshes engine dependencies and CI/release tooling, preserves
+[Version 0.4.0 is released](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.4.0).
+It refreshes engine dependencies and CI/release tooling, preserves
 deterministic EPUB identifiers with the updated SHA-256 API, and updates the
 JavaScript compatibility reference to Asciidoctor.js 4.2.1.
 See the [release notes](RELEASE_NOTES.md). Historical benchmark versions remain

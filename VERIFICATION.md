@@ -1,6 +1,19 @@
 # Release verification: 0.4.0
 
-Version 0.4.0 combines Renovate PRs #7–#17, updates engine dependencies and build
+[Version 0.4.0](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.4.0)
+was published on 2026-11-11 UTC from source commit
+`6f31608a453f93b4afe5617b2dd56a3032915eb7` after the
+[release workflow](https://github.com/Jetplugins/adoc-engine/actions/runs/43006851867)
+passed all five native platforms and publication checks.
+[Main CI](https://github.com/Jetplugins/adoc-engine/actions/runs/43006815451) also passed.
+
+The public manifest and all five checksum files match the published asset sizes
+and source commit. The macOS ARM64 archive was independently downloaded, its
+archive and binary fingerprints verified, and its executable relocated and run
+in five formats with empty PATH. See the
+[release receipt](docs/releases/0.4.0-release-verification.json).
+
+This release combines Renovate PRs #7–#17, updates engine dependencies and build
 infrastructure, and adapts EPUB identifiers and the JavaScript benchmark worker
 to the updated dependency APIs.
 
