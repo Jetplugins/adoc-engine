@@ -24,6 +24,22 @@ class Canonical(HTMLParser):
         if text and (self.literal or text.strip() or inline):self.tokens.append(('text',text))
 def canonical(s):
     p=Canonical();p.feed(s);return p.tokens
+def comparison_tokens(engine, html):
+    tokens = canonical(html)
+    if engine != 'js':
+        return tokens
+    # Asciidoctor.js 4 emits percentage col widths as HTML attributes. Ruby uses CSS.
+    normalized = []
+    for token in tokens:
+        if token[:2] == ('open', 'col'):
+            attrs = dict(token[2])
+            width = attrs.get('width', '')
+            if 'style' not in attrs and re.fullmatch(r'[0-9]+(?:\.[0-9]+)?%', width):
+                del attrs['width']
+                attrs['style'] = f'width: {width};'
+                token = ('open', 'col', tuple(sorted(attrs.items())))
+        normalized.append(token)
+    return normalized
 class Worker:
     def __init__(self,command): self.p=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True,cwd=ROOT)
     def render(self,request):
@@ -66,7 +82,7 @@ def main():
             w=Worker(command)
             try:outputs[engine]=w.render(request)['html']
             finally:w.close()
-        eligible=all(canonical(outputs[e])==canonical(outputs['ruby'])for e in commands)
+        eligible=all(comparison_tokens(e,outputs[e])==canonical(outputs['ruby'])for e in commands)
         parity.append({'case':name,'eligible':eligible,'sha256':hashlib.sha256(request['source'].encode()).hexdigest(),'inputBytes':len(request['source'].encode())})
         if not eligible:
             a.output.mkdir(parents=True,exist_ok=True)
@@ -78,7 +94,7 @@ def main():
                 try:
                     for source in edit_variants:
                         converted={e:w.render(request|{'source':source})['html']for e,w in workers.items()}
-                        if not all(canonical(converted[e])==canonical(converted['ruby'])for e in commands):raise RuntimeError('strict edit parity mismatch')
+                        if not all(comparison_tokens(e,converted[e])==canonical(converted['ruby'])for e in commands):raise RuntimeError('strict edit parity mismatch')
                 finally:
                     for worker in workers.values():worker.close()
             print(f'{name}: strict structural parity passed',flush=True);continue
@@ -111,7 +127,7 @@ def main():
                     for _ in range(a.warmup):w.render(request)
                     for i in range(a.samples):
                         variant=i%len(edit_variants);result=w.render(request|{'source':edit_variants[variant]})
-                        if canonical(result['html'])!=reference[variant]:raise RuntimeError('edit output mismatch')
+                        if comparison_tokens(e,result['html'])!=reference[variant]:raise RuntimeError('edit output mismatch')
                         raw.append({'case':name,'engine':e,'mode':'edit','sample':i,'nanos':result['nanos'],'bytes':len(result['html'].encode())})
                 finally:w.close()
         # Measure whole-process peak RSS separately so instrumentation does not affect latency.
@@ -124,7 +140,7 @@ def main():
         print(f'{name}: complete',flush=True)
     a.output.mkdir(parents=True,exist_ok=True)
     def version(cmd):return subprocess.check_output(cmd,text=True,cwd=ROOT).strip()
-    metadata={'timestampUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'platform':platform.platform(),'cpu':subprocess.check_output(['sysctl','-n','machdep.cpu.brand_string'],text=True).strip() if platform.system()=='Darwin' else platform.processor(),'machine':platform.machine(),'python':platform.python_version(),'node':version(['node','--version']),'ruby':version(['ruby','--version']),'asciidoctorRuby':'2.0.26','asciidoctorJs':'3.0.4','rust':version([a.rust,'--version']),'rustBinarySha256':hashlib.sha256(Path(a.rust).read_bytes()).hexdigest(),'commit':subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,capture_output=True,text=True).stdout.strip(),'options':vars(a)|{'output':str(a.output)},'cases':parity}
+    metadata={'timestampUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'platform':platform.platform(),'cpu':subprocess.check_output(['sysctl','-n','machdep.cpu.brand_string'],text=True).strip() if platform.system()=='Darwin' else platform.processor(),'machine':platform.machine(),'python':platform.python_version(),'node':version(['node','--version']),'ruby':version(['ruby','--version']),'asciidoctorRuby':'2.0.26','asciidoctorJs':json.loads((ROOT/'package.json').read_text())['dependencies']['@asciidoctor/core'],'rust':version([a.rust,'--version']),'rustBinarySha256':hashlib.sha256(Path(a.rust).read_bytes()).hexdigest(),'commit':subprocess.run(['git','rev-parse','HEAD'],cwd=ROOT,capture_output=True,text=True).stdout.strip(),'options':vars(a)|{'output':str(a.output)},'cases':parity}
     metadata['workingTreeDirty']=bool(subprocess.run(['git','status','--porcelain'],cwd=ROOT,capture_output=True,text=True,check=True).stdout.strip())
     (a.output/'raw.json').write_text(json.dumps({'metadata':metadata,'samples':raw,'memory':memory},indent=2))
     with (a.output/'raw.csv').open('w')as f:
@@ -142,7 +158,7 @@ def main():
     report += [f"| {m['case']} | {m['engine']} | {m['peakRssBytes']/1048576:.1f} |" for m in memory]
     (a.output/'report.md').write_text('\n'.join(report)+'\n')
     if a.update_readme and not a.verify_only and all(c['eligible']for c in parity):
-        section=['## Verified performance','',f"Measured {metadata['timestampUtc']} on {metadata['cpu']} ({metadata['platform']}).",f"Pinned Asciidoctor.js 3.0.4 ({metadata['node']}), Ruby Asciidoctor 2.0.26 ({metadata['ruby']}), and release-built Rust.",f"Each case: {a.warmup} warm-ups, {a.samples} warm samples, {a.cold} cold executions per engine. All {len(parity)} cases passed structural HTML parity against Ruby.",'','Warm median conversion times (milliseconds); excludes IPC and browser painting:','','| Corpus | Input bytes | JS | Ruby | Rust | Ruby / Rust |','|---|---:|---:|---:|---:|---:|']
+        section=['## Verified performance','',f"Measured {metadata['timestampUtc']} on {metadata['cpu']} ({metadata['platform']}).",f"Pinned Asciidoctor.js {metadata['asciidoctorJs']} ({metadata['node']}), Ruby Asciidoctor 2.0.26 ({metadata['ruby']}), and release-built Rust.",f"Each case: {a.warmup} warm-ups, {a.samples} warm samples, {a.cold} cold executions per engine. All {len(parity)} cases passed structural HTML parity against Ruby.",'','Warm median conversion times (milliseconds); excludes IPC and browser painting:','','| Corpus | Input bytes | JS | Ruby | Rust | Ruby / Rust |','|---|---:|---:|---:|---:|---:|']
         for case in parity:
             med={e:statistics.median([s['nanos']for s in raw if s['case']==case['case']and s['mode']=='warm'and s['engine']==e])/1e6 for e in commands}
             section.append(f"| {case['case']} | {case['inputBytes']} | {med['js']:.3f} | {med['ruby']:.3f} | {med['rust']:.3f} | {med['ruby']/med['rust']:.2f}x |")

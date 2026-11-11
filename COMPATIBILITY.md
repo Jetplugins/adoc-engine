@@ -1,9 +1,12 @@
 # Verified compatibility contract
 
-Reference engines are Ruby Asciidoctor 2.0.26 and Asciidoctor.js 3.0.4. The release
+Reference engines are Ruby Asciidoctor 2.0.26 and Asciidoctor.js 4.2.1. The release
 performance corpus also acts as a differential HTML verification corpus. Every
 eligible case must match Ruby's normalized HTML structure, attributes, text, links,
-and code whitespace. Mismatches fail the gate and are saved for inspection.
+and code whitespace. The JavaScript comparison alone treats percentage `col`
+width attributes as equivalent to Ruby’s CSS width declarations when no style
+attribute is present; Rust-to-Ruby comparison remains strict. Mismatches fail
+the gate and are saved for inspection.
 
 | Capability | Verification |
 |---|---|

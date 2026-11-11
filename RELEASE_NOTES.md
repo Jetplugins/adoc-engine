@@ -1,22 +1,18 @@
-# adoc-engine 0.3.0
+# adoc-engine 0.4.0
 
-EPUB export now produces structured, reader-friendly books with rich metadata,
-covers, configurable chapter splitting, nested navigation/NCX and separate visible
-contents. Cross-chapter links and footnotes are relocated to valid targets.
+This maintenance release refreshes the engine dependencies and build tooling.
 
-Books can include front matter, local CSS and fonts, images/SVG, MP3/M4A/MP4 media,
-static syntax highlighting and AsciiMath MathML. The shared Kotlin/Rust book theme
-includes free Libertinus/DejaVu fonts with redistribution notices; `epub-fonts=none`
-uses reader fonts. No Ruby, JavaScript or browser runtime is needed by the engine.
+- Update SHA-256 (sha2 0.11), Base64 (0.23), ZIP (9.5.1) and typst-as-lib (0.17).
+- Preserve existing deterministic EPUB book identifiers with the new SHA-256 API,
+  with regression coverage for generated identifiers and explicit UUIDs.
+- Update the JavaScript compatibility reference to Asciidoctor.js 4.2.1 and migrate
+  the benchmark worker to its asynchronous API. JavaScript parity checks recognize
+  equivalent table-column width markup; Rust-to-Ruby checks remain strict.
+- Refresh checkout, setup and artifact GitHub Actions, Node.js 26 and Ubuntu tooling.
 
-File exports are staged before replacing existing output. API soft attribute
-defaults/unsets and EPUB backend conditionals are now honored.
+The library, CLI and language-server interfaces retain the 0.3.0 feature set,
+including native HTML, PDF, EPUB 3, SVG, PNG and JSON exports.
 
-The release verification adds independently parsed complete-book checks and
-EPUBCheck comparisons with pinned Asciidoctor EPUB3 2.3.0. See the EPUB guide for
-supported attributes, reference differences, reproducible verification and timing
-methodology. The established HTML benchmarks remain separately labeled.
-
-Downloads include MIT project licensing, dependency and embedded-font notices,
-source commit and binary SHA-256 provenance, and a release manifest for managed
-plugin installations.
+Downloads include dependency/font notices, SHA-256 checksums, build provenance
+and a release manifest. The release workflow verifies five native platforms and
+publication compatibility before publishing the packages.

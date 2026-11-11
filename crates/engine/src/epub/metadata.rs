@@ -80,7 +80,11 @@ impl Metadata {
             .get("uuid")
             .filter(|s| !s.trim().is_empty())
             .cloned()
-            .unwrap_or_else(|| format!("urn:sha256:{:x}", Sha256::digest(title.as_bytes())));
+            .unwrap_or_else(|| {
+                let digest = Sha256::digest(title.as_bytes());
+                let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+                format!("urn:sha256:{hex}")
+            });
         let authors = doc
             .authors()
             .iter()

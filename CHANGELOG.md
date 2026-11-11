@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+- Update SHA-256, Base64, ZIP and Typst library dependencies.
+- Preserve deterministic EPUB identifiers with the updated SHA-256 API.
+- Update the JavaScript compatibility reference to Asciidoctor.js 4.2.1, adapt
+  the worker to its asynchronous API and report the configured reference version.
+- Refresh GitHub Actions, Node.js 26 and Ubuntu CI/release tooling.
+
 ## 0.3.0
 
 - Expand EPUB 3 books: book/article structure, ID-based chapter filenames, configurable

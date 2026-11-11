@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'benchmarks'))
-from run import Worker, canonical
+from run import Worker, canonical, comparison_tokens
 
 
 def cases():
@@ -57,7 +57,7 @@ def main():
             request = {'source': source, 'options': {'safeMode': 'secure', 'attributes': {}}}
             outputs = {engine: worker.render(request)['html'] for engine, worker in workers.items()}
             reference = canonical(outputs['ruby'])
-            parity = {engine: canonical(output) == reference for engine, output in outputs.items()}
+            parity = {engine: comparison_tokens(engine, output) == reference for engine, output in outputs.items()}
             results.append({'case': name, 'sourceSha256': hashlib.sha256(source.encode()).hexdigest(), 'parity': parity})
             if not all(parity.values()):
                 (args.output / f'failure-{index}.adoc').write_text(source)

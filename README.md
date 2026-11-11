@@ -29,6 +29,14 @@ Safe mode defaults to `secure`, which disables filesystem includes and image emb
 Use `safe` for local assets confined to the document directory; `unsafe` explicitly
 allows access outside it. Network resource fetching is disabled.
 
+## Version 0.4.0
+
+Version 0.4.0 refreshes engine dependencies and CI/release tooling, preserves
+deterministic EPUB identifiers with the updated SHA-256 API, and updates the
+JavaScript compatibility reference to Asciidoctor.js 4.2.1.
+See the [release notes](RELEASE_NOTES.md). Historical benchmark versions remain
+labeled below.
+
 ## EPUB books in 0.3.0
 
 [Version 0.3.0 is released](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.3.0)
@@ -52,7 +60,7 @@ External Rust projects can use the verified Git release:
 
 ```toml
 [dependencies]
-adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.3.0" }
+adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.4.0" }
 ```
 
 ```rust
@@ -133,7 +141,7 @@ confirm flagged results with an isolated repeat before accepting or rejecting a 
 ## Compatibility contract
 
 The native parser and HTML backend target Ruby Asciidoctor 2.0.26; reference JS is
-Asciidoctor.js 3.0.4. See [verified coverage and boundaries](COMPATIBILITY.md).
+Asciidoctor.js 4.2.1. See [verified coverage and boundaries](COMPATIBILITY.md).
 This release does not claim full AsciiDoc TCK certification. Ruby/JS extensions,
 remote resource fetching, arbitrary browser CSS/JavaScript in PDF, and unrelated
 workspace-wide symbol search are outside the native contract. Semantic HTML
@@ -362,7 +370,7 @@ Refresh the README charts from the archived verified samples with
 ## Publishing a release
 
 Keep the workspace and CLI dependency versions in sync, commit the version bump,
-and create the matching tag (for example `v0.3.0`). In GitHub Releases, publishing
+and create the matching tag (for example `v0.4.0`). In GitHub Releases, publishing
 that tag starts **Release engine**, which validates the version, tests five native
 platforms, checks reference compatibility and publications, then attaches archives,
 SHA-256 checksums, and `release-manifest.json`. Assets appear after verification.

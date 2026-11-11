@@ -219,3 +219,26 @@ fn publication_backend_and_soft_api_attributes_are_semantic() {
     );
     assert!(!text(&files, "EPUB/_preamble.xhtml").contains("Present"));
 }
+
+#[test]
+fn default_identifier_preserves_sha256_and_explicit_uuid_takes_precedence() {
+    for (attributes, expected) in [
+        (
+            vec![],
+            "urn:sha256:909cb81127c5e1944b16dc5944ade59facb822c7a3f250d1f0256293bfd3c055",
+        ),
+        (
+            vec![("uuid", "urn:uuid:custom-book")],
+            "urn:uuid:custom-book",
+        ),
+    ] {
+        let files = book("= Book\n\nText", &attributes);
+        let opf = roxmltree::Document::parse(text(&files, "EPUB/package.opf")).unwrap();
+        let identifier = opf
+            .descendants()
+            .find(|node| node.has_tag_name(("http://purl.org/dc/elements/1.1/", "identifier")))
+            .and_then(|node| node.text());
+        assert_eq!(identifier, Some(expected));
+        assert!(text(&files, "EPUB/toc.ncx").contains(expected));
+    }
+}
