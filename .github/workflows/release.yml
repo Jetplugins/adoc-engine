@@ -63,7 +63,7 @@ jobs:
       - run: python scripts/font_licenses.py
       - run: python scripts/package.py --target ${{ matrix.target }} --binary target/release/${{ matrix.binary }}
       - run: python scripts/verify_archive.py --execute --expected-commit "${{ needs.prepare.outputs.commit }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: dist/*
@@ -109,7 +109,7 @@ jobs:
       - run: python tests/publications.py target/release/adoc-engine --epubcheck /tmp/epubcheck-5.4.0/epubcheck.jar
       - run: python tests/epub_atomic.py target/release/adoc-engine
       - run: python tests/epub_features.py target/release/adoc-engine --epubcheck /tmp/epubcheck-5.4.0/epubcheck.jar
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: publication-verification
           path: verification
@@ -123,7 +123,7 @@ jobs:
         with: { ref: '${{ needs.prepare.outputs.commit }}' }
       - uses: actions/setup-python@v7
         with: { python-version: '3.15' }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: artifacts }
       - run: python scripts/release.py collect --tag "$RELEASE_TAG"
         env: { RELEASE_TAG: '${{ needs.prepare.outputs.tag }}' }
