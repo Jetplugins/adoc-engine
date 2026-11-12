@@ -1,0 +1,59 @@
+{
+  "version": "0.5.0",
+  "tag": "v0.5.0",
+  "commit": "e1dcd732afebfff5ebb324a1baadfa00dea559e6",
+  "release": "https://github.com/Jetplugins/adoc-engine/releases/tag/v0.5.0",
+  "publishedAt": "2026-11-12T08:20:57Z",
+  "workflow": "https://github.com/Jetplugins/adoc-engine/actions/runs/43180616912",
+  "mainCI": "https://github.com/Jetplugins/adoc-engine/actions/runs/43180586197",
+  "platforms": [
+    "aarch64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu"
+  ],
+  "assets": [
+    {
+      "name": "adoc-engine-0.5.0-aarch64-apple-darwin.tar.gz",
+      "target": "aarch64-apple-darwin",
+      "sha256": "86b646d6493bd84e21d2288707282ff0446596fa8e203fd3ece0085552825377",
+      "size": 23960723
+    },
+    {
+      "name": "adoc-engine-0.5.0-aarch64-unknown-linux-gnu.tar.gz",
+      "target": "aarch64-unknown-linux-gnu",
+      "sha256": "d607db8c2fcbef09be59aa1164e6159c662f3a8581942388a4b9dc36e19f9750",
+      "size": 24950548
+    },
+    {
+      "name": "adoc-engine-0.5.0-x86_64-apple-darwin.tar.gz",
+      "target": "x86_64-apple-darwin",
+      "sha256": "f7f2b5c6e8600a7660a425f944ba607eb641d1609ad568eb6bfafc9b1bf780a5",
+      "size": 24818668
+    },
+    {
+      "name": "adoc-engine-0.5.0-x86_64-pc-windows-msvc.zip",
+      "target": "x86_64-pc-windows-msvc",
+      "sha256": "ebb46cb0c0681616b4c650243c99c160a65f8795c220441f516517b7f4e073fb",
+      "size": 24919181
+    },
+    {
+      "name": "adoc-engine-0.5.0-x86_64-unknown-linux-gnu.tar.gz",
+      "target": "x86_64-unknown-linux-gnu",
+      "sha256": "6b60d441e5fc32b2fdcab520a53be81f4691f15f3f0a7466a1a8227651d4fcc7",
+      "size": 25429403
+    }
+  ],
+  "publishedMacOSARM64": {
+    "archive": "adoc-engine-0.5.0-aarch64-apple-darwin.tar.gz",
+    "sha256": "86b646d6493bd84e21d2288707282ff0446596fa8e203fd3ece0085552825377",
+    "checks": [
+      "public manifest, all five checksum files and GitHub asset digests",
+      "archive and binary fingerprints",
+      "source provenance",
+      "relocated executable: HTML, PDF, EPUB, merged SVG and PNG with empty PATH",
+      "ten mixed LaTeX/AsciiMath equations through six formats; EPUBCheck and PDF text verification"
+    ]
+  }
+}

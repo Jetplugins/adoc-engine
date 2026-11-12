@@ -1,5 +1,20 @@
 # Release verification: 0.5.0
 
+[Version 0.5.0](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.5.0)
+was published on 2026-11-12 UTC from source commit
+`e1dcd732afebfff5ebb324a1baadfa00dea559e6` after
+[main CI](https://github.com/Jetplugins/adoc-engine/actions/runs/43180586197) and
+[the release workflow](https://github.com/Jetplugins/adoc-engine/actions/runs/43180616912)
+passed, including all five native platforms and publication verification.
+
+The published manifest, all five checksum files and GitHub asset digests match.
+The macOS ARM64 archive was independently downloaded and its archive/binary
+fingerprints and source provenance verified. Its relocated executable passes
+five-format execution with empty PATH, and the actual published binary also
+passes the ten-equation mixed LaTeX/AsciiMath fixture through all six visual
+formats, with EPUBCheck and PDF text verification. See the
+[release receipt](docs/releases/0.5.0-release-verification.json).
+
 Version 0.5.0 adds native LaTeX and AsciiMath equations to paginated exports,
 static LaTeX MathML to EPUB, and opt-in native MathML to HTML. The
 [STEM guide](docs/stem.md) documents supported commands and format behavior.
