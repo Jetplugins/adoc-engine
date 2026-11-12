@@ -7,6 +7,19 @@ rust-version.workspace = true
 description = "Native AsciiDoc parser, renderer and publication exports"
 repository = "https://github.com/Jetplugins/adoc-engine"
 readme = "../../README.md"
+[features]
+# Preserve the existing library defaults. The CLI explicitly requests full.
+default = ["full"]
+full = ["epub", "pdf", "svg", "png", "mathml", "highlighting"]
+mathml = ["dep:math-core", "dep:mathemascii"]
+epub = ["mathml", "dep:zip", "dep:sha2", "dep:base64", "dep:percent-encoding", "dep:time"]
+highlighting = ["epub", "dep:syntect"]
+pdf = ["typesetting", "dep:typst-pdf"]
+svg = ["typesetting", "dep:typst-svg"]
+png = ["typesetting", "dep:typst-render"]
+# Shared implementation dependencies; choose an output feature above.
+typesetting = ["dep:adocers-typst", "dep:typst-as-lib", "dep:typst", "dep:typst-layout"]
+
 [dependencies]
 asciidoc-parser = { version = "=0.31.2", path = "../../vendor/asciidoc-parser" }
 asciidoc-html5 = { version = "=0.2.3", path = "../../vendor/asciidoc-html5" }
@@ -14,21 +27,21 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
-zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
-adocers-typst = { version = "=0.3.2", path = "../../vendor/adocers-typst", default-features = false, features = ["math"] }
-typst-as-lib = { version = "0.17", features = ["typst-kit-fonts", "typst-kit-embed-fonts"] }
-typst = "0.15"
-typst-svg = "0.15"
-typst-render = "0.15"
-typst-layout = "0.15"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"], optional = true }
+adocers-typst = { version = "=0.3.2", path = "../../vendor/adocers-typst", default-features = false, features = ["math"], optional = true }
+typst-as-lib = { version = "0.17", features = ["typst-kit-fonts", "typst-kit-embed-fonts"], optional = true }
+typst = { version = "0.15", optional = true }
+typst-svg = { version = "0.15", optional = true }
+typst-render = { version = "0.15", optional = true }
+typst-layout = { version = "0.15", optional = true }
 roxmltree = "0.21"
 html5ever = "0.40"
 markup5ever_rcdom = "0.40"
-sha2 = "0.11"
-base64 = "0.23"
-percent-encoding = "2"
-time = { version = "0.3", features = ["formatting", "parsing"] }
-syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
-mathemascii = "0.4"
-typst-pdf = "0.15"
-math-core = "0.9"
+sha2 = { version = "0.11", optional = true }
+base64 = { version = "0.23", optional = true }
+percent-encoding = { version = "2", optional = true }
+time = { version = "0.3", features = ["formatting", "parsing"], optional = true }
+syntect = { version = "5.3", default-features = false, features = ["default-fancy"], optional = true }
+mathemascii = { version = "0.4", optional = true }
+typst-pdf = { version = "0.15", optional = true }
+math-core = { version = "0.9", optional = true }

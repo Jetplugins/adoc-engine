@@ -1,4 +1,7 @@
-use adoc_engine::{RenderOptions, export, render};
+#[cfg(any(feature = "mathml", feature = "pdf", feature = "svg", feature = "png"))]
+use adoc_engine::export;
+use adoc_engine::{RenderOptions, render};
+#[cfg(feature = "epub")]
 use std::io::{Cursor, Read};
 
 const SOURCE: &str = r"= Equations
@@ -23,6 +26,7 @@ Inline stem:[\frac{a}{b}] then asciimath:[sqrt(x^2+y^2)].
 ----
 ";
 
+#[cfg(feature = "mathml")]
 fn math_nodes(html: &str) -> Vec<(String, String)> {
     // The generated math fragments are also valid XML.
     let re = regex::Regex::new(r"(?s)<math\b.*?</math>").unwrap();
@@ -38,6 +42,7 @@ fn math_nodes(html: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+#[cfg(feature = "mathml")]
 #[test]
 fn native_html_renders_mixed_inline_and_block_math_without_scripts() {
     for standalone in [false, true] {
@@ -84,6 +89,7 @@ fn default_html_retains_asciidoctor_mathjax_contract() {
     assert!(!result.html.contains("<math"));
 }
 
+#[cfg(feature = "epub")]
 #[test]
 fn epub_has_static_latex_mathml_and_manifest_properties() {
     let artifacts = export(SOURCE, "epub", &RenderOptions::default()).unwrap();
@@ -107,6 +113,7 @@ fn epub_has_static_latex_mathml_and_manifest_properties() {
     assert!(opf.contains("properties=\"mathml\""));
 }
 
+#[cfg(feature = "mathml")]
 #[test]
 fn invalid_latex_and_excessive_math_return_errors() {
     for expression in [
@@ -116,7 +123,10 @@ fn invalid_latex_and_excessive_math_return_errors() {
         let source = format!(
             "= Invalid\n:stem: latexmath\n:stem-renderer: native\n\nlatexmath:[{expression}]\n"
         );
-        for format in ["html", "epub"] {
+        for format in ["html", "epub"]
+            .into_iter()
+            .filter(|format| adoc_engine::supported_formats().contains(format))
+        {
             assert!(
                 export(&source, format, &RenderOptions::default()).is_err(),
                 "{format}"
@@ -125,10 +135,14 @@ fn invalid_latex_and_excessive_math_return_errors() {
     }
 }
 
+#[cfg(any(feature = "pdf", feature = "svg", feature = "png"))]
 #[test]
 fn tex_alias_and_block_notation_override_typeset_in_publications() {
     let source = "= Maths\n:stem: tex\n\n[stem]\n++++\n\\frac{a}{b}\n++++\n\n[stem,latexmath]\n++++\n\\sqrt{4}\n++++\n\n[asciimath]\n++++\nsqrt(9)\n++++\n";
-    for format in ["pdf", "svg", "svg-merged", "png"] {
+    for format in ["pdf", "svg", "svg-merged", "png"]
+        .into_iter()
+        .filter(|format| adoc_engine::supported_formats().contains(format))
+    {
         assert!(
             !export(source, format, &RenderOptions::default()).unwrap()[0]
                 .1
@@ -138,6 +152,7 @@ fn tex_alias_and_block_notation_override_typeset_in_publications() {
     }
 }
 
+#[cfg(feature = "mathml")]
 #[test]
 fn native_html_can_be_selected_by_api_without_changing_prose_or_code() {
     let mut options = RenderOptions::default();

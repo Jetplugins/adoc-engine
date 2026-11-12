@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag matching the Cargo version (for example v0.5.0)
+        description: Existing tag matching the Cargo version (for example v0.6.0)
         required: true
         type: string
       publish:

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+## 0.6.0
+
+- Add optional EPUB, highlighting, native MathML, PDF, SVG and PNG library features;
+  preserve full defaults and explicitly enable all backends in the CLI.
+- Expose `supported_formats()` and actionable errors for disabled capabilities.
+- Make the vendored PDF compiler optional and align Typst wrappers on 0.17.
+- Test each feature configuration and isolated downstream dependency boundaries;
+  add reproducible cold-build, dependency-count and binary-size measurements.
+
 ## 0.5.0
 
 - Enable native LaTeX and AsciiMath equations in PDF, SVG and PNG exports.

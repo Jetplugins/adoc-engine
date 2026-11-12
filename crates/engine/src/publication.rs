@@ -1,5 +1,5 @@
 use crate::{Document, RenderOptions};
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use typst_as_lib::{TypstEngine, typst_kit_options::TypstKitFontOptions};
 pub fn export(
     doc: &Document<'_>,
@@ -31,28 +31,43 @@ pub fn export(
         .build();
     let compiled: typst_layout::PagedDocument =
         engine.compile().output.map_err(|e| anyhow!("{e}"))?;
-    if format == "pdf" {
-        let bytes = typst_pdf::pdf(&compiled, &Default::default()).map_err(|e| anyhow!("{e:?}"))?;
-        return Ok(vec![("document.pdf".into(), bytes)]);
-    }
-    if format == "svg-merged" {
-        return Ok(vec![(
+    match format {
+        #[cfg(feature = "pdf")]
+        "pdf" => {
+            let bytes =
+                typst_pdf::pdf(&compiled, &Default::default()).map_err(|e| anyhow!("{e:?}"))?;
+            Ok(vec![("document.pdf".into(), bytes)])
+        }
+        #[cfg(feature = "svg")]
+        "svg-merged" => Ok(vec![(
             "document.svg".into(),
             typst_svg::svg_merged(&compiled, &Default::default(), typst::layout::Abs::pt(12.0))
                 .into_bytes(),
-        )]);
+        )]),
+        #[cfg(feature = "svg")]
+        "svg" => Ok(compiled
+            .pages()
+            .iter()
+            .enumerate()
+            .map(|(i, page)| {
+                (
+                    format!("page-{}.svg", i + 1),
+                    typst_svg::svg(page, &Default::default()).into_bytes(),
+                )
+            })
+            .collect()),
+        #[cfg(feature = "png")]
+        "png" => compiled
+            .pages()
+            .iter()
+            .enumerate()
+            .map(|(i, page)| {
+                Ok((
+                    format!("page-{}.png", i + 1),
+                    typst_render::render(page, &Default::default()).encode_png()?,
+                ))
+            })
+            .collect(),
+        _ => bail!("unsupported publication format: {format}"),
     }
-    compiled
-        .pages()
-        .iter()
-        .enumerate()
-        .map(|(i, page)| {
-            let bytes = if format == "svg" {
-                typst_svg::svg(page, &Default::default()).into_bytes()
-            } else {
-                typst_render::render(page, &Default::default()).encode_png()?
-            };
-            Ok((format!("page-{}.{format}", i + 1), bytes))
-        })
-        .collect()
 }

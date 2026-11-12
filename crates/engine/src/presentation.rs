@@ -97,6 +97,7 @@ pub fn inject(html: String, diagrams: &BTreeMap<String, String>) -> Result<Strin
     )?;
     Ok(String::from_utf8(bytes)?)
 }
+#[cfg(any(feature = "pdf", feature = "svg", feature = "png"))]
 pub fn image_sources(html: &str) -> Vec<String> {
     fn walk(n: &Handle, images: &mut Vec<String>) {
         if let NodeData::Element { name, attrs, .. } = &n.data
@@ -118,6 +119,12 @@ pub fn image_sources(html: &str) -> Vec<String> {
 }
 
 /// Static MathML is opt-in for HTML, preserving the default Asciidoctor contract.
+#[cfg(not(feature = "mathml"))]
+pub fn render_math(_html: String) -> Result<String> {
+    bail!("native MathML is not enabled; enable the 'mathml' Cargo feature on adoc-engine")
+}
+
+#[cfg(feature = "mathml")]
 pub fn render_math(html: String) -> Result<String> {
     fn replace(node: &Handle, display: bool) -> Result<()> {
         let mut display = display;

@@ -79,6 +79,7 @@ fn explicit_all_numbers_bibliography_and_keeps_full_xref_label() {
     assert!(!html.contains("Section 2"), "{html}");
 }
 
+#[cfg(all(feature = "epub", feature = "typesetting"))]
 #[test]
 fn publication_backends_preserve_checklist_titles_and_caption_numbers() {
     let source = "= Document\n:sectnums:\n\n== Before\n\n* Workers\n** Storage\n\n.Release checklist\n* [x] Build\n* [ ] Promote\n\n[IMPORTANT]\n.Before switching traffic\n====\nVerify readiness.\n====\n\n.First example\n====\nAn ordinary example.\n====\n\n[bibliography]\n== Special\n\n* [[[ref]]] A reference.\n\n== After\n";

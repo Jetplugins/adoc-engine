@@ -1,4 +1,6 @@
-use adoc_engine::{RenderOptions, export, render};
+#[cfg(feature = "epub")]
+use adoc_engine::export;
+use adoc_engine::{RenderOptions, render};
 use asciidoc_parser::{
     HasSpan,
     blocks::{Block, FindBlocks},
@@ -107,6 +109,7 @@ fn top_level_admonition_keeps_list_like_paragraph_text() {
     assert!(html.contains(". This is still paragraph text."));
 }
 
+#[cfg(feature = "epub")]
 #[test]
 fn epub_preserves_the_separate_list_item() {
     let source = ". Deploy the application.\n+\nTIP: Keep the previous release.\n. Promote the verified release.\n";

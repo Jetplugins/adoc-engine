@@ -10,13 +10,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v7
         with: { python-version: '3.15' }
-      - run: cargo test --workspace --locked
+      - run: cargo test --workspace --all-features --locked
       - run: cargo build --locked
       - run: python3 tests/library_consumer.py
+      - run: python3 tests/feature_consumer.py --profile pdf --vendor-pdf
       - run: python3 tests/protocol.py target/debug/adoc-engine
       - run: python3 -m unittest discover -s benchmarks -p 'test_*.py'
       - run: python3 -m unittest discover -s tests -p 'test_*.py'
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   msrv:
     strategy:
@@ -29,3 +30,42 @@ jobs:
         with: { toolchain: '${{ matrix.toolchain }}' }
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --locked
+
+  features:
+    name: Features (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { profile: core, features: '' }
+          - { profile: mathml, features: mathml }
+          - { profile: epub, features: epub }
+          - { profile: highlighting, features: highlighting }
+          - { profile: pdf, features: pdf }
+          - { profile: svg, features: svg }
+          - { profile: png, features: png }
+          - { profile: full, features: full }
+          - { profile: default, features: '' }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v7
+        with: { python-version: '3.15' }
+      - uses: Swatinem/rust-cache@v2
+        with: { key: 'features-${{ matrix.profile }}' }
+      - name: Test and lint this feature configuration without the CLI
+        env:
+          ADOC_FEATURE_PROFILE: ${{ matrix.profile }}
+          ADOC_FEATURES: ${{ matrix.features }}
+        run: |
+          args=(--no-default-features)
+          if [ "$ADOC_FEATURE_PROFILE" = default ]; then
+            args=()
+          elif [ -n "$ADOC_FEATURES" ]; then
+            args+=(--features "$ADOC_FEATURES")
+          fi
+          cargo test -p adoc-engine --locked "${args[@]}"
+          cargo clippy -p adoc-engine --all-targets --locked "${args[@]}" -- -D warnings
+      - name: Test isolated consumer and dependency boundaries
+        run: python3 tests/feature_consumer.py --profile '${{ matrix.profile }}'

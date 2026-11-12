@@ -1,8 +1,11 @@
+#![cfg(feature = "epub")]
+
 use adoc_engine::{RenderOptions, export};
+#[cfg(feature = "highlighting")]
+use std::path::PathBuf;
 use std::{
     collections::BTreeMap,
     io::{Cursor, Read},
-    path::PathBuf,
 };
 
 fn book(source: &str, attributes: &[(&str, &str)]) -> BTreeMap<String, Vec<u8>> {
@@ -128,6 +131,7 @@ fn math_is_static_mathml_and_manifest_marks_mathml_content() {
     assert!(!body.contains("\\$"));
     assert!(text(&files, "EPUB/package.opf").contains("properties=\"mathml\""));
 }
+#[cfg(feature = "highlighting")]
 #[test]
 fn highlighting_preserves_source_and_produces_static_token_classes() {
     let files = book(
@@ -183,6 +187,7 @@ fn invalid_references_and_metadata_fail_before_an_archive_is_returned() {
         );
     }
 }
+#[cfg(feature = "highlighting")]
 #[test]
 fn book_fixture_preserves_includes_assets_cover_and_media() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

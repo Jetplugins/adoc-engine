@@ -1,8 +1,10 @@
 //! Native STEM conversion shared by HTML and EPUB.
+#[cfg(feature = "mathml")]
 use anyhow::{Context, Result, ensure};
 use asciidoc_html5::Document;
 use asciidoc_parser::document::InterpretedValue;
 
+#[cfg(feature = "mathml")]
 pub(crate) enum Piece<'a> {
     Text(&'a str),
     Math(String),
@@ -14,6 +16,7 @@ pub(crate) fn native_html(doc: &Document<'_>) -> bool {
 
 /// Recognize only the delimiters emitted by the AsciiDoc HTML backend.
 /// Code, scripts and existing MathML are excluded by the DOM walkers.
+#[cfg(feature = "mathml")]
 pub(crate) fn pieces(mut text: &str, display: bool) -> Result<Vec<Piece<'_>>> {
     let mut out = Vec::new();
     while let Some((at, open, close, latex, block)) = [
@@ -41,6 +44,7 @@ pub(crate) fn pieces(mut text: &str, display: bool) -> Result<Vec<Piece<'_>>> {
     Ok(out)
 }
 
+#[cfg(feature = "mathml")]
 fn mathml(source: &str, latex: bool, display: bool) -> Result<String> {
     ensure!(source.len() <= 32 * 1024, "STEM expression exceeds 32 KiB");
     let markup = if latex {

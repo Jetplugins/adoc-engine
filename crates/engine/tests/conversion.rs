@@ -36,6 +36,7 @@ fn source_lines() {
     .unwrap();
     assert!(r.html.contains("data-source-line=\"3\""));
 }
+#[cfg(feature = "epub")]
 #[test]
 fn epub_container() {
     let artifacts = export(
@@ -55,9 +56,13 @@ fn epub_container() {
         roxmltree::Document::parse(&text).unwrap();
     }
 }
+#[cfg(any(feature = "pdf", feature = "svg", feature = "png"))]
 #[test]
 fn publication_formats() {
-    for format in ["pdf", "svg", "png"] {
+    for format in ["pdf", "svg", "png"]
+        .into_iter()
+        .filter(|format| adoc_engine::supported_formats().contains(format))
+    {
         let artifacts = export(
             "= Book\n\n== Chapter\n\nHello *reader*.",
             format,
@@ -79,6 +84,7 @@ fn unsupported_format() {
     assert!(export("text", "docx", &RenderOptions::default()).is_err());
 }
 
+#[cfg(feature = "full")]
 #[test]
 fn local_images_and_jail() {
     let dir = std::env::temp_dir().join(format!("adoc-engine-images-{}", std::process::id()));
@@ -138,6 +144,7 @@ fn overlays_and_semantic_catalog() {
     assert!(a.rendered.html.contains("Unsaved."));
     assert!(a.symbols.iter().any(|s| s.name == "anchor"));
 }
+#[cfg(feature = "pdf")]
 #[test]
 fn compound_cells_and_passthrough_are_preserved() {
     let source = "= Test\n\n[cols=\"1\"]\n|===\na|\n* Nested cell text\n|===\n\n++++\n<p>Visible <strong>HTML text</strong>.</p>\n++++";
@@ -152,6 +159,7 @@ fn compound_cells_and_passthrough_are_preserved() {
             .starts_with(b"%PDF")
     );
 }
+#[cfg(feature = "epub")]
 #[test]
 fn epub_handles_entities_and_distinct_identifiers() {
     let opts = RenderOptions::default();
@@ -175,11 +183,15 @@ fn supplied_diagrams_all_publications() {
     };
     let result = render(&source, &options).unwrap();
     assert!(result.html.contains("<svg"), "{}", result.html);
-    for format in ["epub", "pdf", "svg", "svg-merged", "png"] {
+    for format in ["epub", "pdf", "svg", "svg-merged", "png"]
+        .into_iter()
+        .filter(|format| adoc_engine::supported_formats().contains(format))
+    {
         let artifacts = export(&source, format, &options).unwrap();
         assert!(!artifacts[0].1.is_empty());
     }
 }
+#[cfg(feature = "pdf")]
 #[test]
 fn passthrough_cannot_bypass_asset_policy() {
     let root = std::env::temp_dir();
@@ -202,7 +214,7 @@ fn hostile_diagram_rejected() {
         )]),
         ..Default::default()
     };
-    assert!(export("[source]\n----\nsource\n----", "pdf", &options).is_err());
+    assert!(export("[source]\n----\nsource\n----", "html", &options).is_err());
 }
 
 #[test]
@@ -229,6 +241,7 @@ fn aliases_preserve_nested_file_context() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(feature = "epub")]
 #[test]
 fn diagram_namespace_is_well_formed() {
     let options=RenderOptions{diagrams:std::collections::BTreeMap::from([("diagram".into(),r#"<svg xmlns="http://www.w3.org/2000/svg" width="5" height="5"><rect width="5" height="5"/></svg>"#.into())]),..Default::default()};
@@ -243,6 +256,7 @@ fn diagram_namespace_is_well_formed() {
     assert!(!content.contains(":xmlns="), "{content}");
 }
 
+#[cfg(feature = "pdf")]
 #[test]
 fn publication_links_to_nonsection_blocks() {
     let source = "= References\n\nSee <<table-anchor,the table>> and <<paragraph-anchor,the paragraph>>.\n\n[[paragraph-anchor]]\nA destination.\n\n[[table-anchor]]\n|===\n|Cell\n|===";

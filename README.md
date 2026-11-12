@@ -36,13 +36,15 @@ Use `:stem: latexmath` for LaTeX; add `:stem-renderer: native` for static MathML
 in HTML without MathJax. See the [STEM guide](docs/stem.md) for examples,
 format behavior, supported scope and verification.
 
-## Version 0.5.0
+## Version 0.6.0
 
-[Version 0.5.0 is released](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.5.0).
-It adds native LaTeX and AsciiMath equation rendering to publication
-exports, static LaTeX MathML in EPUB, and opt-in native MathML for HTML.
-The [STEM guide](docs/stem.md) includes syntax, format behavior and command scope;
-see the [release notes](RELEASE_NOTES.md) for details. Historical benchmark
+[Version 0.6.0](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.6.0)
+adds optional library backends: HTML/JSON consumers can omit Typst, while native
+MathML, EPUB, highlighting, PDF, SVG and PNG can be enabled individually.
+The default library and official CLI retain all formats. See the
+[feature guide](docs/features.md) and [release notes](RELEASE_NOTES.md).
+Native LaTeX and AsciiMath support from 0.5.0 remains available; the
+[STEM guide](docs/stem.md) documents syntax and scope. Historical benchmark
 versions remain labeled below.
 
 ## EPUB books in 0.3.0
@@ -68,7 +70,7 @@ External Rust projects can use the verified Git release:
 
 ```toml
 [dependencies]
-adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.5.0" }
+adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.6.0" }
 ```
 
 ```rust
@@ -84,6 +86,15 @@ and pre-rendered SVG diagrams keyed by source. Render results include diagnostic
 include dependencies, and source mappings. All publication backends consume the same
 parsed document model. Native integrations can customize source, options, and supplied
 assets without executing scripting runtimes.
+
+## Optional library backends
+
+HTML-only integrations can disable default features to omit Typst and publication
+fonts. Features select native MathML, EPUB, highlighting, PDF, SVG and PNG.
+The default library and official CLI retain the complete feature set. Use
+`supported_formats()` to discover the compiled backends; disabled features return
+explicit errors. See the [feature guide](docs/features.md) for configuration,
+compatibility and measured dependency scope.
 
 ## Editor integration
 
@@ -378,7 +389,7 @@ Refresh the README charts from the archived verified samples with
 ## Publishing a release
 
 Keep the workspace and CLI dependency versions in sync, commit the version bump,
-and create the matching tag (for example `v0.5.0`). In GitHub Releases, publishing
+and create the matching tag (for example `v0.6.0`). In GitHub Releases, publishing
 that tag starts **Release engine**, which validates the version, tests five native
 platforms, checks reference compatibility and publications, then attaches archives,
 SHA-256 checksums, and `release-manifest.json`. Assets appear after verification.

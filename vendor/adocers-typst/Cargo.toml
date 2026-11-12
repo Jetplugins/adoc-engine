@@ -41,8 +41,10 @@ all-features = true
 default = [
     "math",
     "mermaid",
+    "pdf",
 ]
 math = ["dep:asciimath-rs"]
+pdf = ["dep:typst", "dep:typst-as-lib", "dep:typst-pdf"]
 mermaid = ["adocers-render-core/mermaid"]
 
 [lib]
@@ -69,16 +71,19 @@ optional = true
 version = "0.2"
 
 [dependencies.typst]
+optional = true
 version = "0.15"
 
 [dependencies.typst-as-lib]
-version = "0.16"
+optional = true
+version = "0.17"
 features = [
     "typst-kit-fonts",
     "typst-kit-embed-fonts",
 ]
 
 [dependencies.typst-pdf]
+optional = true
 version = "0.15"
 
 [lints.clippy]

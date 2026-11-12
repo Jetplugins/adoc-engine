@@ -43,6 +43,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(feature = "pdf")]
 use anyhow::{Context as _, Result};
 use asciidoc_parser::{
     Document,
@@ -87,6 +88,7 @@ pub struct Options {
 
 /// A typeset PDF, and anything the caller ought to be told about how it was
 /// made.
+#[cfg(feature = "pdf")]
 #[derive(Clone, Debug)]
 pub struct Pdf {
     /// The PDF itself.
@@ -106,6 +108,7 @@ pub struct Pdf {
 ///
 /// `base` is the directory the document was read from, which is where the
 /// images it names are looked for.
+#[cfg(feature = "pdf")]
 pub fn pdf(document: &Document<'_>, base: &Path, options: &Options) -> Result<Pdf> {
     let (source, images) = markup(document, base, options);
 
@@ -209,6 +212,7 @@ pub fn markup_with_resources(
 }
 
 /// Compile Typst markup to a PDF.
+#[cfg(feature = "pdf")]
 fn compile(source: &str, images: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
     use typst_as_lib::{TypstEngine, typst_kit_options::TypstKitFontOptions};
 
@@ -239,6 +243,7 @@ fn compile(source: &str, images: &[(String, Vec<u8>)]) -> Result<Vec<u8>> {
 }
 
 /// Turn Typst's diagnostics into one message.
+#[cfg(feature = "pdf")]
 fn describe(errors: &[typst::diag::SourceDiagnostic]) -> String {
     errors
         .iter()
@@ -2170,6 +2175,7 @@ mod tests {
         assert!(out.contains("$x ^(2 )$"), "{out}");
     }
 
+    #[cfg(feature = "pdf")]
     #[test]
     fn typesets_the_reduced_planck_constant() {
         // MiTeX's older symbol path is retargeted to the current Typst name.
@@ -2183,6 +2189,7 @@ mod tests {
         assert!(pdf.fallback.is_none(), "the equation must be typeset");
     }
 
+    #[cfg(feature = "pdf")]
     #[test]
     fn compiles_to_a_pdf() {
         let mut parser = Parser::default();

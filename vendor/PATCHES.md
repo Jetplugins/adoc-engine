@@ -80,3 +80,12 @@ upstream AsciiMath tokenizer underflow retains its source instead.
 The HTML renderer suppresses its MathJax footer only when `stem-renderer=native`
 is selected. Its default output stays reference-compatible. The engine performs
 the native MathML conversion; this patch does not add a script runtime.
+
+## Optional publication compiler
+
+`adocers-typst` keeps its original PDF API behind a new `pdf` feature, enabled in
+that vendor crate's default feature set. Its Typst compiler, wrapper and PDF
+serializer dependencies are optional together. The engine uses the markup API
+with vendor defaults disabled and owns its selected output backends, so SVG/PNG
+builds do not accidentally link the vendor PDF compiler. The wrapper is aligned
+with the engine on `typst-as-lib` 0.17; original upstream Cargo.toml.orig is retained.

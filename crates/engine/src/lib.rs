@@ -1,11 +1,14 @@
 //! Native AsciiDoc conversion. No JavaScript, Ruby, or external executable is used.
 mod analysis;
+#[cfg(any(feature = "epub", feature = "pdf", feature = "svg", feature = "png"))]
 mod assets;
 mod math;
 mod presentation;
 mod resolver;
 pub use analysis::{Analysis, Symbol, analyze};
+#[cfg(feature = "epub")]
 mod epub;
+#[cfg(any(feature = "pdf", feature = "svg", feature = "png"))]
 mod publication;
 use anyhow::{Result, bail};
 use asciidoc_html5::{Options, SafeMode};
@@ -101,6 +104,37 @@ pub struct RenderResult {
     pub source_map: Vec<SourceMapping>,
     pub dependencies: Vec<String>,
 }
+
+/// Export formats compiled into this library, in stable presentation order.
+/// HTML and JSON are always available; SVG also enables merged SVG.
+pub fn supported_formats() -> &'static [&'static str] {
+    &[
+        "html",
+        #[cfg(feature = "pdf")]
+        "pdf",
+        #[cfg(feature = "epub")]
+        "epub",
+        #[cfg(feature = "svg")]
+        "svg",
+        #[cfg(feature = "svg")]
+        "svg-merged",
+        #[cfg(feature = "png")]
+        "png",
+        "json",
+    ]
+}
+
+fn require_format(format: &str) -> Result<()> {
+    if supported_formats().contains(&format) {
+        return Ok(());
+    }
+    let feature = match format {
+        "epub" | "pdf" | "png" => format,
+        "svg" | "svg-merged" => "svg",
+        _ => bail!("unsupported format: {format}"),
+    };
+    bail!("format '{format}' is not enabled; enable the '{feature}' Cargo feature on adoc-engine")
+}
 pub fn render(source: &str, options: &RenderOptions) -> Result<RenderResult> {
     let opts = options.parser_options()?;
     let doc = asciidoc_html5::load_with(source, &opts);
@@ -159,13 +193,18 @@ pub fn export(
     format: &str,
     options: &RenderOptions,
 ) -> Result<Vec<(String, Vec<u8>)>> {
-    let mut opts = options.parser_options()?;
-    if format == "epub" {
-        opts = opts.doctype_default("book").processing_backend("epub3");
+    require_format(format)?;
+    let opts = options.parser_options()?;
+    #[cfg(feature = "epub")]
+    let opts = if format == "epub" {
+        let mut opts = opts.doctype_default("book").processing_backend("epub3");
         if !options.attributes.contains_key("listing-caption") {
             opts = opts.attribute_default("listing-caption", "Listing");
         }
-    }
+        opts
+    } else {
+        opts
+    };
     let doc = asciidoc_html5::load_with(source, &opts);
     match format {
         "html" => {
@@ -184,10 +223,12 @@ pub fn export(
             "document.json".into(),
             serde_json::to_vec_pretty(&render(source, options)?)?,
         )]),
+        #[cfg(feature = "epub")]
         "epub" => Ok(vec![(
             "document.epub".into(),
             epub::export(&doc, &opts, options)?,
         )]),
+        #[cfg(any(feature = "pdf", feature = "svg", feature = "png"))]
         "pdf" | "svg" | "svg-merged" | "png" => publication::export(&doc, format, options),
         _ => bail!("unsupported format: {format}"),
     }

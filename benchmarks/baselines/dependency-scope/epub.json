@@ -1,0 +1,28 @@
+{
+  "sourceTreeSha256": "29827954683a500d3355880ac54ff134e77f3b46a39538381fab44dc007e4aac",
+  "consumerSourceSha256": "6f32dee9590f5fe305347ef2d702f2deba04d523046dd6ace9e5576829e6ba3c",
+  "vendorPdf": false,
+  "profile": "epub",
+  "features": [
+    "epub"
+  ],
+  "formats": [
+    "html",
+    "epub",
+    "json"
+  ],
+  "host": "aarch64-apple-darwin",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13) (Homebrew)",
+  "dependencyPackages": 92,
+  "release": true,
+  "freshTarget": true,
+  "jobs": 4,
+  "buildSeconds": 31.449,
+  "binaryBytes": 8651104,
+  "binarySha256": "8256fc533a93af71b0ced582f3a0f1cc5bf614374cb26107dee9a789a7479886",
+  "sourceCommit": "7f0cc921f7723188adafcf2b794f5847800af2b6",
+  "workingTreeDirty": true,
+  "lockfileSha256": "994180ff0fa449681adcca3b18bcf1b46bc237a00bd1a0f14526ef77eaa89d7c",
+  "method": "One build; dependencies already downloaded. Fresh release target when --measure; thin LTO, one codegen unit. Compiler wrappers disabled for measured builds. Unstripped dynamic-format consumer retains each enabled export backend."
+}

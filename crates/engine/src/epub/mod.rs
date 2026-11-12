@@ -832,6 +832,15 @@ fn archive(files: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>> {
     }
     Ok(zip.finish()?.into_inner())
 }
+#[cfg(not(feature = "highlighting"))]
+fn highlight(_root: &mut Element, meta: &Metadata) -> Result<()> {
+    ensure!(
+        matches!(meta.attr("source-highlighter"), "" | "none"),
+        "EPUB syntax highlighting is not enabled; enable the 'highlighting' Cargo feature on adoc-engine"
+    );
+    Ok(())
+}
+#[cfg(feature = "highlighting")]
 fn highlight(root: &mut Element, meta: &Metadata) -> Result<()> {
     if matches!(meta.attr("source-highlighter"), "" | "none") {
         return Ok(());
