@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Enable native LaTeX and AsciiMath equations in PDF, SVG and PNG exports.
+- Add LaTeX MathML to EPUB and opt-in native MathML HTML (`stem-renderer=native`).
+- Align publication notation aliases/overrides with HTML and correct `\hbar`.
+- Verify ten mixed equations across all visual exports, including EPUBCheck and
+  PDF text extraction, in the publication release workflow.
+
 ## 0.4.0
 
 - Update SHA-256, Base64, ZIP and Typst library dependencies.

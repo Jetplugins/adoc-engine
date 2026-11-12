@@ -1,9 +1,14 @@
 use super::dom::{Element, Node, parse};
-use anyhow::{Context, Result, ensure};
+use crate::math::{Piece, pieces};
+use anyhow::Result;
 
-/// Convert the HTML backend's AsciiMath delimiters into static, accessible MathML.
+/// Convert both AsciiMath and LaTeX into static, accessible MathML.
 pub fn render(root: &mut Element, display: bool) -> Result<()> {
-    if matches!(root.tag.as_str(), "pre" | "code" | "kbd" | "samp" | "math") {
+    if matches!(
+        root.tag.as_str(),
+        "pre" | "code" | "kbd" | "samp" | "math" | "script" | "style" | "textarea" | "svg"
+    ) || root.class("nostem")
+    {
         return Ok(());
     }
     let display = display || root.class("stemblock");
@@ -15,33 +20,40 @@ pub fn render(root: &mut Element, display: bool) -> Result<()> {
                 children.push(Node::Element(e));
             }
             Node::Text(text) => {
-                let mut rest = text.as_str();
-                while let Some(start) = rest.find("\\$") {
-                    let Some(end) = rest[start + 2..].find("\\$") else {
-                        break;
-                    };
-                    children.push(Node::Text(rest[..start].into()));
-                    let source = &rest[start + 2..start + 2 + end];
-                    ensure!(
-                        source.len() <= 32 * 1024,
-                        "EPUB math expression exceeds 32 KiB"
-                    );
-                    let markup = mathemascii::render_mathml(mathemascii::parse(source));
-                    let mut fragment = parse(&markup)?;
-                    let mut math = fragment
-                        .children
-                        .drain(..)
-                        .find_map(|n| match n {
-                            Node::Element(e) if e.tag == "math" => Some(e),
-                            _ => None,
-                        })
-                        .context("AsciiMath renderer returned no MathML")?;
-                    math.set("display", if display { "block" } else { "inline" });
-                    math.set("alttext", source);
-                    children.push(Node::Element(math));
-                    rest = &rest[start + 2 + end + 2..];
+                for piece in pieces(&text, display)? {
+                    match piece {
+                        Piece::Text(text) => children.push(Node::Text(text.into())),
+                        Piece::Math(markup) => {
+                            let mut fragment = parse(&markup)?;
+                            for node in &mut fragment.children {
+                                if let Node::Element(math) = node {
+                                    math.set(
+                                        "display",
+                                        if display || math.attr("display") == "block" {
+                                            "block"
+                                        } else {
+                                            "inline"
+                                        },
+                                    );
+                                    // MathML Core permits scriptlevel on mtable; EPUB's
+                                    // MathML 3 profile requires the equivalent mstyle wrapper.
+                                    math.walk_mut(&mut |element| {
+                                        if element.tag == "mtable"
+                                            && let Some(level) = element.attrs.remove("scriptlevel")
+                                        {
+                                            let table =
+                                                std::mem::replace(element, Element::new("mstyle"));
+                                            element.set("scriptlevel", level);
+                                            element.children.push(Node::Element(table));
+                                        }
+                                        Ok(())
+                                    })?;
+                                }
+                            }
+                            children.extend(fragment.children);
+                        }
+                    }
                 }
-                children.push(Node::Text(rest.to_owned()));
             }
         }
     }

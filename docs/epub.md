@@ -84,9 +84,9 @@ otherwise a local `front-matter.html` is used when allowed. `epub3-stylesdir` lo
 are bundled relative to each stylesheet, with import cycle/depth checks. Put
 custom fonts beneath the permitted resource directory and supply their licenses.
 
-AsciiMath is converted to static MathML, inline and in blocks. Rust uses native
-mathemascii; Kotlin uses bundled AsciiMath2Tex and KaTeX on the JVM (also supports
-TeX). Rust leaves TeX as readable source. `source-highlighter` enables static
+AsciiMath and LaTeX are converted to static MathML, inline and in blocks. Rust
+uses native mathemascii and math-core; Kotlin uses bundled AsciiMath2Tex and KaTeX
+on the JVM. See the [STEM guide](stem.md) for examples and command coverage. `source-highlighter` enables static
 highlighting: Rust uses Syntect, Kotlin uses bundled highlight.js on the JVM.
 Ruby highlighter-specific themes/options are not executed. No Node runtime or
 browser is required by either exporter; arbitrary document scripts and extensions
@@ -102,7 +102,7 @@ byte-identical archives within each exporter. Cross-engine ZIP bytes differ.
 The baseline is [Asciidoctor EPUB3 2.3](https://docs.asciidoctor.org/epub3-converter/latest/).
 The shared fixture exercises its documented publication features:
 
-| Feature | Rust 0.3 | Kotlin exporter | Reference EPUB3 2.3 |
+| Feature | Rust (current source) | Kotlin exporter | Reference EPUB3 2.3 |
 | --- | --- | --- | --- |
 | Book/article, section IDs and split level | Yes | Yes | Yes |
 | Rich metadata, cover, series | Yes | Yes | Yes |
@@ -111,7 +111,7 @@ The shared fixture exercises its documented publication features:
 | Front matter, alternate CSS, local fonts | Yes | Yes | Yes |
 | Reader typography, Unicode callouts, captions | Yes | Yes | Yes |
 | Static highlighting | Syntect | highlight.js/JVM | Rouge/CodeRay/Pygments |
-| Static math | AsciiMath | AsciiMath + TeX | AsciiMath |
+| Static math | AsciiMath + LaTeX | AsciiMath + TeX | AsciiMath |
 | Local audio/video | Yes | Yes | Yes |
 | Font subsets selected by `scripts` | Full faces | Full faces | Subsets |
 | Arbitrary Ruby extensions/browser scripts | No | No | Ruby extensions |

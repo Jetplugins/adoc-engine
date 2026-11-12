@@ -38,6 +38,13 @@ Publication themes and page breaks need not match Asciidoctor PDF's exact layout
 Language navigation covers the active document and included documents; it does not
 scan unrelated workspace files or implement document rename/refactoring.
 
+## Native STEM equations
+
+[STEM rendering](docs/stem.md) supports LaTeX and AsciiMath in publication exports.
+Static HTML MathML is opt-in with `stem-renderer=native`; default HTML retains
+its reference-compatible delimiters and MathJax loader. MathML and Typst use
+different native translators, with explicitly documented command subsets.
+
 ## EPUB 0.3.0
 
 The [EPUB guide](docs/epub.md) compares documented Asciidoctor EPUB3 2.3 features

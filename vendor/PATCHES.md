@@ -68,3 +68,15 @@ backend uses `processing_backend("epub3")` so backend conditionals are evaluated
 for the publication target. Explicit API/header doctype values still win.
 The engine's API attribute adapter now handles Asciidoctor's `@` soft defaults
 and `!` unsets rather than passing their control characters as literal values.
+
+## Native STEM rendering
+
+The engine enables adocers-typst's math option and AsciiMath feature. Its notation
+selection now recognizes `latex`/`tex` aliases and `[stem,notation]` overrides,
+matching the HTML backend. MiTeX's old `planck.reduce` path maps to Typst's
+`planck` (the reduced Planck constant). An initial escape that triggers an
+upstream AsciiMath tokenizer underflow retains its source instead.
+
+The HTML renderer suppresses its MathJax footer only when `stem-renderer=native`
+is selected. Its default output stays reference-compatible. The engine performs
+the native MathML conversion; this patch does not add a script runtime.

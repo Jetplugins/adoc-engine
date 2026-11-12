@@ -1,0 +1,42 @@
+= Native STEM equations
+:doctype: article
+:stem: latexmath
+:stem-renderer: native
+
+== Inline equations
+
+A fraction stem:[\frac{a}{b}] and a root latexmath:[\sqrt{x^2+y^2}].
+AsciiMath can be mixed in: asciimath:[sqrt(x^2+y^2)].
+Greek letters stem:[\alpha + \beta = \gamma].
+
+== Display equations
+
+[stem]
+++++
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+++++
+
+[latexmath]
+++++
+\int_0^1 x^2\,dx = \frac{1}{3}
+++++
+
+[latexmath]
+++++
+\begin{pmatrix}a & b \\ c & d\end{pmatrix}
+++++
+
+[latexmath]
+++++
+\begin{aligned}a &= b+c \\ d &= e-f\end{aligned}
+++++
+
+[latexmath]
+++++
+E = \hbar\omega
+++++
+
+[asciimath]
+++++
+sum_(i=1)^n i = (n(n+1))/2
+++++

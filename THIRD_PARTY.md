@@ -9,7 +9,8 @@ FONT_LICENSES contains the upstream typst-assets consolidated font notices and l
 - The vendored parser and publication emitter retain their original copyright/license files;
   modifications are described in vendor/PATCHES.md.
 - Typst and its libraries: Apache-2.0; typst-as-lib: MIT OR Apache-2.0.
-- EPUB static math: mathemascii and alemat (Apache-2.0); syntax highlighting: Syntect (MIT).
+- Native MathML: mathemascii and alemat (Apache-2.0), math-core (MIT).
+- Paginated equations: MiTeX (Apache-2.0), asciimath-rs (Apache-2.0); syntax highlighting: Syntect (MIT).
 - EPUB fonts: unmodified Libertinus Serif (OFL-1.1), DejaVu Sans Mono (DejaVu/Bitstream Vera);
   the consolidated notice is also embedded in each book using these fonts.
 - Embedded fonts retain their individual licenses as listed in FONT_LICENSES.

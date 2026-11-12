@@ -1,0 +1,6 @@
+/* Native MathML layout. No font downloads or JavaScript are required. */
+math { font-family: math; }
+math mtext { font-family: serif; }
+math mtd { padding: 0.5ex 0.4em; }
+math mtr > mtd:first-child { padding-left: 0; }
+math mtr > mtd:last-child { padding-right: 0; }

@@ -503,8 +503,7 @@ fn details(document: &Document<'_>) -> String {
 /// Nothing looks for them here either, so a line would otherwise carry
 /// `\(x^2\)` as written.
 ///
-/// LaTeX is typeset; `AsciiMath` is shown as its source, without the
-/// delimiters, for the reason [`math`] gives.
+/// Both notations are typeset when the math feature and option are enabled.
 fn prose(html: &str, math: bool) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
@@ -1030,8 +1029,8 @@ impl Emitter {
 
     /// A displayed equation, typeset if it can be and shown as written if not.
     ///
-    /// Only LaTeX is translated; see [`math`] for why `AsciiMath` is not, and
-    /// `--no-math` translates neither.
+    /// Both notations are translated with math enabled; unsupported expressions
+    /// retain their source.
     fn equation(&mut self, raw: &asciidoc_parser::blocks::RawDelimitedBlock<'_>, source: &str) {
         if let Some(typeset) = self.mathematics(raw, source) {
             let _ = writeln!(self.out, "$ {typeset} $\n");
@@ -1060,10 +1059,17 @@ impl Emitter {
     /// was set to, which is `AsciiMath` unless it says otherwise. Read the way
     /// the page reads it, so one block cannot be two notations.
     fn is_latex(&self, raw: &asciidoc_parser::blocks::RawDelimitedBlock<'_>) -> bool {
-        match raw.declared_style() {
-            Some("latexmath") => true,
+        let style = match raw.declared_style() {
+            Some("latexmath" | "latex" | "tex" | "asciimath") => raw.declared_style(),
+            _ => raw
+                .attrlist()
+                .and_then(|attrs| attrs.nth_attribute(2))
+                .map(|attr| attr.value()),
+        };
+        match style {
+            Some("latexmath" | "latex" | "tex") => true,
             Some("asciimath") => false,
-            _ => self.stem.as_deref() == Some("latexmath"),
+            _ => matches!(self.stem.as_deref(), Some("latexmath" | "latex" | "tex")),
         }
     }
 
@@ -2165,9 +2171,8 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_the_source_when_an_equation_will_not_typeset() {
-        // `\hbar` converts to a symbol this Typst no longer carries, so the
-        // document only lays out once the equations are shown as written.
+    fn typesets_the_reduced_planck_constant() {
+        // MiTeX's older symbol path is retargeted to the current Typst name.
         let mut parser = Parser::default();
         let document = parser.parse("= T\n:stem: latexmath\n\n[stem]\n++++\n\\hbar\\omega\n++++\n");
 
@@ -2175,12 +2180,7 @@ mod tests {
 
         assert!(pdf.bytes.starts_with(b"%PDF"), "should be a PDF");
 
-        // The caller has to be able to tell that it did not get what it asked
-        // for; this back end has nowhere to say so but its answer.
-        assert!(
-            pdf.fallback.is_some_and(|said| said.contains("equation")),
-            "the fallback should be reported"
-        );
+        assert!(pdf.fallback.is_none(), "the equation must be typeset");
     }
 
     #[test]

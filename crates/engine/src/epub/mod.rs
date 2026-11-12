@@ -117,6 +117,7 @@ pub fn export(
             )?;
         }
     }
+    styles.push_str(include_str!("../math.css"));
     let mut chapters = front_matter(&meta, &mut assets, options)?;
     let front_count = chapters.len();
     allocate_ids(&mut body)?;

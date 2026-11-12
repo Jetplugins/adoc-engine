@@ -2644,7 +2644,9 @@ impl Renderer<'_> {
     /// defaults to `none`; set with no value, it becomes `AMS`; otherwise its
     /// value passes through.
     fn mathjax_footer(&mut self, document: &Document<'_>) {
-        if !document.is_attribute_set("stem") {
+        if !document.is_attribute_set("stem")
+            || matches!(document.attribute_value("stem-renderer"), InterpretedValue::Value(value) if value == "native")
+        {
             return;
         }
 

@@ -15,7 +15,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
-adocers-typst = { version = "=0.3.2", path = "../../vendor/adocers-typst", default-features = false }
+adocers-typst = { version = "=0.3.2", path = "../../vendor/adocers-typst", default-features = false, features = ["math"] }
 typst-as-lib = { version = "0.17", features = ["typst-kit-fonts", "typst-kit-embed-fonts"] }
 typst = "0.15"
 typst-svg = "0.15"
@@ -31,3 +31,4 @@ time = { version = "0.3", features = ["formatting", "parsing"] }
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 mathemascii = "0.4"
 typst-pdf = "0.15"
+math-core = "0.9"

@@ -30,7 +30,9 @@ use asciimath_rs::{
 pub(crate) fn typst(source: &str) -> Option<String> {
     let source = source.trim();
 
-    if source.is_empty() {
+    // The upstream tokenizer underflows on an initial escape. This is generally
+    // LaTeX supplied as AsciiMath; retain its source instead of panicking.
+    if source.is_empty() || source.starts_with('\\') {
         return None;
     }
 

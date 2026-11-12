@@ -1,18 +1,26 @@
-# adoc-engine 0.4.0
+# adoc-engine 0.5.0
 
-This maintenance release refreshes the engine dependencies and build tooling.
+LaTeX and AsciiMath equations now render natively in publication exports, with
+no LaTeX installation, Node runtime, browser process or runtime package downloads.
 
-- Update SHA-256 (sha2 0.11), Base64 (0.23), ZIP (9.5.1) and typst-as-lib (0.17).
-- Preserve existing deterministic EPUB book identifiers with the new SHA-256 API,
-  with regression coverage for generated identifiers and explicit UUIDs.
-- Update the JavaScript compatibility reference to Asciidoctor.js 4.2.1 and migrate
-  the benchmark worker to its asynchronous API. JavaScript parity checks recognize
-  equivalent table-column width markup; Rust-to-Ruby checks remain strict.
-- Refresh checkout, setup and artifact GitHub Actions, Node.js 26 and Ubuntu tooling.
+- Enable the bundled MiTeX/Typst equation renderer in PDF, SVG, merged SVG and PNG,
+  including AsciiMath translation and embedded fonts.
+- Convert LaTeX and AsciiMath to static, accessible MathML in EPUB 3, including
+  inline/display modes, matrix compatibility and `mathml` manifest properties.
+- Add opt-in static HTML MathML with `:stem-renderer: native` or
+  `-a stem-renderer=native`. Standalone native HTML includes math layout CSS and
+  omits the MathJax loader; default HTML preserves its Asciidoctor-compatible mode.
+- Honor `latex`/`tex` notation aliases and positional block overrides, correct
+  `\hbar`, and avoid an upstream AsciiMath tokenizer panic on initial escapes.
 
-The library, CLI and language-server interfaces retain the 0.3.0 feature set,
-including native HTML, PDF, EPUB 3, SVG, PNG and JSON exports.
+Select LaTeX with `:stem: latexmath`, then use expressions such as
+`stem:[\frac{a}{b}]` or `[latexmath]` display blocks. Both notations can be mixed.
+See the [STEM guide](https://github.com/Jetplugins/adoc-engine/blob/v0.5.0/docs/stem.md)
+for examples and supported scope. This supports math equations, not complete TeX
+documents or arbitrary packages; the native translators have different command
+subsets and unsupported-expression behavior.
 
-Downloads include dependency/font notices, SHA-256 checksums, build provenance
-and a release manifest. The release workflow verifies five native platforms and
-publication compatibility before publishing the packages.
+The release verification exercises ten mixed equations through all six visual
+formats, checks real PDF text and EPUBCheck validity, and retains the existing
+HTML compatibility, language-server and publication gates. Downloads include
+checksums, dependency/font notices, source provenance and the release manifest.

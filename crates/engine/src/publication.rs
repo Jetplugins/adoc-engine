@@ -13,7 +13,10 @@ pub fn export(
         let path = crate::assets::local_path(&target, options)?;
         resources.insert(target, std::fs::read(path)?);
     }
-    let settings = adocers_typst::Options::default();
+    let settings = adocers_typst::Options {
+        math: true,
+        ..Default::default()
+    };
     let (source, images) = adocers_typst::markup_with_resources(
         doc,
         &options.base_dir,

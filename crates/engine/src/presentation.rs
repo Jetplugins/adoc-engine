@@ -116,3 +116,92 @@ pub fn image_sources(html: &str) -> Vec<String> {
     walk(&tree(html).document, &mut images);
     images
 }
+
+/// Static MathML is opt-in for HTML, preserving the default Asciidoctor contract.
+pub fn render_math(html: String) -> Result<String> {
+    fn replace(node: &Handle, display: bool) -> Result<()> {
+        let mut display = display;
+        if let NodeData::Element { name, attrs, .. } = &node.data {
+            if matches!(
+                &*name.local,
+                "pre"
+                    | "code"
+                    | "kbd"
+                    | "samp"
+                    | "math"
+                    | "script"
+                    | "style"
+                    | "textarea"
+                    | "title"
+                    | "svg"
+            ) {
+                return Ok(());
+            }
+            for attr in attrs
+                .borrow()
+                .iter()
+                .filter(|attr| &*attr.name.local == "class")
+            {
+                if attr.value.split_whitespace().any(|class| class == "nostem") {
+                    return Ok(());
+                }
+                display |= attr
+                    .value
+                    .split_whitespace()
+                    .any(|class| class == "stemblock");
+            }
+        }
+        let mut children = Vec::new();
+        for child in std::mem::take(&mut *node.children.borrow_mut()) {
+            if let NodeData::Text { contents } = &child.data {
+                let text = contents.borrow();
+                for piece in crate::math::pieces(&text, display)? {
+                    let markup = match piece {
+                        crate::math::Piece::Text(text) => {
+                            children.push(markup5ever_rcdom::Node::new(NodeData::Text {
+                                contents: std::cell::RefCell::new(text.into()),
+                            }));
+                            continue;
+                        }
+                        crate::math::Piece::Math(markup) => markup,
+                    };
+                    let dom = tree(&markup);
+                    if let Some(body) = find(&dom.document, "body") {
+                        children.extend(std::mem::take(&mut *body.children.borrow_mut()));
+                    }
+                }
+            } else {
+                replace(&child, display)?;
+                children.push(child);
+            }
+        }
+        *node.children.borrow_mut() = children;
+        Ok(())
+    }
+    let standalone = html
+        .trim_start()
+        .to_ascii_lowercase()
+        .starts_with("<!doctype")
+        || html.trim_start().starts_with("<html");
+    let dom = tree(&html);
+    if let Some(body) = find(&dom.document, "body") {
+        replace(&body, false)?;
+    }
+    if standalone && let Some(head) = find(&dom.document, "head") {
+        let style_tree = tree(&format!("<style>{}</style>", include_str!("math.css")));
+        if let Some(style) = find(&style_tree.document, "style") {
+            head.children.borrow_mut().push(style);
+        }
+    }
+    let mut bytes = Vec::new();
+    serialize(
+        &mut bytes,
+        &SerializableHandle::from(if standalone {
+            dom.document.clone()
+        } else {
+            find(&dom.document, "body").unwrap_or(dom.document.clone())
+        }),
+        SerializeOpts::default(),
+    )?;
+    Ok(String::from_utf8(bytes)?)
+}

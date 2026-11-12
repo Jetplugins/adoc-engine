@@ -1,6 +1,7 @@
 //! Native AsciiDoc conversion. No JavaScript, Ruby, or external executable is used.
 mod analysis;
 mod assets;
+mod math;
 mod presentation;
 mod resolver;
 pub use analysis::{Analysis, Symbol, analyze};
@@ -115,6 +116,11 @@ pub fn render(source: &str, options: &RenderOptions) -> Result<RenderResult> {
         asciidoc_html5::convert_document_with(&doc, &opts),
         &options.diagrams,
     )?;
+    let html = if math::native_html(&doc) {
+        presentation::render_math(html)?
+    } else {
+        html
+    };
     let source_map = if options.source_locations {
         let re = regex::Regex::new(r#"data-source-line="(\d+)""#)?;
         re.captures_iter(&html)
@@ -162,14 +168,18 @@ pub fn export(
     }
     let doc = asciidoc_html5::load_with(source, &opts);
     match format {
-        "html" => Ok(vec![(
-            "document.html".into(),
-            presentation::inject(
+        "html" => {
+            let html = presentation::inject(
                 asciidoc_html5::convert_document_with(&doc, &opts),
                 &options.diagrams,
-            )?
-            .into_bytes(),
-        )]),
+            )?;
+            let html = if math::native_html(&doc) {
+                presentation::render_math(html)?
+            } else {
+                html
+            };
+            Ok(vec![("document.html".into(), html.into_bytes())])
+        }
         "json" => Ok(vec![(
             "document.json".into(),
             serde_json::to_vec_pretty(&render(source, options)?)?,

@@ -10,11 +10,8 @@
 //! handlers that its own Typst package would supply through a scope, and
 //! [`PRELUDE`] defines them instead.
 //!
-//! `AsciiMath` is not converted. It looks close enough to Typst to tempt one
-//! into passing it through, and it is not: `int_0^1` is an integral in
-//! `AsciiMath` and a name Typst already has for the whole-number type. An
-//! equation shown as the notation it was written in is honest; one quietly
-//! typeset wrong is not.
+//! `AsciiMath` uses a separate parser and translator in [`super::ascii`]
+//! when the `math` feature is enabled.
 
 /// The handlers `mitex`'s output calls for, defined once at the top of a
 /// document.
@@ -51,11 +48,8 @@ const RENAMED: &[(&str, &str)] = &[
     ("dash.circle", "dash.o"),
     ("angle.l", "chevron.l"),
     ("angle.r", "chevron.r"),
+    ("planck.reduce", "planck"),
 ];
-
-// Not renamed but retired: this Typst has no reduced Planck constant, and `h`
-// for `ℏ` would be a different constant rather than a different name, so
-// `\hbar` is left to fall back to its source.
 
 /// Put the renamed symbols under the names this Typst knows them by.
 fn retarget(converted: &str) -> String {

@@ -29,14 +29,20 @@ Safe mode defaults to `secure`, which disables filesystem includes and image emb
 Use `safe` for local assets confined to the document directory; `unsafe` explicitly
 allows access outside it. Network resource fetching is disabled.
 
-## Version 0.4.0
+## Native STEM equations
 
-[Version 0.4.0 is released](https://github.com/Jetplugins/adoc-engine/releases/tag/v0.4.0).
-It refreshes engine dependencies and CI/release tooling, preserves
-deterministic EPUB identifiers with the updated SHA-256 API, and updates the
-JavaScript compatibility reference to Asciidoctor.js 4.2.1.
-See the [release notes](RELEASE_NOTES.md). Historical benchmark versions remain
-labeled below.
+LaTeX and AsciiMath equations render natively in PDF, SVG, PNG and EPUB.
+Use `:stem: latexmath` for LaTeX; add `:stem-renderer: native` for static MathML
+in HTML without MathJax. See the [STEM guide](docs/stem.md) for examples,
+format behavior, supported scope and verification.
+
+## Version 0.5.0
+
+Version 0.5.0 adds native LaTeX and AsciiMath equation rendering to publication
+exports, static LaTeX MathML in EPUB, and opt-in native MathML for HTML.
+The [STEM guide](docs/stem.md) includes syntax, format behavior and command scope;
+see the [release notes](RELEASE_NOTES.md) for details. Historical benchmark
+versions remain labeled below.
 
 ## EPUB books in 0.3.0
 
@@ -61,7 +67,7 @@ External Rust projects can use the verified Git release:
 
 ```toml
 [dependencies]
-adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.4.0" }
+adoc-engine = { git = "https://github.com/Jetplugins/adoc-engine", tag = "v0.5.0" }
 ```
 
 ```rust
@@ -371,7 +377,7 @@ Refresh the README charts from the archived verified samples with
 ## Publishing a release
 
 Keep the workspace and CLI dependency versions in sync, commit the version bump,
-and create the matching tag (for example `v0.4.0`). In GitHub Releases, publishing
+and create the matching tag (for example `v0.5.0`). In GitHub Releases, publishing
 that tag starts **Release engine**, which validates the version, tests five native
 platforms, checks reference compatibility and publications, then attaches archives,
 SHA-256 checksums, and `release-manifest.json`. Assets appear after verification.

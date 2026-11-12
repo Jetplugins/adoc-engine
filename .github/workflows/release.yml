@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag matching the Cargo version (for example v0.4.0)
+        description: Existing tag matching the Cargo version (for example v0.5.0)
         required: true
         type: string
       publish:
@@ -107,6 +107,7 @@ jobs:
       - run: python tests/showcase_compatibility.py target/release/adoc-engine
       - run: python tests/list_continuations.py target/release/adoc-engine
       - run: python tests/publications.py target/release/adoc-engine --epubcheck /tmp/epubcheck-5.4.0/epubcheck.jar
+      - run: python tests/stem.py target/release/adoc-engine --epubcheck /tmp/epubcheck-5.4.0/epubcheck.jar
       - run: python tests/epub_atomic.py target/release/adoc-engine
       - run: python tests/epub_features.py target/release/adoc-engine --epubcheck /tmp/epubcheck-5.4.0/epubcheck.jar
       - uses: actions/upload-artifact@v7
